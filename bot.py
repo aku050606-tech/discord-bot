@@ -16,7 +16,6 @@ db = Database()
 # Cogを読み込む
 async def load_extensions():
     await bot.load_extension("cogs.economy")
-    await bot.load_extension("cogs.games")
     await bot.load_extension("cogs.fortune")
     await bot.load_extension("cogs.auto_reply")
     await bot.load_extension("cogs.blackjack")
