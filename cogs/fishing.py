@@ -6,64 +6,49 @@ from config import *
 import random
 import asyncio
 from datetime import datetime, timezone, timedelta
+from cogs.embed_utils import pad_embed
 
 db = Database()
 JST = timezone(timedelta(hours=9))
 
 FISH_BY_AREA = {"lake": LAKE_FISH, "river": RIVER_FISH, "sea": SEA_FISH}
 
-def get_gear_probs(area: str, gear: dict) -> dict:
-    """装備込みの確率を計算"""
-    rod_id = gear["rod_id"]
-    rod = FISHING_RODS[rod_id]
+def get_rod_probs(rod_id: str, area: str) -> dict:
+    """竿×エリアの確率テーブルを取得"""
+    rod_probs = FISHING_PROBS.get(rod_id, {})
+    return dict(rod_probs.get(area, {}))
 
-    # 竿の基本確率
-    if rod.get("sea_ban") and area == "sea":
-        return None  # 海禁止
+def pick_effect(rod_id: str) -> tuple:
+    """竿に応じた演出を重み付きランダムで選択。(key, effect_dict)を返す"""
+    candidates = []
+    weights = []
+    for key, effect in FISHING_EFFECTS.items():
+        w = effect["weight"].get(rod_id, 0)
+        if w > 0:
+            candidates.append((key, effect))
+            weights.append(w)
+    if not candidates:
+        key = "random_1"
+        return key, FISHING_EFFECTS[key]
+    total = sum(weights)
+    r = random.random() * total
+    cumulative = 0
+    for (key, effect), w in zip(candidates, weights):
+        cumulative += w
+        if r < cumulative:
+            return key, effect
+    return candidates[-1]
 
-    base = dict(rod["probs"])
-
-    # リールのスーパーレアボーナス
-    reel = FISHING_REELS[gear["reel_id"]]
-    if reel["super_rare_bonus"] > 0:
-        bonus = reel["super_rare_bonus"]
-        base["super_rare"] = base.get("super_rare", 0) + bonus
-        # 増加分をゴミ・コモン・アンコモンから比率で引く
-        total_reducible = base.get("trash",0) + base.get("common",0) + base.get("uncommon",0)
-        if total_reducible > 0:
-            for k in ["trash","common","uncommon"]:
-                if k in base:
-                    base[k] -= bonus * (base[k] / total_reducible)
-
-    # ボスボーナス
-    boss_bonus = reel.get("boss_bonus", 0)
-    if boss_bonus > 0 and rod_id in ["titanium","legend"]:
-        base["boss"] = base.get("boss", 0) + boss_bonus
-
-    # 時間帯・曜日・特定日ボーナス
-    now = datetime.now(JST)
-    hour, weekday = now.hour, now.weekday()
-    month_day = (now.month, now.day)
-
-    if month_day in FISHING_SPECIAL_DAYS:
-        for rarity, mult in FISHING_SPECIAL_DAYS[month_day]["boost"].items():
-            if rarity in base:
-                base[rarity] *= mult
-
-    if weekday in FISHING_WEEKDAY_BONUS:
-        for rarity, mult in FISHING_WEEKDAY_BONUS[weekday]["boost"].items():
-            if rarity in base:
-                base[rarity] *= mult
-
-    for period, info in FISHING_TIME_BONUS.items():
-        if hour in info["hours"]:
-            for rarity, mult in info["boost"].items():
-                if rarity in base:
-                    base[rarity] *= mult
-
-    # 正規化
-    total = sum(v for v in base.values() if v > 0)
-    return {k: max(0, v/total) for k, v in base.items()}
+def pick_rarity_from_effect(effect: dict) -> str:
+    """演出の確率テーブルからレアリティを決定"""
+    probs = effect["probs"]
+    r = random.random()
+    cumulative = 0
+    for rarity, prob in probs.items():
+        cumulative += prob
+        if r < cumulative:
+            return rarity
+    return list(probs.keys())[-1]
 
 def pick_rarity(probs: dict) -> str:
     r = random.random()
@@ -80,35 +65,33 @@ def pick_fish(area: str, rarity: str) -> dict:
         candidates = [f for f in FISH_BY_AREA[area] if f["rarity"] == "common"]
     return random.choice(candidates)
 
-def get_fishing_effect(rarity: str) -> str:
-    rarity_map = {
-        "trash":      ["trash","trash_certain","both_extreme"],
-        "common":     ["common","random"],
-        "uncommon":   ["uncommon","common","random"],
-        "rare":       ["rare","uncommon"],
-        "super_rare": ["super_rare","rare","super_certain"],
-        "legend":     ["legend","legend_certain","both_extreme","super_rare"],
-        "boss":       ["legend_certain","super_certain"],
-    }
-    valid_types = rarity_map.get(rarity, ["random"])
-    candidates = [e for e in FISHING_EFFECTS if e[1] in valid_types]
-    if not candidates:
-        candidates = [e for e in FISHING_EFFECTS if e[1] == "random"]
-    return random.choice(candidates)[0]
+active_fishing: set = set()  # 釣り中のユーザーID
 
 async def do_fish(interaction: discord.Interaction, area: str, edit: bool = False):
     uid = str(interaction.user.id)
     guild_id = str(interaction.guild.id)
-    area_info = FISHING_AREAS[area]
+
+    # 連打防止
+    if uid in active_fishing:
+        await interaction.response.send_message("⏳ 釣り中です...", ephemeral=True)
+        return
+    active_fishing.add(uid)
     cost = area_info["cost"]
 
     # 装備取得
     gear = db.get_gear(uid)
 
-    # 海禁止チェック
+    # エリア禁止チェック
     rod = FISHING_RODS[gear["rod_id"]]
     if rod.get("sea_ban") and area == "sea":
-        msg = "❌ 竹竿では海に行けません！グラスロッド以上が必要です。"
+        msg = "❌ この竿では海に行けません！カーボンロッド以上が必要です。"
+        if edit:
+            await interaction.response.edit_message(content=msg, embed=None, view=None)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+        return
+    if rod.get("river_ban") and area == "river":
+        msg = "❌ 竹竿では川に行けません！グラスロッド以上が必要です。"
         if edit:
             await interaction.response.edit_message(content=msg, embed=None, view=None)
         else:
@@ -122,13 +105,15 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             await interaction.response.edit_message(content=msg, embed=None, view=None)
         else:
             await interaction.response.send_message(msg, ephemeral=True)
+        active_fishing.discard(uid)
         return
 
     if cost > 0:
         db.update_balance(uid, guild_id, -cost)
 
-    # 確率計算
-    probs = get_gear_probs(area, gear)
+    # 確率計算（竿×エリア）
+    rod_id = gear["rod_id"]
+    probs = get_rod_probs(rod_id, area)
 
     # 装備使用回数を減らす
     if gear["rod_uses"] < 999999:
@@ -162,20 +147,20 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
 
     db.save_gear(uid, gear)
 
-    # 釣り結果
-    rarity = pick_rarity(probs)
+    # 演出を先に選択
+    effect_key, effect = pick_effect(gear["rod_id"])
 
-    # ボス処理
+    # 演出の確率テーブルからレアリティを決定
+    rarity = pick_rarity_from_effect(effect)
+
+    # ボス判定（全竿1%で影出現）
     show_shadow = False
-    if rarity == "boss":
+    if random.random() < SHADOW_CHANCE:
         show_shadow = True
-        rarity = pick_rarity({k:v for k,v in probs.items() if k != "boss"})
 
-    # コモン・アンコモン時も主の影チェック
-    if rarity in ["common","uncommon"] and random.random() < SHADOW_CHANCE:
-        rod_id = gear["rod_id"]
-        if rod_id in ["titanium","legend"]:
-            show_shadow = True
+    # レジェンドが存在しないエリア・竿の場合はSRに格下げ
+    if rarity == "legend" and gear["rod_id"] not in ["titanium","legend"]:
+        rarity = "super_rare"
 
     fish = pick_fish(area, rarity)
     value = fish["value"]
@@ -224,9 +209,8 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             new_bal = db.get_balance(uid, guild_id)
             bonus_msg += f"\n🌟 **全図鑑コンプリート！** +{ZUKAN_ALL_BONUS:,} コイン！！"
 
-    # 演出
-    effect = get_fishing_effect(rarity)
-    wait_time = FISHING_WAIT_SUPER if rarity in ["super_rare","legend","boss"] else FISHING_WAIT_NORMAL
+    # ウェイト時間
+    wait_time = FISHING_WAIT_SUPER if effect["wait"] == "super" else FISHING_WAIT_NORMAL
 
     color = RARITY_COLORS.get(rarity, 0x95a5a6)
     rarity_label = {
@@ -237,21 +221,15 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     display_name = f"大きな{fish['name']}" if is_golden else fish["name"]
     display_emoji = "👑" if is_golden else fish["emoji"]
 
-    # 演出→待機→・・・→待機→結果
-    # まず演出を表示
-    embed1 = discord.Embed(description=effect, color=color)
+    # 演出表示（中間なし：演出→待機→結果）
+    embed1 = discord.Embed(description=effect["text"], color=color)
     embed1.set_footer(text=area_info["name"])
+    pad_embed(embed1, target_fields=4)
 
     if edit:
         await interaction.response.edit_message(embed=embed1, view=None)
     else:
         await interaction.response.send_message(embed=embed1, view=None, ephemeral=True)
-
-    await asyncio.sleep(wait_time)
-
-    # ・・・
-    embed2 = discord.Embed(description="・・・", color=color)
-    await interaction.edit_original_response(embed=embed2)
 
     await asyncio.sleep(wait_time)
 
@@ -279,14 +257,13 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     rod_uses = gear["rod_uses"] if gear["rod_uses"] < 999999 else "∞"
     embed3.description = desc
     embed3.set_footer(text=f"残高: {new_bal:,} コイン | {area_info['name']} | 竿:{rod_name}({rod_uses}回)")
+    pad_embed(embed3, target_fields=4)
 
-    now = datetime.now(JST)
-    month_day = (now.month, now.day)
-    if month_day in FISHING_SPECIAL_DAYS:
-        embed3.set_author(name=FISHING_SPECIAL_DAYS[month_day]["label"])
+    pass
 
     view = FishResultView(area, show_shadow, uid, guild_id)
     await interaction.edit_original_response(embed=embed3, view=view)
+    active_fishing.discard(uid)
 
 
 class FishResultView(discord.ui.View):
@@ -348,7 +325,8 @@ class ShadowChoiceView(discord.ui.View):
         # ライン装備で成功率UP
         gear = db.get_gear(self.uid)
         line = FISHING_LINES[gear["line_id"]]
-        success_rate = SHADOW_SUCCESS_RATE + line["boss_success_bonus"]
+        base_success = SHADOW_SUCCESS_RATES.get(gear["rod_id"], 0.01)
+        success_rate = base_success + line["boss_success_bonus"]
 
         if random.random() < success_rate:
             db.update_balance(self.uid, self.guild_id, BOSS_REWARD)

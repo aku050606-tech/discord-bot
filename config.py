@@ -9,6 +9,16 @@ PVP_FEE_RATE = 0.10
 
 SLOT_BET = 60
 
+# 日付ベースでシードを固定してランダムに台設定を割り当て（1日1回更新）
+def get_daily_machines():
+    from datetime import date
+    seed = int(str(date.today()).replace("-", ""))
+    rng = __import__('random').Random(seed)
+    settings = []
+    for _ in range(10):
+        settings.append(rng.randint(1, 6))
+    return settings
+
 SLOT_MACHINES_NORMAL  = [1,2,2,3,3,3,4,4,5,6]
 SLOT_MACHINES_BONUS   = [2,3,3,4,4,4,5,5,6,6]
 SLOT_MACHINES_NEWYEAR = [3,4,4,4,5,5,5,6,6,6]
@@ -87,11 +97,12 @@ FREESPIN_TYPES = {
 }
 
 FREESPIN_YAKUS = {
-    "REGULAR":{"replay":1/3,"bell":1/4,"cherry":1/25,"suika":1/40,"weak_chance":1/80,"strong_cherry":1/200,"strong_chance":1/300},
-    "BIG":    {"replay":1/3,"bell":1/4,"cherry":1/18,"suika":1/28,"weak_chance":1/55,"strong_cherry":1/200,"strong_chance":1/300},
-    "SUPER":  {"replay":1/3,"bell":1/4,"cherry":1/12,"suika":1/18,"weak_chance":1/35,"strong_cherry":1/200,"strong_chance":1/300},
-    "LEGEND": {"replay":1/3,"bell":1/4,"cherry":1/10,"suika":1/14,"weak_chance":1/28,"strong_cherry":1/200,"strong_chance":1/300},
-    "GOD":    {"replay":1/3,"bell":1/4,"cherry":1/7, "suika":1/9, "weak_chance":1/18,"strong_cherry":1/200,"strong_chance":1/300},
+    # 継続率: REGULAR40% / BIG60% / SUPER70% / LEGEND80% / GOD90%
+    "REGULAR":{"replay":1/3,"bell":1/4,"cherry":0.020681,"suika":0.012925,"weak_chance":0.006463,"strong_cherry":1/200,"strong_chance":1/300},
+    "BIG":    {"replay":1/3,"bell":1/4,"cherry":0.082906,"suika":0.051816,"weak_chance":0.025908,"strong_cherry":1/200,"strong_chance":1/300},
+    "SUPER":  {"replay":1/3,"bell":1/4,"cherry":0.126504,"suika":0.079065,"weak_chance":0.039533,"strong_cherry":1/200,"strong_chance":1/300},
+    "LEGEND": {"replay":1/3,"bell":1/4,"cherry":0.187186,"suika":0.116991,"weak_chance":0.058496,"strong_cherry":1/200,"strong_chance":1/300},
+    "GOD":    {"replay":1/3,"bell":1/4,"cherry":0.288872,"suika":0.180545,"weak_chance":0.090273,"strong_cherry":1/200,"strong_chance":1/300},
 }
 
 FREESPIN_BONUS_RATES = {
@@ -194,52 +205,201 @@ MISS_BONUS_CHANCE = 0.01  # ハズレ演出でも1%でボーナス
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FISHING_AREAS = {
-    "lake":  {"cost":10,  "name":"🏞️ 湖", "payout_rate":1.10},
-    "river": {"cost":50,  "name":"🏔️ 川", "payout_rate":1.10},
-    "sea":   {"cost":100, "name":"🌊 海", "payout_rate":1.10},
+    "lake":  {"cost":10,  "name":"🏞️ 湖"},
+    "river": {"cost":50,  "name":"🏔️ 川"},
+    "sea":   {"cost":100, "name":"🌊 海"},
 }
 
 ZUKAN_COMPLETE_BONUS = 30000
 ZUKAN_ALL_BONUS      = 90000
 
-FISHING_EFFECT_CHANCE = 1.0   # 毎回演出表示
-GOLDEN_CROWN_CHANCE   = 0.05
-SHADOW_CHANCE         = 0.01
-SHADOW_SUCCESS_RATE   = 0.10
-BOSS_REWARD           = 200000
+GOLDEN_CROWN_CHANCE  = 0.05
+SHADOW_CHANCE        = 0.01   # 全竿共通1%
+
+# 竿別・影挑戦成功率
+SHADOW_SUCCESS_RATES = {
+    "bamboo":   0.01,   # 1%
+    "glass":    0.02,   # 2%
+    "carbon":   0.03,   # 3%
+    "titanium": 0.07,   # 7%
+    "legend":   0.10,   # 10%
+}
+BOSS_REWARD          = 100000
 
 # 演出待機時間（秒）
 FISHING_WAIT_NORMAL = 2.0   # コモン〜レア
-FISHING_WAIT_SUPER  = 3.0   # スーパーレア以上
-SLOT_WAIT           = 1.5   # スロット演出待機
+FISHING_WAIT_SUPER  = 4.0   # スーパーレア以上
+SLOT_WAIT           = 1.5
 
-FISHING_EFFECTS = [
-    ("🎣 糸を投げると...何かが引っかかった",        "trash"),
-    ("😴 うとうとしてたら急に竿が揺れた！",          "random"),
-    ("💤 静かだ...あれ？なんか来た？",               "common"),
-    ("🌊 水面がちょっと揺れた...何かいる？",         "common"),
-    ("🎣 いい感じに糸が沈んでいく...",               "common"),
-    ("👀 何かがつついている...来るか...？",           "uncommon"),
-    ("⚡ 急に引きが来た！",                          "uncommon"),
-    ("🌀 じわじわと引っ張られてる...！",             "rare"),
-    ("💦 ずっしり重い...これはデカいぞ！",           "rare"),
-    ("🔥 ものすごい引きだ...竿が曲がってる！",       "super_rare"),
-    ("😱 水面から何かが飛び出してきた...！",         "super_rare"),
-    ("💎 水底で何かが光って見えた...！",             "super_rare"),
-    ("🦈 巨大な影が近づいてくる...！！",             "super_rare"),
-    ("💀 竿が折れそうなくらい引っ張られてる...！！", "legend"),
-    ("🌀 糸がものすごい勢いで出ていく...止まらない！！","legend"),
-    ("🤯 こんなの見たことない...化け物か...！！",    "legend"),
-    ("🏆 これは...伝説の...！！竿が限界だ！！",      "legend_certain"),
-    ("👻 なんか変な感じがする...いやな予感？",       "both_extreme"),
-    ("🎊 水面が虹色に光った...！！",                 "super_certain"),
-    ("😅 なんか軽いな...ん？",                       "trash_certain"),
-    ("🎵 鼻歌歌ってたら突然ガツン！と来た！",        "random"),
-    ("🌊 大きな波紋が広がっていく...！",             "rare"),
-    ("✨ 水中でキラリと光るものが...！",             "uncommon"),
-    ("🐟 小さな魚影が見えた",                        "common"),
-    ("🌑 深いところから何かが浮き上がってくる...！", "super_rare"),
-]
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 演出テーブル（新システム）
+# 演出ごとに重み・ウェイト種別・釣れるレアリティ確率を定義
+# weight: 竿ごとの出現重み（0=出ない）
+# wait:   "normal"=2秒 / "super"=4秒
+# probs:  {rarity: 確率}（合計1.0）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FISHING_EFFECTS = {
+    # ━━━ ゴミ確定 ━━━
+    "trash_certain": {
+        "text": "😅 なんか軽いな...ん？",
+        "wait": "normal",
+        "weight": {"bamboo":8,"glass":6,"carbon":5,"titanium":4,"legend":3},
+        "probs": {"trash":1.0},
+    },
+    # ━━━ ゴミ寄り ━━━
+    "trash_lean": {
+        "text": "🎣 糸を投げると...何かが引っかかった",
+        "wait": "normal",
+        "weight": {"bamboo":6,"glass":5,"carbon":4,"titanium":3,"legend":2},
+        "probs": {"trash":0.70,"common":0.25,"uncommon":0.04,"rare":0.01},
+    },
+    # ━━━ コモン寄り ━━━
+    "common_1": {
+        "text": "🐟 小さな魚影が見えた",
+        "wait": "normal",
+        "weight": {"bamboo":10,"glass":9,"carbon":8,"titanium":7,"legend":6},
+        "probs": {"trash":0.05,"common":0.70,"uncommon":0.20,"rare":0.04,"super_rare":0.01},
+    },
+    "common_2": {
+        "text": "💤 静かだ...あれ？なんか来た？",
+        "wait": "normal",
+        "weight": {"bamboo":10,"glass":9,"carbon":8,"titanium":7,"legend":6},
+        "probs": {"trash":0.05,"common":0.68,"uncommon":0.22,"rare":0.04,"super_rare":0.01},
+    },
+    "common_3": {
+        "text": "🌊 水面がちょっと揺れた...何かいる？",
+        "wait": "normal",
+        "weight": {"bamboo":10,"glass":9,"carbon":8,"titanium":7,"legend":6},
+        "probs": {"trash":0.05,"common":0.65,"uncommon":0.24,"rare":0.05,"super_rare":0.01},
+    },
+    "common_4": {
+        "text": "🎣 いい感じに糸が沈んでいく...",
+        "wait": "normal",
+        "weight": {"bamboo":8,"glass":8,"carbon":7,"titanium":6,"legend":5},
+        "probs": {"trash":0.05,"common":0.63,"uncommon":0.25,"rare":0.06,"super_rare":0.01},
+    },
+    # ━━━ ランダム ━━━
+    "random_1": {
+        "text": "😴 うとうとしてたら急に竿が揺れた！",
+        "wait": "normal",
+        "weight": {"bamboo":8,"glass":8,"carbon":8,"titanium":8,"legend":8},
+        "probs": {"trash":0.08,"common":0.45,"uncommon":0.30,"rare":0.12,"super_rare":0.04,"legend":0.01},
+    },
+    "random_2": {
+        "text": "🎵 鼻歌歌ってたら突然ガツン！と来た！",
+        "wait": "normal",
+        "weight": {"bamboo":8,"glass":8,"carbon":8,"titanium":8,"legend":8},
+        "probs": {"trash":0.08,"common":0.42,"uncommon":0.30,"rare":0.14,"super_rare":0.05,"legend":0.01},
+    },
+    # ━━━ アンコモン寄り ━━━
+    "uncommon_1": {
+        "text": "✨ 水中でキラリと光るものが...！",
+        "wait": "normal",
+        "weight": {"bamboo":6,"glass":7,"carbon":8,"titanium":8,"legend":8},
+        "probs": {"trash":0.02,"common":0.20,"uncommon":0.52,"rare":0.20,"super_rare":0.05,"legend":0.01},
+    },
+    "uncommon_2": {
+        "text": "👀 何かがつついている...来るか...？",
+        "wait": "normal",
+        "weight": {"bamboo":6,"glass":7,"carbon":8,"titanium":8,"legend":8},
+        "probs": {"trash":0.02,"common":0.18,"uncommon":0.52,"rare":0.22,"super_rare":0.05,"legend":0.01},
+    },
+    "uncommon_3": {
+        "text": "⚡ 急に引きが来た！",
+        "wait": "normal",
+        "weight": {"bamboo":5,"glass":6,"carbon":7,"titanium":8,"legend":8},
+        "probs": {"trash":0.02,"common":0.15,"uncommon":0.50,"rare":0.25,"super_rare":0.07,"legend":0.01},
+    },
+    # ━━━ レア寄り ━━━
+    "rare_1": {
+        "text": "🌀 じわじわと引っ張られてる...！",
+        "wait": "normal",
+        "weight": {"bamboo":2,"glass":5,"carbon":7,"titanium":9,"legend":9},
+        "probs": {"trash":0.01,"common":0.08,"uncommon":0.25,"rare":0.50,"super_rare":0.13,"legend":0.03},
+    },
+    "rare_2": {
+        "text": "💦 ずっしり重い...これはデカいぞ！",
+        "wait": "normal",
+        "weight": {"bamboo":2,"glass":5,"carbon":7,"titanium":9,"legend":9},
+        "probs": {"trash":0.01,"common":0.07,"uncommon":0.22,"rare":0.52,"super_rare":0.14,"legend":0.04},
+    },
+    "rare_3": {
+        "text": "🌊 大きな波紋が広がっていく...！",
+        "wait": "normal",
+        "weight": {"bamboo":2,"glass":5,"carbon":7,"titanium":9,"legend":9},
+        "probs": {"trash":0.01,"common":0.08,"uncommon":0.23,"rare":0.50,"super_rare":0.14,"legend":0.04},
+    },
+    # ━━━ SR寄り ━━━
+    "sr_1": {
+        "text": "🔥 ものすごい引きだ...\n　竿が大きく曲がってる！\n　　逃がすな...！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":2,"carbon":3,"titanium":5,"legend":6},
+        "probs": {"trash":0.01,"common":0.04,"uncommon":0.10,"rare":0.30,"super_rare":0.45,"legend":0.10},
+    },
+    "sr_2": {
+        "text": "😱 水面から何かが\n　飛び出してきた...！\n　　でかい...！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":2,"carbon":3,"titanium":5,"legend":6},
+        "probs": {"trash":0.01,"common":0.03,"uncommon":0.08,"rare":0.28,"super_rare":0.47,"legend":0.13},
+    },
+    "sr_3": {
+        "text": "💎 水底で何かが光って\n　見えた...！\n　　引き上げろ...！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":2,"carbon":3,"titanium":5,"legend":6},
+        "probs": {"trash":0.01,"common":0.03,"uncommon":0.07,"rare":0.25,"super_rare":0.48,"legend":0.16},
+    },
+    "sr_4": {
+        "text": "🦈 巨大な影が\n　近づいてくる...！！\n　　やばい...！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":1,"carbon":2,"titanium":4,"legend":6},
+        "probs": {"trash":0.01,"common":0.02,"uncommon":0.05,"rare":0.20,"super_rare":0.50,"legend":0.22},
+    },
+    "sr_5": {
+        "text": "🌑 深いところから何かが\n　浮き上がってくる...！\n　　正体は...！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":1,"carbon":2,"titanium":4,"legend":6},
+        "probs": {"trash":0.01,"common":0.02,"uncommon":0.05,"rare":0.18,"super_rare":0.50,"legend":0.24},
+    },
+    # ━━━ レジェンド寄り（チタン・伝説のみ） ━━━
+    "legend_1": {
+        "text": "💀 竿が折れそうなくらい\n　引っ張られてる...！！\n　　これは...何かがいる...！！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":0,"carbon":0,"titanium":2,"legend":5},
+        "probs": {"trash":0.01,"common":0.02,"uncommon":0.04,"rare":0.13,"super_rare":0.40,"legend":0.40},
+    },
+    "legend_2": {
+        "text": "🌀 糸がものすごい勢いで\n　出ていく...止まらない！！\n　　引き止めろ...！！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":0,"carbon":0,"titanium":2,"legend":5},
+        "probs": {"trash":0.01,"common":0.02,"uncommon":0.04,"rare":0.12,"super_rare":0.38,"legend":0.43},
+    },
+    "legend_3": {
+        "text": "🤯 こんなの見たことない...\n　化け物か...！！\n　　来い...！！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":0,"carbon":0,"titanium":2,"legend":5},
+        "probs": {"trash":0.01,"common":0.02,"uncommon":0.03,"rare":0.10,"super_rare":0.35,"legend":0.49},
+    },
+    # ━━━ 確定演出 ━━━
+    "golden": {
+        "text": "🌟 水面が黄金に光った...！！\n　これは間違いない...！！\n　　来た...！！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":1,"carbon":1,"titanium":1,"legend":2},
+        "probs": {"super_rare":1.0},
+    },
+    "rainbow": {
+        "text": "🌈 水面が虹色に光った...！！\n　これは...！！\n　　伝説だ...！！！",
+        "wait": "super",
+        "weight": {"bamboo":0,"glass":0,"carbon":0,"titanium":1,"legend":2},
+        "probs": {"legend":1.0},
+    },
+    "both_extreme": {
+        "text": "👻 なんか変な感じがする...\n　いやな予感？\n　　それとも...？",
+        "wait": "super",
+        "weight": {"bamboo":1,"glass":2,"carbon":2,"titanium":2,"legend":2},
+        "probs": {"trash":0.50,"legend":0.50},
+    },
+}
 
 RARITY_COLORS = {
     "trash":      0x95a5a6,
@@ -251,46 +411,41 @@ RARITY_COLORS = {
     "boss":       0xff0000,
 }
 
+# エリア×竿の確率テーブル（正規化済み・合計100%）
+# 設計出率：竹竿 湖150%/川125%、グラス 湖155%/川130%/海125%
+#           カーボン 湖160%/川135%/海130%、チタン 湖165%/川140%/海135%
+#           伝説 湖180%/川155%/海150%
 FISHING_PROBS = {
-    "lake":  {"trash":0.25,"common":0.33,"uncommon":0.27,"rare":0.08,"super_rare":0.05,"legend":0.02},
-    "river": {"trash":0.25,"common":0.33,"uncommon":0.27,"rare":0.08,"super_rare":0.05,"legend":0.02},
-    "sea":   {"trash":0.25,"common":0.33,"uncommon":0.27,"rare":0.08,"super_rare":0.05,"legend":0.02},
-}
-
-FISHING_TIME_BONUS = {
-    "morning":  {"hours":list(range(6,9)),   "boost":{"common":1.3,"uncommon":1.2}},
-    "evening":  {"hours":list(range(17,19)), "boost":{"rare":1.3}},
-    "night":    {"hours":list(range(19,24)), "boost":{"uncommon":1.2,"rare":1.2}},
-    "midnight": {"hours":list(range(0,6)),   "boost":{"super_rare":1.5,"legend":1.3,"trash":1.3}},
-}
-
-FISHING_WEEKDAY_BONUS = {
-    0: {"boost":{"common":1.2}},
-    1: {"boost":{"rare":1.3}},
-    2: {"boost":{"uncommon":1.3}},
-    3: {"boost":{"trash":0.5}},
-    4: {"boost":{"rare":1.3,"super_rare":1.2}},
-    5: {"boost":{"legend":1.3}},
-    6: {"boost":{"legend":1.5,"super_rare":1.3}},
-}
-
-FISHING_SPECIAL_DAYS = {
-    (1,1):   {"boost":{"legend":2.0,"super_rare":1.5},"label":"🎍 お正月"},
-    (1,2):   {"boost":{"legend":1.8,"super_rare":1.4},"label":"🎍 お正月"},
-    (1,3):   {"boost":{"legend":1.5,"super_rare":1.3},"label":"🎍 お正月"},
-    (2,14):  {"boost":{"super_rare":1.5},             "label":"💝 バレンタイン"},
-    (4,1):   {"boost":{"trash":3.0},                  "label":"🤡 エイプリルフール"},
-    (10,31): {"boost":{"super_rare":1.5,"legend":1.3},"label":"🎃 ハロウィン"},
-    (12,25): {"boost":{"legend":1.5,"super_rare":1.5},"label":"🎄 クリスマス"},
-    (12,29): {"boost":{"legend":1.3,"super_rare":1.3},"label":"🎍 年末"},
-    (12,30): {"boost":{"legend":1.4,"super_rare":1.4},"label":"🎍 年末"},
-    (12,31): {"boost":{"legend":1.8,"super_rare":1.5},"label":"🎍 大晦日"},
+    "bamboo": {
+        "lake":  {"trash":0.2510,"common":0.3514,"uncommon":0.2740,"rare":0.1225,"super_rare":0.0010,"legend":0.0001},
+        "river": {"trash":0.2470,"common":0.3458,"uncommon":0.2800,"rare":0.1261,"super_rare":0.0010,"legend":0.0001},
+    },
+    "glass": {
+        "lake":  {"trash":0.2478,"common":0.3469,"uncommon":0.2740,"rare":0.1298,"super_rare":0.0013,"legend":0.0001},
+        "river": {"trash":0.2426,"common":0.3397,"uncommon":0.2800,"rare":0.1363,"super_rare":0.0013,"legend":0.0001},
+        "sea":   {"trash":0.2568,"common":0.3595,"uncommon":0.2600,"rare":0.1223,"super_rare":0.0013,"legend":0.0001},
+    },
+    "carbon": {
+        "lake":  {"trash":0.2446,"common":0.3425,"uncommon":0.2740,"rare":0.1371,"super_rare":0.0016,"legend":0.0001},
+        "river": {"trash":0.2383,"common":0.3336,"uncommon":0.2800,"rare":0.1465,"super_rare":0.0016,"legend":0.0001},
+        "sea":   {"trash":0.2519,"common":0.3526,"uncommon":0.2600,"rare":0.1338,"super_rare":0.0016,"legend":0.0001},
+    },
+    "titanium": {
+        "lake":  {"trash":0.2464,"common":0.3450,"uncommon":0.2740,"rare":0.1323,"super_rare":0.0020,"legend":0.0002},
+        "river": {"trash":0.2386,"common":0.3341,"uncommon":0.2800,"rare":0.1451,"super_rare":0.0020,"legend":0.0002},
+        "sea":   {"trash":0.2525,"common":0.3535,"uncommon":0.2600,"rare":0.1319,"super_rare":0.0020,"legend":0.0002},
+    },
+    "legend": {
+        "lake":  {"trash":0.2445,"common":0.3424,"uncommon":0.2740,"rare":0.1362,"super_rare":0.0025,"legend":0.0004},
+        "river": {"trash":0.2336,"common":0.3270,"uncommon":0.2800,"rare":0.1565,"super_rare":0.0025,"legend":0.0004},
+        "sea":   {"trash":0.2469,"common":0.3457,"uncommon":0.2600,"rare":0.1445,"super_rare":0.0025,"legend":0.0004},
+    },
 }
 
 AREA_BOSS = {
-    "lake":  {"name":"ネッシー",     "emoji":"🦕","value":BOSS_REWARD},
+    "lake":  {"name":"ネッシー",      "emoji":"🦕","value":BOSS_REWARD},
     "river": {"name":"クラーケン幼体","emoji":"🦑","value":BOSS_REWARD},
-    "sea":   {"name":"メガロドン",   "emoji":"🦷","value":BOSS_REWARD},
+    "sea":   {"name":"メガロドン",    "emoji":"🦷","value":BOSS_REWARD},
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -299,19 +454,14 @@ AREA_BOSS = {
 
 FISHING_RODS = {
     "bamboo":   {"name":"竹竿",          "price":0,       "uses":999999, "emoji":"🎋",
-                 "probs":{"trash":0.30,"common":0.46,"uncommon":0.22,"rare":0.02,"super_rare":0.0,"legend":0.0},
-                 "sea_ban":True},
+                 "sea_ban":True, "river_ban":True},
     "glass":    {"name":"グラスロッド",   "price":2000,    "uses":200,    "emoji":"🎣",
-                 "probs":{"trash":0.25,"common":0.33,"uncommon":0.27,"rare":0.08,"super_rare":0.005,"legend":0.0},
-                 "sea_ban":False},
+                 "sea_ban":True},
     "carbon":   {"name":"カーボンロッド", "price":8000,    "uses":200,    "emoji":"🎣",
-                 "probs":{"trash":0.15,"common":0.38,"uncommon":0.31,"rare":0.092,"super_rare":0.005,"legend":0.0},
                  "sea_ban":False},
     "titanium": {"name":"チタンロッド",   "price":30000,   "uses":200,    "emoji":"🎣",
-                 "probs":{"trash":0.229,"common":0.302,"uncommon":0.249,"rare":0.13,"super_rare":0.005,"legend":0.02,"boss":0.005},
                  "sea_ban":False},
     "legend":   {"name":"伝説の釣り竿",   "price":100000,  "uses":200,    "emoji":"🎣",
-                 "probs":{"trash":0.243,"common":0.32,"uncommon":0.262,"rare":0.08,"super_rare":0.006,"legend":0.02,"boss":0.01},
                  "sea_ban":False},
 }
 

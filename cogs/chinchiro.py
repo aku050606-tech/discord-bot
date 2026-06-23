@@ -85,28 +85,32 @@ class ChinchiroAIView(discord.ui.View):
         embed.add_field(name="あなた", value=f"{dice_str(dice)}\n{label}", inline=True)
         embed.add_field(name="AI", value=f"{dice_str(ai_dice)}\n{ai_label}", inline=True)
 
+        # 賭け金はゲーム開始時に引き済み
+        # 勝ち→bet*2返却、引き分け→bet返却、負け→0
         if score < 0:
             result = "負け"
-            net = -self.bet
+            refund = 0
         elif ai_score < 0:
             result = "勝ち"
-            net = self.bet
+            refund = self.bet * 2
         elif score > ai_score:
             result = "勝ち"
-            net = self.bet
+            refund = self.bet * 2
         elif score < ai_score:
             result = "負け"
-            net = -self.bet
+            refund = 0
         else:
             result = "引き分け"
-            net = 0
+            refund = self.bet
 
-        # AI出率90%調整
+        # AI出率90%調整（勝ちを負けに変える）
         if result == "勝ち" and random.random() > CHINCHIRO_AI_PAYOUT:
-            net = -self.bet
+            refund = 0
             result = "負け（運が悪かった...）"
 
-        db.update_balance(self.user_id, self.guild_id, net)
+        net = refund - self.bet  # 表示用収支
+        if refund > 0:
+            db.update_balance(self.user_id, self.guild_id, refund)
         new_bal = db.get_balance(self.user_id, self.guild_id)
 
         color = discord.Color.gold() if net > 0 else discord.Color.red() if net < 0 else discord.Color.blue()

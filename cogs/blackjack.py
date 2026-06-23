@@ -222,21 +222,25 @@ class BlackjackAIView(discord.ui.View):
 
         if ended:
             embed.add_field(name=f"ディーラーの手札（{d_val}）", value=hand_str(game["dealer"]), inline=False)
+            # 賭け金はゲーム開始時に引き済み → 勝ちはbet*2返却、引き分けはbet返却、負けは0
             if p_val > 21:
-                result, net, color = f"💥 バスト！ -{bet:,} コイン", -bet, discord.Color.red()
+                result, refund, color = f"💥 バスト！ -{bet:,} コイン", 0, discord.Color.red()
             elif d_val > 21 or p_val > d_val:
-                result, net, color = f"🎉 勝ち！ +{bet:,} コイン", bet, discord.Color.gold()
+                result, refund, color = f"🎉 勝ち！ +{bet:,} コイン", bet * 2, discord.Color.gold()
             elif p_val == d_val:
-                result, net, color = "🤝 引き分け！ ±0", 0, discord.Color.blue()
+                result, refund, color = "🤝 引き分け！ ±0", bet, discord.Color.blue()
             else:
-                result, net, color = f"😢 負け！ -{bet:,} コイン", -bet, discord.Color.red()
+                result, refund, color = f"😢 負け！ -{bet:,} コイン", 0, discord.Color.red()
             embed.color = color
-            db.update_balance(self.user_id, self.guild_id, net)
+            if refund > 0:
+                db.update_balance(self.user_id, self.guild_id, refund)
             new_bal = db.get_balance(self.user_id, self.guild_id)
             embed.add_field(name="結果", value=result, inline=False)
             embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
             active_games.pop(self.user_id, None)
             self.clear_items()
+            self.add_item(BJAgainButton(game["bet"] if "bet" in game else bet, self.user_id, self.guild_id))
+            self.add_item(BJBackButton(self.user_id))
         else:
             embed.add_field(name="ディーラーの手札", value=hand_str(game["dealer"], hide_second=True), inline=False)
             embed.set_footer(text=f"賭け: {bet:,} コイン")
@@ -289,6 +293,57 @@ class BlackjackAIView(discord.ui.View):
 
     async def on_timeout(self):
         active_games.pop(self.user_id, None)
+
+
+class BJAgainButton(discord.ui.Button):
+    def __init__(self, bet: int, user_id: str, guild_id: str):
+        super().__init__(label="もう一回！", style=discord.ButtonStyle.primary, emoji="🃏")
+        self.bet = bet
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        bet = self.bet
+        uid = self.user_id
+        guild_id = self.guild_id
+        bal = db.get_balance(uid, guild_id)
+        if bal < bet:
+            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            return
+        db.update_balance(uid, guild_id, -bet)
+        deck = make_deck()
+        random.shuffle(deck)
+        player = [deck.pop(), deck.pop()]
+        dealer = [deck.pop(), deck.pop()]
+        active_games[uid] = {"deck": deck, "player": player, "dealer": dealer, "bet": bet}
+        p_val = hand_value(player)
+        embed = discord.Embed(title="🤖 ブラックジャック vs AI", color=discord.Color.dark_green())
+        embed.add_field(name=f"あなたの手札（{p_val}）", value=hand_str(player), inline=False)
+        embed.add_field(name="ディーラーの手札", value=hand_str(dealer, hide_second=True), inline=False)
+        embed.set_footer(text=f"賭け: {bet:,} コイン")
+        view = BlackjackAIView(uid, guild_id)
+        if p_val == 21:
+            winnings = int(bet * 1.5)
+            db.update_balance(uid, guild_id, bet + winnings)
+            embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} コイン（1.5倍）", inline=False)
+            active_games.pop(uid, None)
+            view.clear_items()
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class BJBackButton(discord.ui.Button):
+    def __init__(self, user_id: str):
+        super().__init__(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

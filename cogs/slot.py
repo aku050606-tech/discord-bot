@@ -6,19 +6,15 @@ from config import *
 import random
 import asyncio
 from datetime import datetime, timezone, timedelta
+from cogs.embed_utils import pad_embed
 
 db = Database()
 JST = timezone(timedelta(hours=9))
 
 def get_machine_setting(machine_no: int) -> int:
-    now = datetime.now(JST)
-    month, day, weekday = now.month, now.day, now.weekday()
-    if (month, day) in SLOT_NEWYEAR_DATES:
-        machines = SLOT_MACHINES_NEWYEAR
-    elif day in SLOT_BONUS_DAYS or weekday in SLOT_BONUS_WEEKDAYS:
-        machines = SLOT_MACHINES_BONUS
-    else:
-        machines = SLOT_MACHINES_NORMAL
+    """日付ベースで台ごとの設定をランダム決定（1日1回更新）"""
+    from config import get_daily_machines
+    machines = get_daily_machines()
     return machines[machine_no - 1]
 
 def get_reel_display(reel_key: str) -> str:
@@ -26,36 +22,64 @@ def get_reel_display(reel_key: str) -> str:
     return f"┌─────────────────┐\n│ {symbols[0]} │ {symbols[1]} │ {symbols[2]} │\n└─────────────────┘"
 
 def get_effect(yaku: str, has_bonus: bool, is_miss: bool) -> str:
-    """毎回演出を返す"""
+    """演出を返す。yakuの種類と結果に連動させる"""
     if is_miss:
-        # ハズレ演出（1%でボーナス当選あり）
         return random.choice(SLOT_EFFECTS["miss"])
 
     if has_bonus:
+        # ボーナス当選時：役に応じた矛盾演出 or 強演出
         r = random.random()
-        if r < 0.10:
-            # 矛盾演出チャンス
-            if yaku in SLOT_EFFECTS["contradiction"]:
-                return random.choice(SLOT_EFFECTS["contradiction"][yaku])
+        if r < 0.10 and yaku in SLOT_EFFECTS.get("contradiction", {}):
+            # 矛盾演出（例：チェリーの気配でベルが来る）
+            return random.choice(SLOT_EFFECTS["contradiction"][yaku])
+        elif r < 0.35:
             return random.choice(SLOT_EFFECTS["weak"])
-        elif r < 0.30:
-            return random.choice(SLOT_EFFECTS["weak"])
-        elif r < 0.55:
+        elif r < 0.60:
             return random.choice(SLOT_EFFECTS["medium"])
-        elif r < 0.80:
+        elif r < 0.82:
             return random.choice(SLOT_EFFECTS["strong"])
         else:
             return random.choice(SLOT_EFFECTS["super"])
     else:
-        r = random.random()
-        if r < 0.40:
-            return random.choice(SLOT_EFFECTS["miss"])
-        elif r < 0.65:
-            return random.choice(SLOT_EFFECTS["weak"])
-        elif r < 0.85:
-            return random.choice(SLOT_EFFECTS["medium"])
+        # ハズレ・通常役：役の強さに応じて演出を出し分け
+        if yaku in ("strong_chance", "strong_cherry"):
+            # 強役は強めの演出
+            r = random.random()
+            if r < 0.20:
+                return random.choice(SLOT_EFFECTS["medium"])
+            elif r < 0.65:
+                return random.choice(SLOT_EFFECTS["strong"])
+            else:
+                return random.choice(SLOT_EFFECTS["super"])
+        elif yaku in ("weak_chance", "suika"):
+            r = random.random()
+            if r < 0.30:
+                return random.choice(SLOT_EFFECTS["weak"])
+            elif r < 0.70:
+                return random.choice(SLOT_EFFECTS["medium"])
+            else:
+                return random.choice(SLOT_EFFECTS["strong"])
+        elif yaku in ("cherry",):
+            r = random.random()
+            if r < 0.50:
+                return random.choice(SLOT_EFFECTS["miss"])
+            else:
+                return random.choice(SLOT_EFFECTS["weak"])
+        elif yaku in ("bell", "replay"):
+            r = random.random()
+            if r < 0.60:
+                return random.choice(SLOT_EFFECTS["miss"])
+            else:
+                return random.choice(SLOT_EFFECTS["weak"])
         else:
-            return random.choice(SLOT_EFFECTS["strong"])
+            # ハズレ
+            r = random.random()
+            if r < 0.60:
+                return random.choice(SLOT_EFFECTS["miss"])
+            elif r < 0.85:
+                return random.choice(SLOT_EFFECTS["weak"])
+            else:
+                return random.choice(SLOT_EFFECTS["medium"])
 
 def spin_normal(setting: int) -> dict:
     s = SLOT_SETTINGS[setting]
@@ -108,13 +132,21 @@ def spin_freespin(fs_type: str) -> dict:
         if random.random() < prob:
             yaku_results.append(yaku)
             payout += FREESPIN_PAYOUTS.get(yaku, 0)
-    continue_bonus = None
+
+    # 継続抽選：子役重複のみ（残り10ゲーム以下の時だけ抽選、それ以外は無抽選）
+    # 呼び出し側でfs_remainingを確認してから抽選するため、ここではフラグだけ返す
+    continued = False
     for yaku in yaku_results:
         rate = FREESPIN_BONUS_RATES.get(yaku, 0)
         if random.random() < rate:
-            continue_bonus = fs_type
+            continued = True
             break
-    return {"yakus":yaku_results,"payout":payout,"continue":continue_bonus is not None}
+
+    return {
+        "yakus": yaku_results,
+        "payout": payout,
+        "continued": continued,  # 継続当選フラグ（残り10以下の時のみ有効）
+    }
 
 active_slots: dict[str, dict] = {}
 
@@ -139,6 +171,7 @@ class SlotMachineButton(discord.ui.Button):
             "machine":self.machine_no,"setting":setting,"guild_id":guild_id,
             "state":"normal","fs_type":None,"fs_remaining":0,
             "fs_total_payout":0,"pending_bonus":None,
+            "fs_continued":False,  # 継続当選済みフラグ（未告知管理用）
         }
         embed = discord.Embed(
             title=f"🎰 スロット — {self.machine_no}番台",
@@ -173,6 +206,11 @@ class SlotGameView(discord.ui.View):
         if not game:
             await interaction.response.send_message("ゲームが見つかりません", ephemeral=True)
             return
+        # 連打防止
+        if game.get("spinning"):
+            await interaction.response.send_message("⏳ 処理中です...", ephemeral=True)
+            return
+        game["spinning"] = True
 
         await interaction.response.defer()
         uid = self.user_id
@@ -180,39 +218,90 @@ class SlotGameView(discord.ui.View):
 
         # フリースピン中
         if game["state"] == "freespin":
+            fs_remaining_before = game["fs_remaining"]
             result = spin_freespin(game["fs_type"])
             game["fs_remaining"] -= 1
             game["fs_total_payout"] += result["payout"]
+
+            yaku_display = "、".join([{
+                "replay":"🔄リプレイ","bell":"🔔ベル","cherry":"🍒チェリー",
+                "suika":"🍉スイカ","weak_chance":"💥チャンス目",
+                "strong_cherry":"🍒強チェリー","strong_chance":"💥強チャンス目",
+            }.get(y, y) for y in result["yakus"]]) or "ハズレ"
+
+            # 継続抽選：残り10ゲーム以下 かつ まだ当選していない時だけ
+            if not game.get("fs_continued") and fs_remaining_before <= 10 and result["continued"]:
+                game["fs_continued"] = True
+                game["fs_remaining"] += FREESPIN_GAMES  # 内部確定：即加算
+
+            # 告知判定（当選済みで未告知の場合のみ）
+            is_last_game = game["fs_remaining"] <= 0
+            show_notice = False
+            if game.get("fs_continued") and not game.get("fs_noticed"):
+                if is_last_game or random.random() < 0.5:
+                    show_notice = True
+                    game["fs_noticed"] = True
+
+            # 通常時と同じ演出
+            has_bonus = show_notice  # 告知タイミング＝ボーナス演出
+            is_miss = len(result["yakus"]) == 0
+            top_yaku = result["yakus"][0] if result["yakus"] else None
+            effect = get_effect(top_yaku, has_bonus, is_miss)
+
+            # 演出表示
+            embed_effect = discord.Embed(
+                title="🌟 フリースピン中",
+                description=effect,
+                color=FREESPIN_TYPES[game["fs_type"]]["color"]
+            )
+            embed_effect.add_field(name="残り", value=f"{game['fs_remaining'] + 1}回", inline=True)
+            pad_embed(embed_effect, target_fields=4)
+            await interaction.followup.edit_message(interaction.message.id, embed=embed_effect, view=self)
+            await asyncio.sleep(SLOT_WAIT)
+
             db.update_balance(uid, guild_id, result["payout"])
             new_bal = db.get_balance(uid, guild_id)
 
-            # 継続チェック
-            if result["continue"]:
-                game["fs_remaining"] += FREESPIN_GAMES
-                is_revival = game["fs_remaining"] == FREESPIN_GAMES
-                title = "🔥 復活！！！" if is_revival else "🌟 フリースピン継続！！"
-                embed = discord.Embed(title=title, color=discord.Color.gold())
+            # 結果embed
+            if show_notice and continued:
+                # 継続告知
+                fs_label = FREESPIN_TYPES[game["fs_type"]]["label"]
+                color = FREESPIN_TYPES[game["fs_type"]]["color"]
+                embed = discord.Embed(title="🔥 フリースピン継続！！", color=color)
+                embed.add_field(name="今回の図柄", value=yaku_display, inline=False)
                 embed.add_field(name="今回の払い出し", value=f"{result['payout']:,} コイン", inline=True)
                 embed.add_field(name="累計獲得", value=f"{game['fs_total_payout']:,} コイン", inline=True)
                 embed.add_field(name="残り", value=f"{game['fs_remaining']}回", inline=True)
                 embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
-            elif game["fs_remaining"] <= 0:
+                pad_embed(embed, target_fields=5)
+            elif game["fs_remaining"] <= 0 and not continued:
+                # 終了
                 fs_label = FREESPIN_TYPES[game["fs_type"]]["label"]
                 color = FREESPIN_TYPES[game["fs_type"]]["color"]
                 embed = discord.Embed(title="💨 フリースピン終了", color=color)
                 embed.add_field(name="種別", value=f"**{fs_label}**", inline=False)
+                embed.add_field(name="今回の図柄", value=yaku_display, inline=True)
                 embed.add_field(name="💰 合計獲得", value=f"{game['fs_total_payout']:,} コイン", inline=False)
                 embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+                pad_embed(embed, target_fields=5)
                 game["state"] = "normal"
                 game["fs_type"] = None
                 game["fs_remaining"] = 0
                 game["fs_total_payout"] = 0
+                game["fs_continued"] = False
+                game["fs_noticed"] = False
             else:
-                embed = discord.Embed(title="🌟 フリースピン中", color=FREESPIN_TYPES[game["fs_type"]]["color"])
+                # 通常進行（継続当選済みだが未告知の場合も含む）
+                embed = discord.Embed(
+                    title="🌟 フリースピン中",
+                    color=FREESPIN_TYPES[game["fs_type"]]["color"]
+                )
+                embed.add_field(name="今回の図柄", value=yaku_display, inline=False)
                 embed.add_field(name="今回の払い出し", value=f"{result['payout']:,} コイン", inline=True)
                 embed.add_field(name="累計獲得", value=f"{game['fs_total_payout']:,} コイン", inline=True)
                 embed.add_field(name="残り", value=f"{game['fs_remaining']}回", inline=True)
                 embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+                pad_embed(embed, target_fields=5)
 
             await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
             return
@@ -229,6 +318,8 @@ class SlotGameView(discord.ui.View):
             game["fs_remaining"] = FREESPIN_GAMES
             game["fs_total_payout"] = 0
             game["pending_bonus"] = None
+            game["fs_continued"] = False
+            game["fs_noticed"] = False
 
             embed = discord.Embed(
                 title="✨ F R E E S P I N ✨",
@@ -298,11 +389,13 @@ class SlotGameView(discord.ui.View):
 
         # 演出表示
         embed1 = discord.Embed(description=effect, color=discord.Color.dark_gray())
+        pad_embed(embed1, target_fields=5)
         await interaction.followup.edit_message(interaction.message.id, embed=embed1, view=self)
         await asyncio.sleep(SLOT_WAIT)
 
         # ・・・
         embed2 = discord.Embed(description="・・・", color=discord.Color.dark_gray())
+        pad_embed(embed2, target_fields=5)
         await interaction.followup.edit_message(interaction.message.id, embed=embed2, view=self)
         await asyncio.sleep(SLOT_WAIT)
 
@@ -326,14 +419,18 @@ class SlotGameView(discord.ui.View):
                 color=discord.Color.gold()
             )
             embed3.set_footer(text=f"残高: {new_bal:,} コイン | 次のゲームへ...")
+            pad_embed(embed3, target_fields=5)
         else:
             color = discord.Color.dark_gray() if not yaku else discord.Color.blue()
             embed3 = discord.Embed(title=yaku_label if yaku_label else "　", description=f"```\n{reel}\n```", color=color)
             if payout > 0:
                 embed3.add_field(name="払い出し", value=f"+{payout:,} コイン", inline=True)
             embed3.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            pad_embed(embed3, target_fields=5)
 
         await interaction.followup.edit_message(interaction.message.id, embed=embed3, view=self)
+        if game:
+            game["spinning"] = False
 
     @discord.ui.button(label="やめる", style=discord.ButtonStyle.secondary, emoji="🚪")
     async def quit_game(self, interaction: discord.Interaction, button: discord.ui.Button):

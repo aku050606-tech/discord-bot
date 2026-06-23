@@ -178,7 +178,7 @@ def build_ai_embed(game: dict, action_log: str = "") -> discord.Embed:
         color=discord.Color.dark_green()
     )
     embed.add_field(name="あなたの手札", value=hand_str(game["player_hand"]), inline=True)
-    embed.add_field(name="AIの手札", value="🂠 🂠", inline=True)
+    embed.add_field(name="AIの手札", value="🂠 🂠（非公開）", inline=True)
 
     community = game["community_shown"]
     if community:
@@ -244,12 +244,14 @@ class PokerAIView(discord.ui.View):
 
         player_log = ""
         if action == "fold":
-            # プレイヤーフォールド → AI勝ち
-            db.update_balance(self.user_id, self.guild_id, 0)  # 賭け金は没収済み
+            new_bal = db.get_balance(self.user_id, self.guild_id)
             embed = discord.Embed(title="🤖 ポーカー vs AI — 結果", color=discord.Color.red())
             embed.add_field(name="結果", value=f"🏳️ フォールド。AIの勝ち！\nポット {game['pot']:,} コイン没収", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
             ai_games.pop(self.user_id, None)
             self.clear_items()
+            self.add_item(PokerAgainButton(game["ante"], self.user_id))
+            self.add_item(PokerBackButton(self.user_id))
             await interaction.response.edit_message(embed=embed, view=self)
             return
 
@@ -283,12 +285,16 @@ class PokerAIView(discord.ui.View):
         if ai_log == "fold":
             # AIフォールド → プレイヤー勝ち
             db.update_balance(self.user_id, self.guild_id, game["pot"])
+            new_bal = db.get_balance(self.user_id, self.guild_id)
             embed = discord.Embed(title="🤖 ポーカー vs AI — 結果", color=discord.Color.gold())
             embed.add_field(name="あなたの手札", value=hand_str(game["player_hand"]), inline=True)
             embed.add_field(name="AIの手札", value=hand_str(game["ai_hand"]), inline=True)
             embed.add_field(name="結果", value=f"🏳️ AIがフォールド！あなたの勝ち！\n+{game['pot']:,} コイン獲得！", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
             ai_games.pop(self.user_id, None)
             self.clear_items()
+            self.add_item(PokerAgainButton(game["ante"], self.user_id))
+            self.add_item(PokerBackButton(self.user_id))
             await interaction.response.edit_message(embed=embed, view=self)
             return
 
@@ -315,19 +321,25 @@ class PokerAIView(discord.ui.View):
 
         if p_score > ai_score:
             db.update_balance(self.user_id, self.guild_id, game["pot"])
-            embed.add_field(name="🏆 結果", value=f"あなたの勝ち！ +{game['pot']:,} コイン獲得！", inline=False)
+            result_text = f"あなたの勝ち！ +{game['pot']:,} コイン獲得！"
             embed.color = discord.Color.gold()
         elif ai_score > p_score:
-            embed.add_field(name="💀 結果", value=f"AIの勝ち！ -{game['pot'] - game['player_bet']:,} コイン損失", inline=False)
+            result_text = f"AIの勝ち！ -{game['player_bet']:,} コイン損失"
             embed.color = discord.Color.red()
         else:
             half = game["pot"] // 2
             db.update_balance(self.user_id, self.guild_id, half)
-            embed.add_field(name="🤝 結果", value=f"引き分け！ {half:,} コイン返還", inline=False)
+            result_text = f"引き分け！ {half:,} コイン返還"
             embed.color = discord.Color.blue()
+
+        new_bal = db.get_balance(self.user_id, self.guild_id)
+        embed.add_field(name="🏆 結果", value=result_text, inline=False)
+        embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
 
         ai_games.pop(self.user_id, None)
         self.clear_items()
+        self.add_item(PokerAgainButton(game["ante"], self.user_id))
+        self.add_item(PokerBackButton(self.user_id))
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="コール", style=discord.ButtonStyle.primary, emoji="✅", row=0)
@@ -363,6 +375,54 @@ class PokerAIView(discord.ui.View):
 
     async def on_timeout(self):
         ai_games.pop(self.user_id, None)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 結果後ボタン
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PokerAgainButton(discord.ui.Button):
+    def __init__(self, ante: int, user_id: str):
+        super().__init__(label="もう一回！", style=discord.ButtonStyle.primary, emoji="♠️")
+        self.ante = ante
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        uid = self.user_id
+        guild_id = str(interaction.guild.id)
+        bal = db.get_balance(uid, guild_id)
+        if bal < self.ante:
+            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            return
+        db.update_balance(uid, guild_id, -self.ante)
+        deck = make_deck()
+        random.shuffle(deck)
+        player_hand = [deck.pop(), deck.pop()]
+        ai_hand = [deck.pop(), deck.pop()]
+        community = [deck.pop() for _ in range(5)]
+        ai_games[uid] = {
+            "guild_id": guild_id, "ante": self.ante, "deck": deck,
+            "player_hand": player_hand, "ai_hand": ai_hand, "community": community,
+            "community_shown": [], "stage": "preflop",
+            "pot": self.ante * 2, "player_bet": self.ante, "ai_bet": self.ante,
+        }
+        embed = build_ai_embed(ai_games[uid], "ゲーム開始！コール・チェック・レイズ・フォールドで行動してね")
+        await interaction.response.edit_message(embed=embed, view=PokerAIView(uid, guild_id))
+
+class PokerBackButton(discord.ui.Button):
+    def __init__(self, user_id: str):
+        super().__init__(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -14,7 +14,7 @@ class Database:
         c = conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS economy (
             user_id TEXT PRIMARY KEY, guild_id TEXT,
-            balance INTEGER DEFAULT 1000, total_earned INTEGER DEFAULT 0,
+            balance INTEGER DEFAULT 1000000, total_earned INTEGER DEFAULT 0,
             last_daily TEXT
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS zukan (
@@ -56,10 +56,10 @@ class Database:
         c.execute("SELECT balance FROM economy WHERE user_id = ?", (user_id,))
         row = c.fetchone()
         if row is None:
-            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, 1000)", (user_id, guild_id))
+            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, 1000000)", (user_id, guild_id))
             conn.commit()
             conn.close()
-            return 1000
+            return 1000000
         conn.close()
         return row[0]
 
@@ -68,7 +68,7 @@ class Database:
         c = conn.cursor()
         c.execute("UPDATE economy SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
         if c.rowcount == 0:
-            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)", (user_id, guild_id, 1000 + amount))
+            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)", (user_id, guild_id, 1000000 + amount))
         conn.commit()
         conn.close()
 

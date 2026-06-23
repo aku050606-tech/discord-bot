@@ -6,10 +6,187 @@ import random
 
 db = Database()
 
-# 進行中ゲーム: {user_id: {answer, tries, bet, max_tries}}
+MAX_TRIES = 7
+
+# 配当表：1回目99倍、早いほど高配当
+MULTIPLIERS = {1: 99, 2: 15, 3: 10, 4: 7, 5: 5, 6: 3, 7: 1.5}
+
+# 進行中ゲーム
 active_games: dict[str, dict] = {}
 
-MAX_TRIES = 7
+
+def build_game_embed(game: dict, message: str = "") -> discord.Embed:
+    tries = game["tries"]
+    remaining = MAX_TRIES - tries
+    next_mult = MULTIPLIERS.get(tries + 1, 1)
+    bet = game["bet"]
+
+    embed = discord.Embed(
+        title="🎯 数字当てゲーム",
+        color=discord.Color.blurple()
+    )
+    if message:
+        embed.description = message
+
+    table = "\n".join(
+        f"{'→ ' if t == tries + 1 else '　'}{t}回目: ×{m}"
+        for t, m in MULTIPLIERS.items()
+    )
+    embed.add_field(name="💰 配当表", value=table, inline=True)
+    embed.add_field(
+        name="📊 状況",
+        value=f"残り回数: **{remaining}回**\n次の配当: **×{next_mult}**\n賭け: **{bet:,} コイン**",
+        inline=True
+    )
+    return embed
+
+
+class GuessModal(discord.ui.Modal, title="数字を入力してください"):
+    number = discord.ui.TextInput(
+        label="1〜100の数字",
+        placeholder="例: 42",
+        min_length=1,
+        max_length=3,
+    )
+
+    def __init__(self, user_id: str, guild_id: str):
+        super().__init__()
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # 数字チェック
+        try:
+            num = int(self.number.value)
+        except ValueError:
+            await interaction.response.send_message("❌ 数字を入力してください", ephemeral=True)
+            return
+
+        if num < 1 or num > 100:
+            await interaction.response.send_message("❌ 1〜100の数字を入力してください", ephemeral=True)
+            return
+
+        game = active_games.get(self.user_id)
+        if not game:
+            await interaction.response.send_message("❌ ゲームが見つかりません", ephemeral=True)
+            return
+
+        game["tries"] += 1
+        tries = game["tries"]
+        answer = game["answer"]
+        bet = game["bet"]
+
+        if num == answer:
+            # 正解
+            mult = MULTIPLIERS.get(tries, 1)
+            winnings = int(bet * mult)
+            db.update_balance(self.user_id, self.guild_id, winnings)
+            new_bal = db.get_balance(self.user_id, self.guild_id)
+            active_games.pop(self.user_id, None)
+
+            embed = discord.Embed(
+                title="🎯 正解！！",
+                description=f"答えは **{answer}** でした！\n{tries}回目で正解 → **×{mult}倍** 配当！",
+                color=discord.Color.gold()
+            )
+            embed.add_field(name="獲得コイン", value=f"+{winnings:,} コイン", inline=True)
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            await interaction.response.edit_message(embed=embed, view=NumguessResultView(bet, self.user_id))
+
+        elif tries >= MAX_TRIES:
+            # ゲームオーバー
+            active_games.pop(self.user_id, None)
+            new_bal = db.get_balance(self.user_id, self.guild_id)
+            embed = discord.Embed(
+                title="💀 ゲームオーバー",
+                description=f"正解は **{answer}** でした！\n{MAX_TRIES}回全て外れ... -{bet:,} コイン",
+                color=discord.Color.red()
+            )
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            await interaction.response.edit_message(embed=embed, view=NumguessResultView(bet, self.user_id))
+
+        else:
+            # ヒント
+            hint = "📈 もっと大きい！" if num < answer else "📉 もっと小さい！"
+            embed = build_game_embed(game, f"**{num}** は違います。{hint}")
+            await interaction.response.edit_message(embed=embed, view=NumguessPlayView(self.user_id, self.guild_id))
+
+
+class NumguessPlayView(discord.ui.View):
+    def __init__(self, user_id: str, guild_id: str):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="数字を入力する", style=discord.ButtonStyle.primary, emoji="🎯")
+    async def guess(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        modal = GuessModal(self.user_id, self.guild_id)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="やめる（賭け金没収）", style=discord.ButtonStyle.secondary, emoji="🏳️")
+    async def quit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        game = active_games.pop(self.user_id, None)
+        if game:
+            new_bal = db.get_balance(self.user_id, self.guild_id)
+            embed = discord.Embed(
+                title="🏳️ ゲーム終了",
+                description=f"答えは **{game['answer']}** でした\n賭け金 {game['bet']:,} コイン没収",
+                color=discord.Color.dark_gray()
+            )
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            await interaction.response.edit_message(embed=embed, view=NumguessResultView(game["bet"], self.user_id))
+
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        game = active_games.pop(self.user_id, None)
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
+
+    async def on_timeout(self):
+        active_games.pop(self.user_id, None)
+
+
+class NumguessResultView(discord.ui.View):
+    def __init__(self, bet: int, user_id: str):
+        super().__init__(timeout=60)
+        self.bet = bet
+        self.user_id = user_id
+
+    @discord.ui.button(label="もう一回！", style=discord.ButtonStyle.primary, emoji="🎯")
+    async def again(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        uid = self.user_id
+        guild_id = str(interaction.guild.id)
+        bal = db.get_balance(uid, guild_id)
+        if bal < self.bet:
+            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            return
+        db.update_balance(uid, guild_id, -self.bet)
+        answer = random.randint(1, 100)
+        active_games[uid] = {"answer": answer, "tries": 0, "bet": self.bet, "guild_id": guild_id}
+        game = active_games[uid]
+        embed = build_game_embed(game, "1〜100の数字を当ててください！")
+        await interaction.response.edit_message(embed=embed, view=NumguessPlayView(uid, guild_id))
+
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
+
 
 class NumberGuess(commands.Cog):
     def __init__(self, bot):
@@ -18,123 +195,30 @@ class NumberGuess(commands.Cog):
     @app_commands.command(name="numguess", description="1〜100の数字を当てよう！当てるほど高配当")
     @app_commands.describe(bet="賭けるコイン数（最低10）")
     async def numguess(self, interaction: discord.Interaction, bet: int):
-        user_id = str(interaction.user.id)
+        uid = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
 
-        if user_id in active_games:
+        if uid in active_games:
             await interaction.response.send_message(
-                "❌ すでにゲーム中です。`/guess [数字]` で続けてください", ephemeral=True
+                "❌ すでにゲーム中です。ボタンから続けてください", ephemeral=True
             )
             return
-
         if bet < 10:
             await interaction.response.send_message("❌ 最低10コインから", ephemeral=True)
             return
 
-        bal = db.get_balance(user_id, guild_id)
+        bal = db.get_balance(uid, guild_id)
         if bal < bet:
             await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
-        db.update_balance(user_id, guild_id, -bet)
+        db.update_balance(uid, guild_id, -bet)
         answer = random.randint(1, 100)
-        active_games[user_id] = {
-            "answer": answer,
-            "tries": 0,
-            "bet": bet,
-            "guild_id": guild_id,
-            "hints": []
-        }
+        active_games[uid] = {"answer": answer, "tries": 0, "bet": bet, "guild_id": guild_id}
+        game = active_games[uid]
 
-        embed = discord.Embed(
-            title="🎯 数字当てゲーム",
-            description=(
-                f"1〜100の数字を当ててください！\n"
-                f"最大 **{MAX_TRIES}回** まで挑戦できます。\n"
-                f"早く当てるほど配当アップ！\n\n"
-                f"`/guess [数字]` で答えを入力してね"
-            ),
-            color=discord.Color.blurple()
-        )
-
-        multipliers = {1: "×20", 2: "×15", 3: "×10", 4: "×7", 5: "×5", 6: "×3", 7: "×1.5"}
-        table = "\n".join(f"{t}回目 → {m}" for t, m in multipliers.items())
-        embed.add_field(name="💰 配当表", value=table, inline=False)
-        embed.set_footer(text=f"賭け: {bet:,} コイン")
-        await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="guess", description="数字当てゲームで数字を入力する")
-    @app_commands.describe(number="予想する数字（1〜100）")
-    async def guess(self, interaction: discord.Interaction, number: int):
-        user_id = str(interaction.user.id)
-
-        if user_id not in active_games:
-            await interaction.response.send_message(
-                "❌ ゲームが始まっていません。`/numguess` でスタート", ephemeral=True
-            )
-            return
-
-        if number < 1 or number > 100:
-            await interaction.response.send_message("❌ 1〜100の数字を入力してください", ephemeral=True)
-            return
-
-        game = active_games[user_id]
-        game["tries"] += 1
-        answer = game["answer"]
-        tries = game["tries"]
-        bet = game["bet"]
-        guild_id = game["guild_id"]
-
-        multipliers = {1: 20, 2: 15, 3: 10, 4: 7, 5: 5, 6: 3, 7: 1.5}
-
-        if number == answer:
-            mult = multipliers.get(tries, 1)
-            winnings = int(bet * mult)
-            db.update_balance(user_id, guild_id, winnings)
-            new_bal = db.get_balance(user_id, guild_id)
-            active_games.pop(user_id)
-
-            embed = discord.Embed(
-                title="🎯 正解！",
-                description=f"答えは **{answer}** でした！\n{tries}回目で正解 → **{mult}倍** 配当！",
-                color=discord.Color.gold()
-            )
-            embed.add_field(name="獲得コイン", value=f"+{winnings:,} コイン", inline=True)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
-            await interaction.response.send_message(embed=embed)
-
-        elif tries >= MAX_TRIES:
-            active_games.pop(user_id)
-            embed = discord.Embed(
-                title="💀 ゲームオーバー",
-                description=f"正解は **{answer}** でした！\n{MAX_TRIES}回全て外れ... -{bet:,} コイン",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed)
-
-        else:
-            hint = "📈 もっと大きい！" if number < answer else "📉 もっと小さい！"
-            remaining = MAX_TRIES - tries
-            embed = discord.Embed(
-                title="🎯 数字当てゲーム",
-                description=f"**{number}** は違います。{hint}",
-                color=discord.Color.blurple()
-            )
-            embed.add_field(name="残り回数", value=f"{remaining}回", inline=True)
-            embed.add_field(name="次の配当", value=f"×{multipliers.get(tries+1, 1)}", inline=True)
-            await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="guess_quit", description="数字当てゲームを途中でやめる（賭け金没収）")
-    async def guess_quit(self, interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        if user_id not in active_games:
-            await interaction.response.send_message("❌ ゲームが始まっていません", ephemeral=True)
-            return
-        game = active_games.pop(user_id)
-        await interaction.response.send_message(
-            f"🏳️ ゲームを終了しました。答えは **{game['answer']}** でした（賭け金 {game['bet']:,} コイン没収）",
-            ephemeral=True
-        )
+        embed = build_game_embed(game, "1〜100の数字を当ててください！")
+        await interaction.response.send_message(embed=embed, view=NumguessPlayView(uid, guild_id), ephemeral=True)
 
 
 async def setup(bot):
