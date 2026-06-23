@@ -272,31 +272,31 @@ class GameMenuView(discord.ui.View):
     @discord.ui.button(label="🃏 ブラックジャック", style=discord.ButtonStyle.primary, row=0)
     async def blackjack(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🃏 ブラックジャック", description="賭け金を入力してください！\n**100〜500,000コイン**", color=discord.Color.dark_green())
+        embed = discord.Embed(title="🃏 ブラックジャック", description="賭け金を入力してください！\n**100〜2,000コイン**", color=discord.Color.dark_green())
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "blackjack", "ブラックジャック — 賭け金入力"))
 
     @discord.ui.button(label="♠️ ポーカー", style=discord.ButtonStyle.primary, row=0)
     async def poker(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="♠️ ポーカー", description="アンティ（参加費）を入力してください！\n**100〜500,000コイン**", color=discord.Color.dark_green())
+        embed = discord.Embed(title="♠️ ポーカー", description="アンティ（参加費）を入力してください！\n**100〜2,000コイン**", color=discord.Color.dark_green())
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "poker", "ポーカー — アンティ入力"))
 
     @discord.ui.button(label="🎲 チンチロ", style=discord.ButtonStyle.primary, row=1)
     async def chinchiro(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🎲 チンチロ", description="賭け金を入力してください！\n**100〜500,000コイン**", color=discord.Color.blue())
+        embed = discord.Embed(title="🎲 チンチロ", description="賭け金を入力してください！\n**100〜2,000コイン**", color=discord.Color.blue())
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "chinchiro", "チンチロ — 賭け金入力"))
 
     @discord.ui.button(label="🎯 数字当て", style=discord.ButtonStyle.primary, row=1)
     async def numguess(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🎯 数字当てゲーム", description="賭け金を入力してください！\n**100〜500,000コイン**", color=discord.Color.blurple())
+        embed = discord.Embed(title="🎯 数字当てゲーム", description="賭け金を入力してください！\n**100〜2,000コイン**", color=discord.Color.blurple())
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "numguess", "数字当て — 賭け金入力"))
 
     @discord.ui.button(label="🪙 コインフリップ", style=discord.ButtonStyle.primary, row=1)
     async def coinflip(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🪙 コインフリップ", description="賭け金を入力してください！\n**100〜500,000コイン**", color=discord.Color.gold())
+        embed = discord.Embed(title="🪙 コインフリップ", description="賭け金を入力してください！\n**100〜2,000コイン**", color=discord.Color.gold())
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "coinflip", "コインフリップ — 賭け金入力"))
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
@@ -369,7 +369,7 @@ class SlotMachineButton(discord.ui.Button):
 
 class BetModal(discord.ui.Modal):
     bet_input = discord.ui.TextInput(
-        label="賭け金（100〜500,000コイン）",
+        label="賭け金（100〜2,000コイン）",
         placeholder="例: 1000",
         min_length=1,
         max_length=7,
@@ -392,8 +392,8 @@ class BetModal(discord.ui.Modal):
         if bet < 100:
             await interaction.response.send_message("❌ 最低100コインから", ephemeral=True)
             return
-        if bet > 500000:
-            await interaction.response.send_message("❌ 最大500,000コインまで", ephemeral=True)
+        if bet > 2000:
+            await interaction.response.send_message("❌ 最大2,000コインまで", ephemeral=True)
             return
 
         bal = db.get_balance(self.user_id, guild_id)

@@ -227,9 +227,11 @@ SHADOW_SUCCESS_RATES = {
 BOSS_REWARD          = 100000
 
 # 演出待機時間（秒）
-FISHING_WAIT_NORMAL = 2.0   # コモン〜レア
-FISHING_WAIT_SUPER  = 4.0   # スーパーレア以上
-SLOT_WAIT           = 1.5
+FISHING_WAIT_NORMAL = 2.0   # 通常
+FISHING_WAIT_SUPER  = 3.0   # SR以上・熱い演出
+SLOT_WAIT_NORMAL    = 2.0   # 通常
+SLOT_WAIT_HOT       = 3.0   # ボーナス当選時
+SLOT_WAIT           = 2.0   # 後方互換
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 演出テーブル（新システム）

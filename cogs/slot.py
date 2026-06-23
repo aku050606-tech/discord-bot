@@ -360,15 +360,10 @@ class SlotGameView(discord.ui.View):
             bonus_type = result["bonus"]
             effect = random.choice(SLOT_EFFECTS["god"] if bonus_type == "GOD" else SLOT_EFFECTS["legend"])
 
-            # 演出表示
+            # 演出表示（中間なし・3秒ウェイト）
             embed1 = discord.Embed(title="🎰", description=effect, color=FREESPIN_TYPES[bonus_type]["color"])
             await interaction.followup.edit_message(interaction.message.id, embed=embed1, view=self)
-            await asyncio.sleep(SLOT_WAIT)
-
-            # ・・・
-            embed2 = discord.Embed(title="🎰", description="・・・", color=FREESPIN_TYPES[bonus_type]["color"])
-            await interaction.followup.edit_message(interaction.message.id, embed=embed2, view=self)
-            await asyncio.sleep(SLOT_WAIT)
+            await asyncio.sleep(SLOT_WAIT_HOT)
 
             # リール表示
             reel = get_reel_display(f"{bonus_type.lower()}_bonus")
@@ -386,18 +381,13 @@ class SlotGameView(discord.ui.View):
 
         # 演出テキスト
         effect = get_effect(yaku, bonus is not None, is_miss)
+        wait = SLOT_WAIT_HOT if bonus else SLOT_WAIT_NORMAL
 
-        # 演出表示
+        # 演出表示（中間なし）
         embed1 = discord.Embed(description=effect, color=discord.Color.dark_gray())
         pad_embed(embed1, target_fields=5)
         await interaction.followup.edit_message(interaction.message.id, embed=embed1, view=self)
-        await asyncio.sleep(SLOT_WAIT)
-
-        # ・・・
-        embed2 = discord.Embed(description="・・・", color=discord.Color.dark_gray())
-        pad_embed(embed2, target_fields=5)
-        await interaction.followup.edit_message(interaction.message.id, embed=embed2, view=self)
-        await asyncio.sleep(SLOT_WAIT)
+        await asyncio.sleep(wait)
 
         # リール表示
         reel_key = yaku if yaku else "blank"

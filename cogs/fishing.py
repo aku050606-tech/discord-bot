@@ -76,6 +76,8 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
         await interaction.response.send_message("⏳ 釣り中です...", ephemeral=True)
         return
     active_fishing.add(uid)
+
+    area_info = FISHING_AREAS[area]
     cost = area_info["cost"]
 
     # 装備取得
@@ -85,6 +87,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     rod = FISHING_RODS[gear["rod_id"]]
     if rod.get("sea_ban") and area == "sea":
         msg = "❌ この竿では海に行けません！カーボンロッド以上が必要です。"
+        active_fishing.discard(uid)
         if edit:
             await interaction.response.edit_message(content=msg, embed=None, view=None)
         else:
@@ -92,6 +95,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
         return
     if rod.get("river_ban") and area == "river":
         msg = "❌ 竹竿では川に行けません！グラスロッド以上が必要です。"
+        active_fishing.discard(uid)
         if edit:
             await interaction.response.edit_message(content=msg, embed=None, view=None)
         else:
@@ -101,11 +105,11 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     bal = db.get_balance(uid, guild_id)
     if bal < cost:
         msg = f"❌ コインが足りません（残高: {bal:,}）"
+        active_fishing.discard(uid)
         if edit:
             await interaction.response.edit_message(content=msg, embed=None, view=None)
         else:
             await interaction.response.send_message(msg, ephemeral=True)
-        active_fishing.discard(uid)
         return
 
     if cost > 0:
@@ -229,7 +233,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     if edit:
         await interaction.response.edit_message(embed=embed1, view=None)
     else:
-        await interaction.response.send_message(embed=embed1, view=None, ephemeral=True)
+        await interaction.response.send_message(embed=embed1, view=None)
 
     await asyncio.sleep(wait_time)
 
@@ -258,8 +262,6 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     embed3.description = desc
     embed3.set_footer(text=f"残高: {new_bal:,} コイン | {area_info['name']} | 竿:{rod_name}({rod_uses}回)")
     pad_embed(embed3, target_fields=4)
-
-    pass
 
     view = FishResultView(area, show_shadow, uid, guild_id)
     await interaction.edit_original_response(embed=embed3, view=view)
@@ -390,7 +392,7 @@ class Fishing(commands.Cog):
         embed.add_field(name="🏞️ 湖", value="10コイン", inline=True)
         embed.add_field(name="🏔️ 川", value="50コイン", inline=True)
         embed.add_field(name="🌊 海", value="100コイン", inline=True)
-        await interaction.response.send_message(embed=embed, view=FishMenuView(), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=FishMenuView())
 
 async def setup(bot):
     await bot.add_cog(Fishing(bot))
