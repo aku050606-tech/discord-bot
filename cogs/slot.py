@@ -43,13 +43,13 @@ def spin_normal(setting: int) -> dict:
         yaku = "strong_cherry"
     elif random.random() < s["weak_chance_prob"]:
         yaku = "weak_chance"
-    elif random.random() < 1/s["suika_prob"]:
+    elif random.random() < s["suika_prob"]:
         yaku = "suika"
-    elif random.random() < 1/s["cherry_prob"]:
+    elif random.random() < s["cherry_prob"]:
         yaku = "cherry"
-    elif random.random() < 1/s["bell_prob"]:
+    elif random.random() < s["bell_prob"]:
         yaku = "bell"
-    elif random.random() < 1/s["replay_prob"]:
+    elif random.random() < s["replay_prob"]:
         yaku = "replay"
 
     if yaku is None:
