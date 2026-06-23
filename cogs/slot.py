@@ -128,8 +128,7 @@ def _set_auto_label(view: discord.ui.View, uid: str):
     auto = g["auto"] if g else False
     for c in view.children:
         if getattr(c, "custom_id", None) == "slot_auto":
-            c.label = "手動" if auto else "オート"
-            c.emoji = "🕹️" if auto else "⏩"
+            c.label = "🕹️ 手動" if auto else "⏩ オート"
 
 
 async def _toggle_auto(interaction: discord.Interaction, uid: str):
@@ -229,7 +228,7 @@ class SlotGameView(discord.ui.View):
             if gg:
                 gg["spinning"] = False
 
-    @discord.ui.button(label="オート", style=discord.ButtonStyle.secondary, emoji="⏩", custom_id="slot_auto")
+    @discord.ui.button(label="⏩ オート", style=discord.ButtonStyle.secondary, custom_id="slot_auto")
     async def auto(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
@@ -285,7 +284,7 @@ class SlotRouteView(discord.ui.View):
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
         await self._choose(interaction, GOD_UP_BIGBANG)
 
-    @discord.ui.button(label="オート", style=discord.ButtonStyle.secondary, emoji="⏩", custom_id="slot_auto")
+    @discord.ui.button(label="⏩ オート", style=discord.ButtonStyle.secondary, custom_id="slot_auto")
     async def auto(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
@@ -325,7 +324,7 @@ class SlotAimView(discord.ui.View):
             if gg:
                 gg["spinning"] = False
 
-    @discord.ui.button(label="オート", style=discord.ButtonStyle.secondary, emoji="⏩", custom_id="slot_auto")
+    @discord.ui.button(label="⏩ オート", style=discord.ButtonStyle.secondary, custom_id="slot_auto")
     async def auto(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
