@@ -71,100 +71,44 @@ class SendAmountModal(discord.ui.Modal, title="💸 送金額を入力"):
         await interaction.response.edit_message(embed=embed, view=SendBackView(self.sender_id))
 
 
-class MemberSelect(discord.ui.Select):
-    def __init__(self, sender_id: str, guild_id: str, members: list, remaining: int):
-        self.sender_id = sender_id
-        self.guild_id = guild_id
-        self.remaining = remaining
-        options = [
-            discord.SelectOption(
-                label=m.display_name[:25],
-                value=str(m.id),
-                description=f"ID: {m.id}"
-            )
-            for m in members
-        ]
+class UserPicker(discord.ui.UserSelect):
+    """Discord標準のユーザー選択。メンバーキャッシュ／特権インテントに依存しない。"""
+    def __init__(self, sender_id: str, guild_id: str, remaining: int):
         super().__init__(
             placeholder="送り先のメンバーを選んでください...",
-            options=options,
             min_values=1,
             max_values=1,
         )
+        self.sender_id = sender_id
+        self.guild_id = guild_id
+        self.remaining = remaining
 
     async def callback(self, interaction: discord.Interaction):
         if str(interaction.user.id) != self.sender_id:
             await interaction.response.send_message("❌ これはあなたのメニューではありません", ephemeral=True)
             return
-        target_id = self.values[0]
-        target_member = interaction.guild.get_member(int(target_id))
-        target_name = target_member.display_name if target_member else f"ID:{target_id}"
-        modal = SendAmountModal(self.sender_id, self.guild_id, target_id, target_name, self.remaining)
+        target = self.values[0]  # discord.Member / discord.User
+        if getattr(target, "bot", False):
+            await interaction.response.send_message("❌ BOTには送れません", ephemeral=True)
+            return
+        if str(target.id) == self.sender_id:
+            await interaction.response.send_message("❌ 自分自身には送れません", ephemeral=True)
+            return
+        modal = SendAmountModal(
+            self.sender_id, self.guild_id, str(target.id), target.display_name, self.remaining
+        )
         await interaction.response.send_modal(modal)
 
 
 class SendSelectView(discord.ui.View):
-    def __init__(self, sender_id: str, guild_id: str, all_members: list, remaining: int, page: int = 0):
+    def __init__(self, sender_id: str, guild_id: str, remaining: int):
         super().__init__(timeout=60)
         self.sender_id = sender_id
         self.guild_id = guild_id
-        self.all_members = all_members
         self.remaining = remaining
-        self.page = page
-        self.per_page = 25
-        self.total_pages = max(1, (len(all_members) + self.per_page - 1) // self.per_page)
+        self.add_item(UserPicker(sender_id, guild_id, remaining))
 
-        # 現在ページのメンバー
-        start = page * self.per_page
-        page_members = all_members[start:start + self.per_page]
-        self.add_item(MemberSelect(sender_id, guild_id, page_members, remaining))
-
-        # ページングボタン
-        if self.total_pages > 1:
-            prev_btn = discord.ui.Button(
-                label=f"◀ 前へ",
-                style=discord.ButtonStyle.secondary,
-                disabled=(page == 0),
-                row=1
-            )
-            next_btn = discord.ui.Button(
-                label=f"次へ ▶",
-                style=discord.ButtonStyle.secondary,
-                disabled=(page >= self.total_pages - 1),
-                row=1
-            )
-            page_btn = discord.ui.Button(
-                label=f"{page + 1} / {self.total_pages}",
-                style=discord.ButtonStyle.secondary,
-                disabled=True,
-                row=1
-            )
-            prev_btn.callback = self.prev_page
-            next_btn.callback = self.next_page
-            self.add_item(prev_btn)
-            self.add_item(page_btn)
-            self.add_item(next_btn)
-
-    async def prev_page(self, interaction: discord.Interaction):
-        if not await check_user(interaction, self.sender_id): return
-        new_view = SendSelectView(self.sender_id, self.guild_id, self.all_members, self.remaining, self.page - 1)
-        embed = discord.Embed(
-            title="💸 送金",
-            description=f"送り先を選んでください\n\n本日の残り送金枠: **{self.remaining:,} / {DAILY_SEND_LIMIT:,} コイン**",
-            color=discord.Color.blue()
-        )
-        await interaction.response.edit_message(embed=embed, view=new_view)
-
-    async def next_page(self, interaction: discord.Interaction):
-        if not await check_user(interaction, self.sender_id): return
-        new_view = SendSelectView(self.sender_id, self.guild_id, self.all_members, self.remaining, self.page + 1)
-        embed = discord.Embed(
-            title="💸 送金",
-            description=f"送り先を選んでください\n\n本日の残り送金枠: **{self.remaining:,} / {DAILY_SEND_LIMIT:,} コイン**",
-            color=discord.Color.blue()
-        )
-        await interaction.response.edit_message(embed=embed, view=new_view)
-
-    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await check_user(interaction, self.sender_id): return
         await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.sender_id))
@@ -228,9 +172,9 @@ class MainMenuView(discord.ui.View):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
         embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10コイン", inline=True)
-        embed.add_field(name="🏔️ 川", value="50コイン", inline=True)
-        embed.add_field(name="🌊 海", value="100コイン", inline=True)
+        embed.add_field(name="🏞️ 湖", value="10コイン\n竹竿でOK", inline=True)
+        embed.add_field(name="🏔️ 川", value="50コイン\nグラス竿以上", inline=True)
+        embed.add_field(name="🌊 海", value="100コイン\nカーボン竿以上", inline=True)
         await interaction.response.edit_message(embed=embed, view=FishMenuView(uid))
 
     @discord.ui.button(label="💰 コイン", style=discord.ButtonStyle.secondary, row=0)
@@ -544,11 +488,15 @@ class CoinflipAgainView(discord.ui.View):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class FishMenuView(discord.ui.View):
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str = None):
         super().__init__(timeout=60)
         self.user_id = user_id
 
     async def _check(self, interaction):
+        # user_id未指定（/fish などから生成）の場合は誰でも操作可
+        if self.user_id is None:
+            self.user_id = str(interaction.user.id)
+            return True
         return await check_user(interaction, self.user_id)
 
     @discord.ui.button(label="🏞️ 湖（10コイン）", style=discord.ButtonStyle.success, row=0)
@@ -670,22 +618,12 @@ class CoinMenuView(discord.ui.View):
             )
             return
 
-        # BOT・自分以外のメンバー一覧（全員）
-        members = [
-            m for m in interaction.guild.members
-            if not m.bot and str(m.id) != uid
-        ]
-
-        if not members:
-            await interaction.response.send_message("❌ 送金できるメンバーがいません", ephemeral=True)
-            return
-
         embed = discord.Embed(
             title="💸 送金",
             description=f"送り先を選んでください\n\n本日の残り送金枠: **{remaining:,} / {DAILY_SEND_LIMIT:,} コイン**",
             color=discord.Color.blue()
         )
-        await interaction.response.edit_message(embed=embed, view=SendSelectView(uid, guild_id, members, remaining))
+        await interaction.response.edit_message(embed=embed, view=SendSelectView(uid, guild_id, remaining))
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):

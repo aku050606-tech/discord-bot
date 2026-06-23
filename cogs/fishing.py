@@ -13,51 +13,29 @@ JST = timezone(timedelta(hours=9))
 
 FISH_BY_AREA = {"lake": LAKE_FISH, "river": RIVER_FISH, "sea": SEA_FISH}
 
-def get_rod_probs(rod_id: str, area: str) -> dict:
-    """竿×エリアの確率テーブルを取得"""
-    rod_probs = FISHING_PROBS.get(rod_id, {})
-    return dict(rod_probs.get(area, {}))
-
-def pick_effect(rod_id: str) -> tuple:
-    """竿に応じた演出を重み付きランダムで選択。(key, effect_dict)を返す"""
-    candidates = []
-    weights = []
-    for key, effect in FISHING_EFFECTS.items():
-        w = effect["weight"].get(rod_id, 0)
-        if w > 0:
-            candidates.append((key, effect))
-            weights.append(w)
-    if not candidates:
-        key = "random_1"
-        return key, FISHING_EFFECTS[key]
-    total = sum(weights)
+def pick_effect_by_rarity(rarity: str) -> str:
+    """結果のレアリティに応じて演出テキストを抽選（FISHING_EFFECT_POOL）。
+    フェイント・不意打ち・確定演出はこのプールの％で表現される。"""
+    pool = FISHING_EFFECT_POOL.get(rarity, FISHING_EFFECT_POOL["common"])
+    total = sum(p for _, p in pool)
     r = random.random() * total
     cumulative = 0
-    for (key, effect), w in zip(candidates, weights):
-        cumulative += w
+    for key, p in pool:
+        cumulative += p
         if r < cumulative:
-            return key, effect
-    return candidates[-1]
+            return FISHING_EFFECTS.get(key, FISHING_EFFECTS["common_1"])
+    return FISHING_EFFECTS.get(pool[-1][0], FISHING_EFFECTS["common_1"])
 
-def pick_rarity_from_effect(effect: dict) -> str:
-    """演出の確率テーブルからレアリティを決定"""
-    probs = effect["probs"]
+def pick_rarity_direct(rod_id: str) -> str:
+    """竿別レアリティ出率テーブル（FISHING_RARITY）からレアリティを決定"""
+    table = FISHING_RARITY.get(rod_id, FISHING_RARITY["bamboo"])
     r = random.random()
     cumulative = 0
-    for rarity, prob in probs.items():
+    for rarity, prob in table.items():
         cumulative += prob
         if r < cumulative:
             return rarity
-    return list(probs.keys())[-1]
-
-def pick_rarity(probs: dict) -> str:
-    r = random.random()
-    cumulative = 0
-    for rarity, prob in probs.items():
-        cumulative += prob
-        if r < cumulative:
-            return rarity
-    return "trash"
+    return "common"
 
 def pick_fish(area: str, rarity: str) -> dict:
     candidates = [f for f in FISH_BY_AREA[area] if f["rarity"] == rarity]
@@ -77,51 +55,44 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
         return
     active_fishing.add(uid)
 
+    # エラーは必ず本人だけに表示し、釣りメニュー（共有メッセージ）はそのまま残す
+    async def _send_error(msg: str):
+        active_fishing.discard(uid)
+        await interaction.response.send_message(msg, ephemeral=True)
+
     area_info = FISHING_AREAS[area]
     cost = area_info["cost"]
 
     # 装備取得
     gear = db.get_gear(uid)
 
-    # エリア禁止チェック
+    # エリア禁止チェック（どの竿で行けるかを明示）
     rod = FISHING_RODS[gear["rod_id"]]
     if rod.get("sea_ban") and area == "sea":
-        msg = "❌ この竿では海に行けません！カーボンロッド以上が必要です。"
-        active_fishing.discard(uid)
-        if edit:
-            await interaction.response.edit_message(content=msg, embed=None, view=None)
-        else:
-            await interaction.response.send_message(msg, ephemeral=True)
+        await _send_error(
+            f"❌ 今の竿「{rod['name']}」では🌊海に行けません。\n"
+            f"海にはカーボンロッド以上が必要です（/shop で購入）。"
+        )
         return
     if rod.get("river_ban") and area == "river":
-        msg = "❌ 竹竿では川に行けません！グラスロッド以上が必要です。"
-        active_fishing.discard(uid)
-        if edit:
-            await interaction.response.edit_message(content=msg, embed=None, view=None)
-        else:
-            await interaction.response.send_message(msg, ephemeral=True)
+        await _send_error(
+            f"❌ 今の竿「{rod['name']}」では🏔️川に行けません。\n"
+            f"川にはグラスロッド以上が必要です（/shop で購入）。"
+        )
         return
 
     bal = db.get_balance(uid, guild_id)
     if bal < cost:
-        msg = f"❌ コインが足りません（残高: {bal:,}）"
-        active_fishing.discard(uid)
-        if edit:
-            await interaction.response.edit_message(content=msg, embed=None, view=None)
-        else:
-            await interaction.response.send_message(msg, ephemeral=True)
+        await _send_error(f"❌ コインが足りません（{area_info['name']}は{cost}コイン / 残高: {bal:,}）")
         return
 
     if cost > 0:
         db.update_balance(uid, guild_id, -cost)
 
-    # 確率計算（竿×エリア）
-    rod_id = gear["rod_id"]
-    probs = get_rod_probs(rod_id, area)
-
-    # 装備使用回数を減らす
+    # 装備使用回数を減らす（竿は耐久制：海3・川2・湖1）
+    dura_cost = ROD_DURABILITY_COST.get(area, 1)
     if gear["rod_uses"] < 999999:
-        gear["rod_uses"] -= 1
+        gear["rod_uses"] -= dura_cost
         if gear["rod_uses"] <= 0:
             # 竿切れ→次の竿に切り替え or 竹竿に戻る
             inv = gear["rod_inventory"]
@@ -151,27 +122,26 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
 
     db.save_gear(uid, gear)
 
-    # 演出を先に選択
-    effect_key, effect = pick_effect(gear["rod_id"])
+    # レアリティは竿別の直接テーブルで決定
+    rarity = pick_rarity_direct(gear["rod_id"])
 
-    # 演出の確率テーブルからレアリティを決定
-    rarity = pick_rarity_from_effect(effect)
+    # 結果のレアリティに応じて演出テキストを選択（見せ方のみ。フェイント/確定込み）
+    effect_text = pick_effect_by_rarity(rarity)
 
-    # ボス判定（全竿1%で影出現）
+    # 主（ぬし）の影：コモンを釣った時だけ抽選。リールで出現率UP
+    reel = FISHING_REELS[gear["reel_id"]]
     show_shadow = False
-    if random.random() < SHADOW_CHANCE:
-        show_shadow = True
-
-    # レジェンドが存在しないエリア・竿の場合はSRに格下げ
-    if rarity == "legend" and gear["rod_id"] not in ["titanium","legend"]:
-        rarity = "super_rare"
+    if rarity == "common":
+        appear_chance = SHADOW_CHANCE + reel["boss_appear_bonus"]
+        if random.random() < appear_chance:
+            show_shadow = True
 
     fish = pick_fish(area, rarity)
     value = fish["value"]
 
-    # 金冠判定
+    # 金冠判定（基礎 + ライン + リール）
     line = FISHING_LINES[gear["line_id"]]
-    crown_chance = GOLDEN_CROWN_CHANCE + line["crown_bonus"]
+    crown_chance = GOLDEN_CROWN_CHANCE + line["crown_bonus"] + reel["crown_bonus"]
     is_golden = rarity != "trash" and random.random() < crown_chance
     if is_golden:
         value = value * 2
@@ -213,8 +183,8 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             new_bal = db.get_balance(uid, guild_id)
             bonus_msg += f"\n🌟 **全図鑑コンプリート！** +{ZUKAN_ALL_BONUS:,} コイン！！"
 
-    # ウェイト時間
-    wait_time = FISHING_WAIT_SUPER if effect["wait"] == "super" else FISHING_WAIT_NORMAL
+    # ウェイト時間（レア度に応じて：SR以上は長めの溜め）
+    wait_time = FISHING_WAIT_SUPER if rarity in ("super_rare", "legend") else FISHING_WAIT_NORMAL
 
     color = RARITY_COLORS.get(rarity, 0x95a5a6)
     rarity_label = {
@@ -226,7 +196,8 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     display_emoji = "👑" if is_golden else fish["emoji"]
 
     # 演出表示（中間なし：演出→待機→結果）
-    embed1 = discord.Embed(description=effect["text"], color=color)
+    # 当たり待ち中はレア度が分からないよう中立色で統一（結果表示はレアリティ色）
+    embed1 = discord.Embed(description=effect_text, color=SUSPENSE_COLOR)
     embed1.set_footer(text=area_info["name"])
     pad_embed(embed1, target_fields=4)
 
@@ -260,7 +231,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
     rod_uses = gear["rod_uses"] if gear["rod_uses"] < 999999 else "∞"
     embed3.description = desc
-    embed3.set_footer(text=f"残高: {new_bal:,} コイン | {area_info['name']} | 竿:{rod_name}({rod_uses}回)")
+    embed3.set_footer(text=f"残高: {new_bal:,} コイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
     pad_embed(embed3, target_fields=4)
 
     view = FishResultView(area, show_shadow, uid, guild_id)
@@ -285,9 +256,9 @@ class FishResultView(discord.ui.View):
     async def back_area(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import FishMenuView
         embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10コイン", inline=True)
-        embed.add_field(name="🏔️ 川", value="50コイン", inline=True)
-        embed.add_field(name="🌊 海", value="100コイン", inline=True)
+        embed.add_field(name="🏞️ 湖", value="10コイン\n竹竿でOK", inline=True)
+        embed.add_field(name="🏔️ 川", value="50コイン\nグラス竿以上", inline=True)
+        embed.add_field(name="🌊 海", value="100コイン\nカーボン竿以上", inline=True)
         await interaction.response.edit_message(embed=embed, view=FishMenuView())
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
@@ -389,9 +360,9 @@ class Fishing(commands.Cog):
     async def fish(self, interaction: discord.Interaction):
         from cogs.menu import FishMenuView
         embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10コイン", inline=True)
-        embed.add_field(name="🏔️ 川", value="50コイン", inline=True)
-        embed.add_field(name="🌊 海", value="100コイン", inline=True)
+        embed.add_field(name="🏞️ 湖", value="10コイン\n竹竿でOK", inline=True)
+        embed.add_field(name="🏔️ 川", value="50コイン\nグラス竿以上", inline=True)
+        embed.add_field(name="🌊 海", value="100コイン\nカーボン竿以上", inline=True)
         await interaction.response.send_message(embed=embed, view=FishMenuView())
 
 async def setup(bot):

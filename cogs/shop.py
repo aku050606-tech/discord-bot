@@ -6,6 +6,16 @@ from config import FISHING_RODS, FISHING_REELS, FISHING_LINES
 
 db = Database()
 
+# 効果量を具体的な％で出さず、★段階でぼかして表示するための補助
+def _stars(value, max_value, tiers=3):
+    if value <= 0 or max_value <= 0:
+        return 0
+    return max(1, min(tiers, round(value / max_value * tiers)))
+
+_REEL_BOSS_MAX  = max(r["boss_appear_bonus"] for r in FISHING_REELS.values())
+_REEL_CROWN_MAX = max(r["crown_bonus"] for r in FISHING_REELS.values())
+_LINE_CROWN_MAX = max(l["crown_bonus"] for l in FISHING_LINES.values())
+
 class ShopView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
@@ -38,18 +48,27 @@ async def show_rod_shop(interaction: discord.Interaction):
     gear = db.get_gear(uid)
     bal = db.get_balance(uid, guild_id)
 
-    embed = discord.Embed(title="🎋 釣り竿ショップ", color=discord.Color.green())
-    embed.set_footer(text=f"残高: {bal:,} コイン | 現在の装備: {FISHING_RODS[gear['rod_id']]['name']}（残り{gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}回）")
+    embed = discord.Embed(
+        title="🎋 釣り竿ショップ",
+        description="竿は「耐久性」で消耗。消費量 → 🏞️湖 1 ／ 🏔️川 2 ／ 🌊海 3（海ほど早く減る）",
+        color=discord.Color.green()
+    )
+    embed.set_footer(text=f"残高: {bal:,} コイン | 現在の装備: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）")
 
     for rod_id, rod in FISHING_RODS.items():
         inv_uses = gear["rod_inventory"].get(rod_id, 0)
-        status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
+        status = f"所持中（耐久 {inv_uses}）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["rod_id"] == rod_id else ""
         price_str = "無料" if rod["price"] == 0 else f"{rod['price']:,}コイン"
-        sea_str = "⛔海不可" if rod.get("sea_ban") else "✅全エリア"
+        if rod.get("river_ban"):
+            area_str = "行ける場所: 🏞️湖 のみ"
+        elif rod.get("sea_ban"):
+            area_str = "行ける場所: 🏞️湖・🏔️川"
+        else:
+            area_str = "行ける場所: 🏞️湖・🏔️川・🌊海（全エリア）"
         embed.add_field(
             name=f"{rod['emoji']} {rod['name']} {equipped}",
-            value=f"価格: {price_str} | {sea_str}\n{status}",
+            value=f"価格: {price_str}\n{area_str}\n{status}",
             inline=False
         )
 
@@ -71,9 +90,14 @@ async def show_reel_shop(interaction: discord.Interaction):
         status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["reel_id"] == reel_id else ""
         price_str = "無料" if reel["price"] == 0 else f"{reel['price']:,}コイン"
-        effect = f"スーパーレア+{reel['super_rare_bonus']*100:.1f}%"
-        if reel["boss_bonus"] > 0:
-            effect += f"・主出現+{reel['boss_bonus']*100:.1f}%"
+        parts = []
+        bs = _stars(reel["boss_appear_bonus"], _REEL_BOSS_MAX)
+        cs = _stars(reel["crown_bonus"], _REEL_CROWN_MAX)
+        if bs:
+            parts.append(f"主が出やすい {'★' * bs}")
+        if cs:
+            parts.append(f"金冠が出やすい {'★' * cs}")
+        effect = " / ".join(parts) if parts else "効果なし"
         embed.add_field(
             name=f"{reel['emoji']} {reel['name']} {equipped}",
             value=f"価格: {price_str} | {effect}\n{status}",
@@ -98,9 +122,13 @@ async def show_line_shop(interaction: discord.Interaction):
         status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["line_id"] == line_id else ""
         price_str = "無料" if line["price"] == 0 else f"{line['price']:,}コイン"
-        effect = f"金冠+{line['crown_bonus']*100:.0f}%"
+        parts = []
+        cs = _stars(line["crown_bonus"], _LINE_CROWN_MAX)
+        if cs:
+            parts.append(f"金冠が出やすい {'★' * cs}")
         if line["boss_success_bonus"] > 0:
-            effect += f"・主成功+{line['boss_success_bonus']*100:.0f}%"
+            parts.append("主が釣りやすくなる")
+        effect = " / ".join(parts) if parts else "効果なし"
         embed.add_field(
             name=f"{line['emoji']} {line['name']} {equipped}",
             value=f"価格: {price_str} | {effect}\n{status}",
@@ -118,7 +146,7 @@ async def show_equip(interaction: discord.Interaction):
     embed = discord.Embed(title="⚙️ 装備変更", color=discord.Color.gold())
     embed.add_field(
         name="現在の装備",
-        value=f"竿: {FISHING_RODS[gear['rod_id']]['name']}（残り{gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}回）\n"
+        value=f"竿: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）\n"
               f"リール: {FISHING_REELS[gear['reel_id']]['name']}（残り{gear['reel_uses'] if gear['reel_uses'] < 999999 else '∞'}回）\n"
               f"ライン: {FISHING_LINES[gear['line_id']]['name']}（残り{gear['line_uses'] if gear['line_uses'] < 999999 else '∞'}回）",
         inline=False
@@ -127,7 +155,7 @@ async def show_equip(interaction: discord.Interaction):
     # 所持品一覧
     rod_inv = []
     for rod_id, uses in gear["rod_inventory"].items():
-        rod_inv.append(f"{FISHING_RODS[rod_id]['name']}（{uses}回）{'✅' if gear['rod_id'] == rod_id else ''}")
+        rod_inv.append(f"{FISHING_RODS[rod_id]['name']}（耐久 {uses}）{'✅' if gear['rod_id'] == rod_id else ''}")
 
     reel_inv = []
     for reel_id, uses in gear["reel_inventory"].items():
@@ -192,12 +220,12 @@ class BuyRodButton(discord.ui.Button):
         inv = gear["rod_inventory"]
 
         if self.rod_id in inv:
-            # 既に所持→回数追加
+            # 既に所持→耐久を加算
             inv[self.rod_id] += self.rod["uses"]
-            msg = f"✅ {self.rod['name']}を購入！\n残り回数: {inv[self.rod_id]}回になりました！"
+            msg = f"✅ {self.rod['name']}を購入！\n耐久 {inv[self.rod_id]} になりました！"
         else:
             inv[self.rod_id] = self.rod["uses"]
-            msg = f"✅ {self.rod['name']}を購入！\nインベントリに追加されました（{self.rod['uses']}回）"
+            msg = f"✅ {self.rod['name']}を購入！\nインベントリに追加されました（耐久 {self.rod['uses']}）"
 
         db.update_balance(self.uid, self.guild_id, -self.rod["price"])
         db.save_gear(self.uid, gear)
@@ -374,7 +402,7 @@ class EquipRodButton(discord.ui.Button):
         db.save_gear(self.uid, gear)
 
         rod_name = FISHING_RODS[self.rod_id]["name"]
-        await interaction.response.send_message(f"✅ {rod_name}に変更しました！（残り{gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}回）", ephemeral=True)
+        await interaction.response.send_message(f"✅ {rod_name}に変更しました！（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）", ephemeral=True)
 
 
 class EquipReelView(discord.ui.View):

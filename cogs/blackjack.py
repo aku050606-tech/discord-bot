@@ -328,9 +328,14 @@ class BJAgainButton(discord.ui.Button):
         if p_val == 21:
             winnings = int(bet * 1.5)
             db.update_balance(uid, guild_id, bet + winnings)
+            new_bal = db.get_balance(uid, guild_id)
+            embed.color = discord.Color.gold()
             embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} コイン（1.5倍）", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
             active_games.pop(uid, None)
             view.clear_items()
+            view.add_item(BJAgainButton(bet, uid, guild_id))
+            view.add_item(BJBackButton(uid))
         await interaction.response.edit_message(embed=embed, view=view)
 
 class BJBackButton(discord.ui.Button):
@@ -382,9 +387,14 @@ class BlackjackModeView(discord.ui.View):
         if p_val == 21:
             winnings = int(bet * 1.5)
             db.update_balance(user_id, guild_id, bet + winnings)
+            new_bal = db.get_balance(user_id, guild_id)
+            embed.color = discord.Color.gold()
             embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} コイン（1.5倍）", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
             active_games.pop(user_id, None)
             view.clear_items()
+            view.add_item(BJAgainButton(bet, user_id, guild_id))
+            view.add_item(BJBackButton(user_id))
         await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="⚔️ 人と対戦", style=discord.ButtonStyle.success)

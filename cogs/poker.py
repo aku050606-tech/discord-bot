@@ -58,22 +58,32 @@ def ai_hand_strength(hand: list, community: list) -> int:
     all_cards = hand + community
     if len(all_cards) < 5:
         # フロップ前は手札だけで簡易評価
-        vals = [RANK_VAL[c["rank"]] for c in hand]
-        if vals[0] == vals[1]: return 1  # ペア
-        if min(vals) >= 10: return 1     # ハイカード上位
+        vals = sorted([RANK_VAL[c["rank"]] for c in hand], reverse=True)
+        if vals[0] == vals[1]: return 2          # ポケットペア
+        if min(vals) >= 9: return 1              # 両方J以上
+        if max(vals) >= 11: return 1             # A or K を持っている
         return 0
     return best_hand(all_cards)[0]
 
-def ai_action(strength: int, pot: int, current_bet: int) -> str:
-    """AIがコール/レイズ/フォールドを決める"""
-    if strength >= 4:   # ストレート以上
-        return "raise" if random.random() < 0.7 else "call"
-    elif strength >= 2: # ツーペア以上
-        return "call" if random.random() < 0.8 else "fold"
-    elif strength == 1:
-        return "call" if random.random() < 0.5 else "fold"
-    else:
-        return "fold" if random.random() < 0.6 else "call"
+def ai_action(strength: int, to_call: int) -> str:
+    """AIの行動を決める。
+    to_call: AIがコールするために必要な追加額（0以下ならタダでチェックできる）。
+    タダでチェックできる場面では絶対に降りない（即フォールド対策）。"""
+    if to_call <= 0:
+        # チェック可能 → フォールドしない。強ければたまにレイズ
+        if strength >= 4:
+            return "raise" if random.random() < 0.6 else "call"
+        if strength >= 2:
+            return "raise" if random.random() < 0.25 else "call"
+        return "call"  # ここでの "call" は実質チェック（差額0）
+    # ベットに直面している場合のみ降りる可能性あり（降り過ぎないよう緩めに）
+    if strength >= 4:      # ストレート以上
+        return "raise" if random.random() < 0.5 else "call"
+    if strength >= 2:      # ツーペア以上
+        return "call" if random.random() < 0.85 else "fold"
+    if strength == 1:      # ワンペア／好スタート
+        return "call" if random.random() < 0.6 else "fold"
+    return "call" if random.random() < 0.35 else "fold"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 対人戦ポーカー
@@ -219,7 +229,8 @@ class PokerAIView(discord.ui.View):
 
     async def do_ai_action(self, game: dict) -> str:
         strength = ai_hand_strength(game["ai_hand"], game["community_shown"])
-        action = ai_action(strength, game["pot"], game["ai_bet"])
+        to_call = game["player_bet"] - game["ai_bet"]  # AIが追いつくのに必要な額
+        action = ai_action(strength, to_call)
         ante = game["ante"]
 
         if action == "fold":
