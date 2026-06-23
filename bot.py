@@ -28,6 +28,7 @@ async def load_extensions():
     await bot.load_extension("cogs.fishing")
     await bot.load_extension("cogs.zukan")
     await bot.load_extension("cogs.chinchiro")
+    await bot.load_extension("cogs.shop")
     await bot.load_extension("cogs.menu")
 
 @bot.event

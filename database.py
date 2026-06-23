@@ -34,6 +34,18 @@ class Database:
             user_id TEXT, guild_id TEXT, joined_at TEXT,
             PRIMARY KEY (user_id, guild_id)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS fishing_gear (
+            user_id TEXT PRIMARY KEY,
+            rod_id TEXT DEFAULT 'bamboo',
+            rod_uses INTEGER DEFAULT 999999,
+            reel_id TEXT DEFAULT 'spinning',
+            reel_uses INTEGER DEFAULT 999999,
+            line_id TEXT DEFAULT 'nylon',
+            line_uses INTEGER DEFAULT 999999,
+            rod_inventory TEXT DEFAULT '{}',
+            reel_inventory TEXT DEFAULT '{}',
+            line_inventory TEXT DEFAULT '{}'
+        )""")
         conn.commit()
         conn.close()
         print("✅ データベース初期化完了")
@@ -178,10 +190,71 @@ class Database:
         conn.close()
 
     def get_all_zukan_stats(self, guild_id):
-        """全ユーザーの図鑑統計を返す（ランキング用）"""
         conn = self.get_conn()
         c = conn.cursor()
         c.execute("SELECT DISTINCT user_id FROM economy WHERE guild_id = ?", (guild_id,))
         users = [r[0] for r in c.fetchall()]
         conn.close()
         return users
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 釣り装備管理
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def get_gear(self, user_id):
+        import json
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT * FROM fishing_gear WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        conn.close()
+        if row is None:
+            self._init_gear(user_id)
+            return {
+                "rod_id":"bamboo","rod_uses":999999,
+                "reel_id":"spinning","reel_uses":999999,
+                "line_id":"nylon","line_uses":999999,
+                "rod_inventory":{"bamboo":999999},
+                "reel_inventory":{"spinning":999999},
+                "line_inventory":{"nylon":999999},
+            }
+        return {
+            "rod_id":row[1],"rod_uses":row[2],
+            "reel_id":row[3],"reel_uses":row[4],
+            "line_id":row[5],"line_uses":row[6],
+            "rod_inventory":json.loads(row[7]),
+            "reel_inventory":json.loads(row[8]),
+            "line_inventory":json.loads(row[9]),
+        }
+
+    def _init_gear(self, user_id):
+        import json
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT OR IGNORE INTO fishing_gear
+            (user_id, rod_id, rod_uses, reel_id, reel_uses, line_id, line_uses,
+             rod_inventory, reel_inventory, line_inventory)
+            VALUES (?, 'bamboo', 999999, 'spinning', 999999, 'nylon', 999999, ?, ?, ?)""",
+            (user_id,
+             json.dumps({"bamboo":999999}),
+             json.dumps({"spinning":999999}),
+             json.dumps({"nylon":999999})))
+        conn.commit()
+        conn.close()
+
+    def save_gear(self, user_id, gear):
+        import json
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT OR REPLACE INTO fishing_gear
+            (user_id, rod_id, rod_uses, reel_id, reel_uses, line_id, line_uses,
+             rod_inventory, reel_inventory, line_inventory)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, gear["rod_id"], gear["rod_uses"],
+             gear["reel_id"], gear["reel_uses"],
+             gear["line_id"], gear["line_uses"],
+             json.dumps(gear["rod_inventory"]),
+             json.dumps(gear["reel_inventory"]),
+             json.dumps(gear["line_inventory"])))
+        conn.commit()
+        conn.close()

@@ -428,7 +428,13 @@ class FishMenuView(discord.ui.View):
             embed.add_field(name=AREA_NAMES[area], value=f"{len(caught)}/{len(fish_list)} 種類", inline=True)
         await interaction.response.edit_message(embed=embed, view=ZukanAreaView(uid))
 
-    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🏪 釣具屋", style=discord.ButtonStyle.success, row=2)
+    async def shop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.shop import ShopView
+        embed = discord.Embed(title="🏪 釣具屋", description="カテゴリを選んでください！", color=discord.Color.green())
+        await interaction.response.edit_message(embed=embed, view=ShopView())
+
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
 
