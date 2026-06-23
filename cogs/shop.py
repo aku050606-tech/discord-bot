@@ -12,9 +12,9 @@ def _stars(value, max_value, tiers=3):
         return 0
     return max(1, min(tiers, round(value / max_value * tiers)))
 
-_REEL_BOSS_MAX  = max(r["boss_appear_bonus"] for r in FISHING_REELS.values())
-_REEL_CROWN_MAX = max(r["crown_bonus"] for r in FISHING_REELS.values())
-_LINE_CROWN_MAX = max(l["crown_bonus"] for l in FISHING_LINES.values())
+_REEL_BOSS_MAX  = max(r.get("boss_appear_bonus", 0) for r in FISHING_REELS.values())
+_REEL_CROWN_MAX = max(r.get("crown_bonus", 0) for r in FISHING_REELS.values())
+_LINE_CROWN_MAX = max(l.get("crown_bonus", 0) for l in FISHING_LINES.values())
 
 class ShopView(discord.ui.View):
     def __init__(self):
@@ -91,8 +91,8 @@ async def show_reel_shop(interaction: discord.Interaction):
         equipped = "✅ 装備中" if gear["reel_id"] == reel_id else ""
         price_str = "無料" if reel["price"] == 0 else f"{reel['price']:,}コイン"
         parts = []
-        bs = _stars(reel["boss_appear_bonus"], _REEL_BOSS_MAX)
-        cs = _stars(reel["crown_bonus"], _REEL_CROWN_MAX)
+        bs = _stars(reel.get("boss_appear_bonus", 0), _REEL_BOSS_MAX)
+        cs = _stars(reel.get("crown_bonus", 0), _REEL_CROWN_MAX)
         if bs:
             parts.append(f"主が出やすい {'★' * bs}")
         if cs:
@@ -123,10 +123,10 @@ async def show_line_shop(interaction: discord.Interaction):
         equipped = "✅ 装備中" if gear["line_id"] == line_id else ""
         price_str = "無料" if line["price"] == 0 else f"{line['price']:,}コイン"
         parts = []
-        cs = _stars(line["crown_bonus"], _LINE_CROWN_MAX)
+        cs = _stars(line.get("crown_bonus", 0), _LINE_CROWN_MAX)
         if cs:
             parts.append(f"金冠が出やすい {'★' * cs}")
-        if line["boss_success_bonus"] > 0:
+        if line.get("boss_success_bonus", 0) > 0:
             parts.append("主が釣りやすくなる")
         effect = " / ".join(parts) if parts else "効果なし"
         embed.add_field(
