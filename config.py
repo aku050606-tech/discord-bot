@@ -7,198 +7,255 @@ VC_REWARD_INTERVAL = 300
 CHAT_REWARD_COINS = 1
 PVP_FEE_RATE = 0.10
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# スロット設定  ── EVENT HORIZON 仕様（完全版）──
+#   構造: 通常時(小役で土台) → GOD抽選 → EVENT HORIZON(継続ランクループ)
+#   ランク: NOVA25% → FLARE50% → SUPERNOVA65% → PULSAR75% → SINGULARITY85%(聖域)
+#
+#   ・聖域(SINGULARITY)は単独フラグでのみ当選。当選時は必ず専用7秒演出でバラす
+#   ・その他GODはレア役からの当選。強役ほど当選力＆入口ランクが高い
+#   ・GOD中は子役連動でランクアップ（強役=ほぼ確定昇格、1段ずつ・PULSAR上限）
+#   ・上限なしループ / 結果先抽選→演出は見せ方だけ / 確率はゲーム内非表示
+#
+#   ※ モンテカルロ検算済み:
+#       総戻り率 設定1:100.8% 〜 設定6:137.0%
+#       通常時コイン持ち 1000枚で33〜39回転（20スロ感）
+#       GOD平均一撃 ≈ 3,450枚 / 中央 2,300枚
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 SLOT_BET = 60
 
-# 日付ベースでシードを固定してランダムに台設定を割り当て（1日1回更新）
+# 日付ベースでシード固定。1日1回、各台の設定(1〜6)を割り当て
 def get_daily_machines():
     from datetime import date
     seed = int(str(date.today()).replace("-", ""))
     rng = __import__('random').Random(seed)
-    settings = []
-    for _ in range(10):
-        settings.append(rng.randint(1, 6))
-    return settings
+    return [rng.randint(1, 6) for _ in range(10)]
 
-SLOT_MACHINES_NORMAL  = [1,2,2,3,3,3,4,4,5,6]
-SLOT_MACHINES_BONUS   = [2,3,3,4,4,4,5,5,6,6]
-SLOT_MACHINES_NEWYEAR = [3,4,4,4,5,5,5,6,6,6]
-
-SLOT_BONUS_DAYS     = [7,17,27,11,22]
-SLOT_BONUS_WEEKDAYS = [5,6]
-SLOT_NEWYEAR_DATES  = [(12,29),(12,30),(12,31),(1,1),(1,2),(1,3)]
-
+# ── 設定別パラメータ ──
+#   koyaku_mult : 小役払い出し倍率（高設定ほど持つ）
+#   god_mult    : レア役からのGOD当選率の設定倍率（高設定ほど当たる）
+#   premium_per : 聖域(SINGULARITY)単独抽選 1/n（高設定ほど引きやすい）
 SLOT_SETTINGS = {
-    1: {"payout":0.94,"bonus_prob":1/108,"replay_prob":1/2.4,"bell_prob":1/7.0,
-        "cherry_prob":1/28,"suika_prob":1/45,"weak_chance_prob":1/130,
-        "strong_cherry_prob":1/380,"strong_chance_prob":1/500,
-        "cherry_bonus_rate":0.022,"strong_cherry_bonus_rate":0.11,
-        "suika_bonus_rate":0.032,"weak_chance_bonus_rate":0.06,
-        "strong_chance_bonus_rate":0.19,"bell_bonus_rate":0.005,
-        "replay_bonus_rate":0.002},
-    2: {"payout":0.98,"bonus_prob":1/103,"replay_prob":1/2.4,"bell_prob":1/7.0,
-        "cherry_prob":1/27,"suika_prob":1/44,"weak_chance_prob":1/125,
-        "strong_cherry_prob":1/360,"strong_chance_prob":1/470,
-        "cherry_bonus_rate":0.024,"strong_cherry_bonus_rate":0.12,
-        "suika_bonus_rate":0.036,"weak_chance_bonus_rate":0.065,
-        "strong_chance_bonus_rate":0.205,"bell_bonus_rate":0.0055,
-        "replay_bonus_rate":0.0025},
-    3: {"payout":1.01,"bonus_prob":1/98,"replay_prob":1/2.3,"bell_prob":1/6.8,
-        "cherry_prob":1/26,"suika_prob":1/43,"weak_chance_prob":1/120,
-        "strong_cherry_prob":1/340,"strong_chance_prob":1/440,
-        "cherry_bonus_rate":0.026,"strong_cherry_bonus_rate":0.13,
-        "suika_bonus_rate":0.04,"weak_chance_bonus_rate":0.07,
-        "strong_chance_bonus_rate":0.22,"bell_bonus_rate":0.006,
-        "replay_bonus_rate":0.0028},
-    4: {"payout":1.05,"bonus_prob":1/93,"replay_prob":1/2.3,"bell_prob":1/6.8,
-        "cherry_prob":1/25,"suika_prob":1/42,"weak_chance_prob":1/115,
-        "strong_cherry_prob":1/320,"strong_chance_prob":1/410,
-        "cherry_bonus_rate":0.03,"strong_cherry_bonus_rate":0.14,
-        "suika_bonus_rate":0.045,"weak_chance_bonus_rate":0.075,
-        "strong_chance_bonus_rate":0.23,"bell_bonus_rate":0.007,
-        "replay_bonus_rate":0.0035},
-    5: {"payout":1.10,"bonus_prob":1/88,"replay_prob":1/2.2,"bell_prob":1/6.5,
-        "cherry_prob":1/24,"suika_prob":1/41,"weak_chance_prob":1/110,
-        "strong_cherry_prob":1/300,"strong_chance_prob":1/380,
-        "cherry_bonus_rate":0.033,"strong_cherry_bonus_rate":0.15,
-        "suika_bonus_rate":0.05,"weak_chance_bonus_rate":0.08,
-        "strong_chance_bonus_rate":0.245,"bell_bonus_rate":0.008,
-        "replay_bonus_rate":0.0038},
-    6: {"payout":1.16,"bonus_prob":1/82,"replay_prob":1/2.1,"bell_prob":1/6.5,
-        "cherry_prob":1/23,"suika_prob":1/40,"weak_chance_prob":1/105,
-        "strong_cherry_prob":1/280,"strong_chance_prob":1/350,
-        "cherry_bonus_rate":0.036,"strong_cherry_bonus_rate":0.16,
-        "suika_bonus_rate":0.055,"weak_chance_bonus_rate":0.085,
-        "strong_chance_bonus_rate":0.26,"bell_bonus_rate":0.009,
-        "replay_bonus_rate":0.0045},
+    1: {"koyaku_mult": 1.10, "god_mult": 0.80, "premium_per": 6000},
+    2: {"koyaku_mult": 1.13, "god_mult": 0.89, "premium_per": 5500},
+    3: {"koyaku_mult": 1.16, "god_mult": 0.98, "premium_per": 5000},
+    4: {"koyaku_mult": 1.19, "god_mult": 1.06, "premium_per": 4600},
+    5: {"koyaku_mult": 1.22, "god_mult": 1.14, "premium_per": 4200},
+    6: {"koyaku_mult": 1.25, "god_mult": 1.23, "premium_per": 3900},
 }
 
-BONUS_RATIO = {
-    "cherry":       {"regular":0.48,"big":0.45,"super":0.07},
-    "strong_cherry":{"regular":0.44,"big":0.44,"super":0.12},
-    "suika":        {"regular":0.46,"big":0.46,"super":0.08},
-    "weak_chance":  {"regular":0.46,"big":0.44,"super":0.10},
-    "strong_chance":{"regular":0.38,"big":0.42,"super":0.20},
-    "bell":         {"regular":0.50,"big":0.50,"super":0.00},
-    "replay":       {"regular":0.50,"big":0.50,"super":0.00},
+# ── 通常時 小役 (キー, 基本払い出し, 出現率) ──
+# 上から順に判定し、最初に当たった1役を採用（順送り）
+SLOT_KOYAKU = [
+    ("replay", 60,  1/7.3),   # 実質ベット返却（リプレイは絞り目で20スロ感）
+    ("bell",   120, 1/9),     # 主力子役
+    ("cherry", 70,  1/26),
+    ("suika",  260, 1/40),    # 引けたら嬉しいドン
+    ("weak",   60,  1/120),   # チャンス目（GOD契機・中）
+    ("schk",   60,  1/220),   # 強チャンス目（GOD契機・強／出現2倍）
+    ("schy",   60,  1/170),   # 強チェリー  （GOD契機・強／出現2倍）
+]
+
+# ── レア役ごとの GOD当選率（× 設定 god_mult）──
+# 強役は「ほぼ確定」ではなく確率制：設定で36〜57%に変動＝設定推測の手がかり
+GOD_TRIGGER_RATE = {
+    "replay": 0.0,
+    "bell":   0.002,
+    "cherry": 0.10,
+    "suika":  0.13,
+    "weak":   0.35,
+    "schk":   0.50,
+    "schy":   0.425,
 }
 
-LEGEND_PROB = 1/1500
-GOD_PROB    = 1/8000
-
-FREESPIN_GAMES = 10
-FREESPIN_BASE_PAYOUT = 115
-
-FREESPIN_TYPES = {
-    "REGULAR":{"continue_rate":0.40,"label":"R E G U L A R","color":0x3498db},
-    "BIG":    {"continue_rate":0.60,"label":"B I G",        "color":0xe67e22},
-    "SUPER":  {"continue_rate":0.75,"label":"S U P E R B I G","color":0x9b59b6},
-    "LEGEND": {"continue_rate":0.80,"label":"L E G E N D",  "color":0xf1c40f},
-    "GOD":    {"continue_rate":0.90,"label":"G O D",        "color":0xff0000},
+# ── GOD入口ランク（契機役の強さで決まる）──
+# 重み NOVA / FLARE / SUPERNOVA / PULSAR
+GOD_ENTRY_WEIGHTS = {
+    "soft":   [0.62, 0.28, 0.08, 0.02],   # bell / cherry / suika
+    "mid":    [0.45, 0.32, 0.18, 0.05],   # weak（チャンス目）
+    "strong": [0.18, 0.30, 0.32, 0.20],   # schk / schy（強役は良いとこスタート）
+}
+GOD_TRIGGER_GROUP = {
+    "bell": "soft", "cherry": "soft", "suika": "soft",
+    "weak": "mid", "schk": "strong", "schy": "strong",
 }
 
-FREESPIN_YAKUS = {
-    # 継続率: REGULAR40% / BIG60% / SUPER70% / LEGEND80% / GOD90%
-    "REGULAR":{"replay":1/3,"bell":1/4,"cherry":0.020681,"suika":0.012925,"weak_chance":0.006463,"strong_cherry":1/200,"strong_chance":1/300},
-    "BIG":    {"replay":1/3,"bell":1/4,"cherry":0.082906,"suika":0.051816,"weak_chance":0.025908,"strong_cherry":1/200,"strong_chance":1/300},
-    "SUPER":  {"replay":1/3,"bell":1/4,"cherry":0.126504,"suika":0.079065,"weak_chance":0.039533,"strong_cherry":1/200,"strong_chance":1/300},
-    "LEGEND": {"replay":1/3,"bell":1/4,"cherry":0.187186,"suika":0.116991,"weak_chance":0.058496,"strong_cherry":1/200,"strong_chance":1/300},
-    "GOD":    {"replay":1/3,"bell":1/4,"cherry":0.288872,"suika":0.180545,"weak_chance":0.090273,"strong_cherry":1/200,"strong_chance":1/300},
+# ── GODランク定義 ──
+GOD_ZONE_NAME = "EVENT HORIZON"
+GOD_RANKS = [   # 子役で到達できるランク（上限PULSAR）
+    {"key": "nova",      "name": "NOVA",      "rate": 0.25, "emoji": "💫"},
+    {"key": "flare",     "name": "FLARE",     "rate": 0.50, "emoji": "🔥"},
+    {"key": "supernova", "name": "SUPERNOVA", "rate": 0.65, "emoji": "🌠"},
+    {"key": "pulsar",    "name": "PULSAR",    "rate": 0.75, "emoji": "🌀"},
+]
+GOD_SINGULARITY = {"key": "singularity", "name": "SINGULARITY", "rate": 0.85, "emoji": "🌌"}  # 聖域
+
+# ── GOD中 子役連動ランクアップ ──
+# 各セットで子役抽選（順送り・最強1役のみ反映）→ 出た子役で昇格抽選（1段ずつ）
+# 実効昇格期待値 ≈ 0.15/セット（balance据え置き）
+GOD_SET_KOYAKU = [   # (キー, セット内出現率, 昇格率, 表示名, emoji)
+    ("strong", 0.045, 0.95, "強チェリー",   "🌠"),  # 出たらほぼ確定昇格
+    ("mid",    0.130, 0.55, "スイカ",       "🍉"),
+    ("weak",   0.260, 0.18, "チェリー",     "🍒"),
+]
+
+GOD_SET_BASE = 850   # 1セット基本獲得
+# ルート別 上乗せ分布 (額, 確率) ── 期待値は全ルート=650でEV中立、波だけ違う ──
+GOD_UP_BALANCED = [(300, 0.70), (800, 0.20), (2000, 0.08), (6000, 0.02)]   # オート時(中庸)
+GOD_UP_ORBIT    = [(450, 0.45), (700, 0.42), (1200, 0.13)]                 # 🛰️ 軌道: 低分散
+GOD_UP_BIGBANG  = [(0,   0.70), (400, 0.18), (3500, 0.10), (11500, 0.02)]  # 💥 爆発: 高分散
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 演出ウェイト（秒）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SLOT_WAIT = {
+    "calm":     1.5,   # 🌑凪（ハズレ）はサクッと
+    "weak":     2.3,   # ✨微
+    "hot":      3.0,   # ⚡熱
+    "superhot": 3.8,   # 💥激
+    "god":      4.5,   # ☯️GOD確定（通常）
+    # 聖域は3ビート（暗転→検知→顕現＝計7秒）
+    "holy_1":   2.5,
+    "holy_2":   2.0,
+    "holy_3":   2.5,
+    # GOD中「狙え」開示タメ（ランクで延長）
+    "aim":             0.6,
+    "aim_pulsar":      1.0,
+    "aim_singularity": 1.5,
+    "rankup":   1.2,   # 昇格演出
+    "feint":    1.4,   # フェイントのタメ
 }
 
-FREESPIN_BONUS_RATES = {
-    "replay":0.05,"bell":0.05,"cherry":0.30,"suika":0.30,
-    "weak_chance":0.50,"strong_cherry":1.00,"strong_chance":1.00,
-}
-
-FREESPIN_PAYOUTS = {
-    "replay":60,"bell":150,"cherry":60,"suika":180,
-    "weak_chance":60,"strong_cherry":60,"strong_chance":60,
-}
-
-NORMAL_PAYOUTS = {
-    "bell":90,"cherry":60,"suika":120,"strong_cherry":60,
-    "replay":60,"weak_chance":60,"strong_chance":60,
-}
-
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# リール表示
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REELS = {
-    "blank":         ["🍋","🍊","🍇"],
-    "cherry":        ["🍒","🍋","🍊"],
-    "strong_cherry": ["🍒","🍒","🍒"],
-    "suika":         ["🍉","🍉","🍉"],
-    "bell":          ["🔔","🔔","🔔"],
-    "replay":        ["🔄","🔄","🔄"],
-    "weak_chance":   ["7️⃣","🍋","🍒"],
-    "strong_chance": ["7️⃣","7️⃣","🍊"],
-    "regular_bonus": ["⭐","⭐","⭐"],
-    "big_bonus":     ["7️⃣","7️⃣","7️⃣"],
-    "super_bonus":   ["💎","💎","💎"],
-    "legend_bonus":  ["🌐","🌐","🌐"],
-    "god_bonus":     ["☯️","☯️","☯️"],
+    "blank":       ["🌑", "⭐", "🌠"],
+    "replay":      ["🔄", "🔄", "🔄"],
+    "bell":        ["🔔", "🔔", "🔔"],
+    "cherry":      ["🍒", "🌑", "⭐"],
+    "suika":       ["🍉", "🍉", "🍉"],
+    "weak":        ["⭐", "🌠", "🍒"],
+    "schk":        ["⭐", "⭐", "🌠"],
+    "schy":        ["🍒", "🍒", "🍒"],
+    "nova":        ["💫", "💫", "💫"],
+    "flare":       ["🔥", "🔥", "🔥"],
+    "supernova":   ["🌠", "🌠", "🌠"],
+    "pulsar":      ["🌀", "🌀", "🌀"],
+    "singularity": ["🌌", "🌌", "🌌"],
+    "entry":       ["☯️", "☯️", "☯️"],
+    "dark":        ["🌑", "🌑", "🌑"],
 }
 
-# 演出パターン
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ① 通常時 演出（結果先抽選→信頼度プールで見せ方を選ぶ）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SLOT_EFFECTS = {
-    "miss": [
-        "💨 何も起きなかった...",
-        "😑 静かな回転...",
-        "🌀 リールが虚しく回る...",
-        "💤 今日は厳しいな...",
-        "😶 何も来ない...",
-        "🍃 風だけが通り過ぎた...",
-        "👻 気配すら感じない...",
-        "🌑 暗い回転...",
-        "😮‍💨 はずれ...",
-        "🫥 また外れか...",
+    "calm": [
+        "🌑 静かな宙（そら）…", "💤 計器は沈黙したまま…", "🍃 暗い真空を漂う…",
+        "😶 星ひとつ瞬かない…", "🛰️ 信号は途絶えたまま…", "🌀 虚空が回る…",
     ],
     "weak": [
-        "💫 なんか来そうな予感...",
-        "🌊 水面がさざ波立った...",
-        "👀 リールに視線が吸い寄せられる...",
-        "💤 うとうとしてたら急に...",
-        "🎵 BGMのテンポが少し上がった気がした...",
-        "🍒 チェリーの気配...？",
-        "🍉 スイカの気配...？",
-        "💥 チャンス目の気配...？",
-        "🍒 左リールに何か見えた気がした...",
-        "🍉 緑色の何かが滑ってくる...？",
+        "✨ 遠くで何かが瞬いた…？", "📡 微かな信号を捉えた…", "💫 宇宙塵がざわめく…",
+        "👀 計器がわずかに反応した…", "🌌 重力がゆらいだ気がする…",
     ],
-    "medium": [
-        "⚡ リールが少し震えた...！",
-        "🌀 第三リールがゆっくり止まる...",
-        "🔮 何かが起きそうな気がする...！",
-        "💥 ドンッ...！",
-        "🎯 狙いを定めた...",
-        "🌟 リールが一瞬光った...！",
-        "😤 力が入る...",
+    "hot": [
+        "⚡ 計器の針が跳ねた…！", "🔥 エネルギーが急上昇していく…！",
+        "🌠 何かが生まれようとしている…！", "💥 空間がねじれ始めた…！",
     ],
-    "strong": [
-        "🔥 熱い...！何かが来る...！",
-        "💎 第三リールが輝いている...！！",
-        "😱 これは...！！",
-        "🌪️ リールが激しく揺れている...！！",
-        "👊 来い...！！",
-        "⚡⚡ 電流が走った...！！",
-        "🏆 何かが変わった...！！",
+    "superhot": [
+        "⚡⚡ 計器が振り切れた…！！", "🔥 臨界点を突破…！！",
+        "🌪️ 時空が軋んでいる…！！", "😱 巨大な“何か”が近づく…！！！",
     ],
-    "super": [
-        "👁️ リールが止まらない...！！！",
-        "💀 これは...見たことない...！！！",
-        "🌟🌟🌟 全てが輝いている...！！！",
-        "🤯 な、なんだ...！！！",
-        "🔥🔥 限界を超えた...！！！",
-        "⚡ 神が降りてくる...！！！",
+    "god_confirm": [   # ☯️＝GOD確定（ランクは不明）
+        "──　☯️　──", "視界の端を、黒い円がよぎった。", "重力波、検知。",
     ],
-    "contradiction": {
-        "cherry":["🍒 チェリーの気配...？","🍒 左リールにチェリーが見えた...！"],
-        "suika": ["🍉 スイカが滑ってきた...？","🍉 緑色の何かが...！"],
-        "bell":  ["🔔 ベルの音が聞こえた気がした...","🔔 鐘の音...？"],
-    },
-    "legend":["🌟 リールが黄金に染まった...！！","👑 伝説が動き出す...！！","✨ 全てが止まった...！！"],
-    "god":   ["👁️ .......","💀 何かがおかしい...","🌑 暗転した...！","⚡ 世界が震えた...！！！"],
 }
 
-EFFECT_CHANCE = 1.0  # 毎回演出表示
-MISS_BONUS_CHANCE = 0.01  # ハズレ演出でも1%でボーナス
+# 通常時 信頼度テーブル：結果ごとに各溜めの出現率（合計1.0）
+# キー: calm / weak / hot / superhot / god_confirm
+SLOT_EFFECT_WEIGHTS = {
+    "blank":  {"calm": 0.740, "weak": 0.220, "hot": 0.035, "superhot": 0.005},
+    "replay": {"calm": 0.500, "weak": 0.420, "hot": 0.070, "superhot": 0.010},
+    "bell":   {"calm": 0.500, "weak": 0.420, "hot": 0.070, "superhot": 0.010},
+    "cherry": {"calm": 0.080, "weak": 0.520, "hot": 0.340, "superhot": 0.060},
+    "suika":  {"calm": 0.080, "weak": 0.520, "hot": 0.340, "superhot": 0.060},
+    "weak":   {"calm": 0.030, "weak": 0.150, "hot": 0.520, "superhot": 0.300},
+    "schk":   {"calm": 0.030, "weak": 0.150, "hot": 0.520, "superhot": 0.300},
+    "schy":   {"calm": 0.030, "weak": 0.150, "hot": 0.520, "superhot": 0.300},
+    # GOD当選時：激寄り＋☯️確定が12%
+    "god":    {"calm": 0.05, "weak": 0.08, "hot": 0.30, "superhot": 0.45, "god_confirm": 0.12},
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ②-A 通常GOD突入演出（5種バリエーション・ランダム）
+#     (絵文字, 1行目, 2行目)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GOD_ENTRY_EFFECTS = [
+    ("☯️", "EVENT HORIZON", "── 事象の地平線を、超えた。"),
+    ("🌀", "空間が、歪む──", "重力に呑まれていく…！"),
+    ("🌑", "……と、思いきや。", "引き返せない領域へ。"),
+    ("💥", "臨界、突破ァ！！", "新しい星が、生まれる──"),
+    ("☯️", "──　確定。", "GOD、来た。"),   # ☯️確定演出から繋ぐ版
+]
+
+# ②-B 聖域突入演出（専用・7秒3ビート）
+GOD_HOLY_BEATS = [
+    ("🌑", "", "　……"),                                       # ビート1：暗転
+    ("☯️", "重力波、検知。", "光が、一点へ堕ちていく──"),        # ビート2：異変
+    ("🌌🌌🌌", "S I N G U L A R I T Y", "特異点、開く。"),       # ビート3：顕現
+]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ④ 継続「狙え」演出
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 「狙え」ボタンの文言（ランク連動）
+GOD_AIM_LABELS = {
+    "nova": "☯️ 狙え", "flare": "☯️ 狙え",
+    "supernova": "☄️ 狙い撃て…！", "pulsar": "☄️ 狙い撃て…！",
+    "singularity": "🌌 視ろ──",
+}
+
+# 継続カットイン（信頼度4段）。weightは継続時の出やすさ
+GOD_CONTINUE_EFFECTS = [
+    ("normal",  0.78, "🔥 継続！！", "ループは続く──"),
+    ("strong",  0.15, "⚡⚡ まだだ、まだ終わらない…！！", ""),
+    ("super",   0.05, "💥 ねじ伏せた──！！！", ""),
+    ("rainbow", 0.02, "🌈 ―― 約束された継続。", ""),   # 虹＝継続確定（押す前でも出うる）
+]
+
+# フェイント（共通入り→タメ後に分岐）。継続・終了それぞれ20%で発生
+GOD_FEINT_RATE = 0.20
+GOD_FEINT_INTRO = ("💨", "引力が、緩んでいく……")     # 継続・終了で完全同一
+GOD_FEINT_CONTINUE = ("🔥", "……否。掴んだ。継続！！")
+GOD_FEINT_END      = ("🌑", "……そのまま、抜けた。")
+
+# 通常の終了余韻（フェイントでない80%）
+GOD_END_EFFECTS = [
+    ("🌑", "……ふっと、軽くなった。"),
+    ("🌑", "引力が、消えた。"),
+    ("🌌", "静寂が、戻ってくる。"),
+]
+
+# 昇格（ランクアップ）進化演出： to_key -> (emoji, text)
+GOD_RANKUP_EFFECTS = {
+    "flare":     ("🔥", "燃え上がる── FLARE 到達"),
+    "supernova": ("🌠", "爆発的に膨張── SUPERNOVA"),
+    "pulsar":    ("🌀", "規則的な脈動── PULSAR"),
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ⑥ 終了総括の締め文言（一撃額で格付け・案①詩的）
+#     (しきい値, 文言)  ※上から判定、最初に超えたもの
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GOD_FINISH_LINES = [
+    (30000, "🌠 銀河が、ひれ伏した。"),
+    (10000, "💫 重力すら、味方につけた。"),
+    (3000,  "🔥 軌道に、爪痕を残した。"),
+    (0,     "星は、また沈んだ。"),
+]
+GOD_FINISH_HOLY = "🌌 ―― 特異点の中心で、それを見た。"   # 聖域制覇 専用
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 釣り設定
