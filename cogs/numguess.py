@@ -218,7 +218,7 @@ class NumberGuess(commands.Cog):
         game = active_games[uid]
 
         embed = build_game_embed(game, "1〜100の数字を当ててください！")
-        await interaction.response.send_message(embed=embed, view=NumguessPlayView(uid, guild_id), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=NumguessPlayView(uid, guild_id))
 
 
 async def setup(bot):

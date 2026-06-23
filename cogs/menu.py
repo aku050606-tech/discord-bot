@@ -785,7 +785,6 @@ class Menu(commands.Cog):
         await interaction.response.send_message(
             embed=build_menu_embed(),
             view=MainMenuView(uid),
-            ephemeral=True
         )
 
 async def setup(bot):

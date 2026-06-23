@@ -302,6 +302,9 @@ class ShadowButton(discord.ui.Button):
         self.guild_id = guild_id
 
     async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message("❌ これはあなたの釣りではありません", ephemeral=True)
+            return
         embed = discord.Embed(
             title="⚠️ DANGER!!!!",
             description="何か不穏な影が見える...\nこのまま釣竿を垂らしておきますか？",
@@ -319,6 +322,9 @@ class ShadowChoiceView(discord.ui.View):
 
     @discord.ui.button(label="垂らし続ける", style=discord.ButtonStyle.danger, emoji="🎣")
     async def keep(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message("❌ これはあなたの釣りではありません", ephemeral=True)
+            return
         await interaction.response.defer()
         boss = AREA_BOSS[self.area]
 
@@ -347,6 +353,9 @@ class ShadowChoiceView(discord.ui.View):
 
     @discord.ui.button(label="安全に引き上げる", style=discord.ButtonStyle.secondary, emoji="✋")
     async def pull(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message("❌ これはあなたの釣りではありません", ephemeral=True)
+            return
         embed = discord.Embed(
             title="✋ 安全に引き上げた",
             description="影は消えていった...\n次は挑戦してみよう！",

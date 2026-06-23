@@ -460,7 +460,7 @@ class Slot(commands.Cog):
             description=f"**{SLOT_BET}コイン**掛け\n1〜10番台から選んでください！",
             color=discord.Color.dark_green()
         )
-        await interaction.response.send_message(embed=embed, view=SlotSelectView(), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=SlotSelectView())
 
 async def setup(bot):
     await bot.add_cog(Slot(bot))
