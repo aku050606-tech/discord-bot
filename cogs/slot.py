@@ -52,12 +52,15 @@ def roll_normal_spin(setting: int) -> dict:
     return {"type": "blank", "yaku": None, "payout": 0}
 
 
-def make_god_state(premium: bool, yaku):
+def make_god_state(premium: bool, yaku, setting: int = 1):
     if premium:
         return {"premium": True, "rank_idx": None, "rate": GOD_SINGULARITY["rate"],
                 "total": 0, "sets": 0, "max_idx": None}
     grp = GOD_TRIGGER_GROUP.get(yaku, "soft")
-    w = GOD_ENTRY_WEIGHTS[grp]
+    # 設定別の入口ランク重み（設定差の本体。見えにくい所に隠す）
+    profile = SLOT_SETTINGS[setting].get("entry", "good")
+    table = GOD_ENTRY_TABLE.get(profile, GOD_ENTRY_TABLE["good"])
+    w = table.get(grp, table["soft"])
     r = random.random(); acc = 0; idx = len(w) - 1
     for i, x in enumerate(w):
         acc += x
@@ -357,7 +360,7 @@ async def _normal_spin(interaction, uid):
     if res["type"] == "god" and res["premium"]:
         if res["payout"]:
             db.update_balance(uid, guild_id, res["payout"])
-        g["god"] = make_god_state(True, None)
+        g["god"] = make_god_state(True, None, g["setting"])
         await _enter_holy(interaction, uid)
         return
 
@@ -378,7 +381,7 @@ async def _normal_spin(interaction, uid):
     if res["type"] == "god":
         if res["payout"]:
             db.update_balance(uid, guild_id, res["payout"])
-        g["god"] = make_god_state(False, res["yaku"])
+        g["god"] = make_god_state(False, res["yaku"], g["setting"])
         await _enter_god(interaction, uid)
         return
 

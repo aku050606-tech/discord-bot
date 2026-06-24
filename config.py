@@ -36,13 +36,18 @@ def get_daily_machines():
 #   koyaku_mult : 小役払い出し倍率（高設定ほど持つ）
 #   god_mult    : レア役からのGOD当選率の設定倍率（高設定ほど当たる）
 #   premium_per : 聖域(SINGULARITY)単独抽選 1/n（高設定ほど引きやすい）
+# 設定差は「GOD突入率(god_mult)」＋「入口ランク(entry)」だけに隠す。
+# 小役払い出しは全設定common(koyaku_mult=1.0)＝引いても額でバレない。
+#   奇数(1,3,5): 突入渋い／入口良い(伸びる)  = 一撃ロマン型
+#   偶数(2,4,6): 突入軽い／入口控えめ(伸びにくい) = ライト回転型
+#   設定6     : 当たるのに伸びる(奇偶セオリー破壊の特別台)
 SLOT_SETTINGS = {
-    1: {"koyaku_mult": 1.10, "god_mult": 0.80, "premium_per": 6000},
-    2: {"koyaku_mult": 1.13, "god_mult": 0.89, "premium_per": 5500},
-    3: {"koyaku_mult": 1.16, "god_mult": 0.98, "premium_per": 5000},
-    4: {"koyaku_mult": 1.19, "god_mult": 1.06, "premium_per": 4600},
-    5: {"koyaku_mult": 1.22, "god_mult": 1.14, "premium_per": 4200},
-    6: {"koyaku_mult": 1.25, "god_mult": 1.23, "premium_per": 3900},
+    1: {"koyaku_mult": 1.0, "god_mult": 0.90, "premium_per": 5200, "entry": "good"},
+    2: {"koyaku_mult": 1.0, "god_mult": 1.12, "premium_per": 5200, "entry": "weak"},
+    3: {"koyaku_mult": 1.0, "god_mult": 0.98, "premium_per": 5200, "entry": "good"},
+    4: {"koyaku_mult": 1.0, "god_mult": 1.18, "premium_per": 5200, "entry": "weak"},
+    5: {"koyaku_mult": 1.0, "god_mult": 1.02, "premium_per": 5000, "entry": "vgood"},
+    6: {"koyaku_mult": 1.0, "god_mult": 1.16, "premium_per": 4500, "entry": "super6"},
 }
 
 # ── 通常時 小役 (キー, 基本払い出し, 出現率) ──
@@ -71,6 +76,23 @@ GOD_TRIGGER_RATE = {
 
 # ── GOD入口ランク（契機役の強さで決まる）──
 # 重み NOVA / FLARE / SUPERNOVA / PULSAR
+# ── 設定別 入口ランク重み（プロファイル→[NOVA,FLARE,SUPERNOVA,PULSAR]）──
+# soft(弱レア)を基準に、mid/strong役ほど良い入口へ補正。設定はこのプロファイルで決まる。
+_ENTRY_SOFT_PROFILE = {
+    "weak":   [0.66, 0.26, 0.06, 0.02],   # 偶数:伸びにくい
+    "good":   [0.50, 0.31, 0.13, 0.06],   # 奇数:伸びる
+    "vgood":  [0.40, 0.32, 0.18, 0.10],   # 設定5:かなり伸びる
+    "super6": [0.30, 0.33, 0.24, 0.13],   # 設定6:超伸びる
+}
+def _build_entry_table(soft):
+    mid    = [max(0.0, soft[0]-0.17), soft[1]+0.04, soft[2]+0.10, soft[3]+0.03]
+    strong = [max(0.0, soft[0]-0.37), soft[1]+0.00, soft[2]+0.24, soft[3]+0.13]
+    def norm(x):
+        t=sum(x); return [v/t for v in x]
+    return {"soft": norm(soft), "mid": norm(mid), "strong": norm(strong)}
+# プロファイル名 → {soft/mid/strong: [4ランク重み]}
+GOD_ENTRY_TABLE = {name: _build_entry_table(soft) for name, soft in _ENTRY_SOFT_PROFILE.items()}
+
 GOD_ENTRY_WEIGHTS = {
     "soft":   [0.62, 0.28, 0.08, 0.02],   # bell / cherry / suika
     "mid":    [0.45, 0.32, 0.18, 0.05],   # weak（チャンス目）
