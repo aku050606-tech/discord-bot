@@ -260,6 +260,13 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     await interaction.edit_original_response(embed=embed3, view=view)
     active_fishing.discard(uid)
 
+    # 換金額が大きければBOT告知
+    if rarity != "trash" and value > 0:
+        from cogs.bigwin import announce_big_win
+        await announce_big_win(interaction, interaction.user, "釣り",
+                               value, balance=new_bal,
+                               detail=f"{display_emoji} {display_name}（{rarity_label}）")
+
 
 class FishResultView(discord.ui.View):
     def __init__(self, area, show_shadow, uid, guild_id):
@@ -338,13 +345,22 @@ class ShadowChoiceView(discord.ui.View):
                 description=f"伝説の生物が釣れた！！！\n換金額: **{BOSS_REWARD:,} ナトコイン**\n残高: **{new_bal:,} ナトコイン**",
                 color=discord.Color.red()
             )
+            boss_caught = True
         else:
             embed = discord.Embed(
                 title="🌊 逃げられた...",
                 description="影は深みへ消えていった...\nまた会えるかもしれない。",
                 color=discord.Color.dark_blue()
             )
+            boss_caught = False
         await interaction.followup.edit_message(interaction.message.id, embed=embed, view=BackToFishView(self.area))
+
+        # ボス捕獲は超大物 → BOT告知
+        if boss_caught:
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "釣り（ヌシ）",
+                                   BOSS_REWARD, balance=new_bal,
+                                   detail=f"{boss['emoji']} {boss['name']} を釣り上げた！")
 
     @discord.ui.button(label="安全に引き上げる", style=discord.ButtonStyle.secondary, emoji="✋")
     async def pull(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -424,6 +440,12 @@ async def use_treasure_map(interaction: discord.Interaction, edit: bool = True):
         await interaction.response.edit_message(embed=embed, view=view)
     else:
         await interaction.response.send_message(embed=embed, view=view)
+
+    # 宝の地図の報酬が大きければBOT告知
+    if rank != "miss":
+        from cogs.bigwin import announce_big_win
+        await announce_big_win(interaction, interaction.user, "宝の地図",
+                               reward, balance=db.get_balance(uid, guild_id))
 
 
 class TreasureResultView(discord.ui.View):

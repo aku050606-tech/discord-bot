@@ -115,6 +115,11 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
                 view = NumguessResultView(bet, self.user_id)
             await interaction.response.edit_message(embed=embed, view=view)
 
+            # 勝ち額が大きければBOT告知
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "数字当て",
+                                   net, balance=new_bal)
+
         elif tries >= MAX_TRIES:
             # ゲームオーバー
             active_games.pop(self.user_id, None)

@@ -842,6 +842,12 @@ async def _finish_god(interaction, uid, feint=False):
     g["pending_god"] = None
     await render(interaction, uid, e)
 
+    # 一撃合計が大きければBOT告知
+    from cogs.bigwin import announce_big_win
+    await announce_big_win(interaction, interaction.user, "スロット（GOD一撃）",
+                           total, balance=new_bal,
+                           detail=f"到達ランク {mx['name']} ／ {sets}セット完走")
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Cog

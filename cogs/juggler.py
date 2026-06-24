@@ -6,9 +6,9 @@ import uuid
 from database import Database
 from config import (
     JUGGLER_BET, JUGGLER_KOYAKU, JUGGLER_BIG_NET, JUGGLER_REG_NET,
-    JUGGLER_BONUS, JUGGLER_PREEMPTIVE_RATE, get_juggler_setting,
+    JUGGLER_HYPER_NET, JUGGLER_BONUS, JUGGLER_PREEMPTIVE_RATE, get_juggler_setting,
     JUGGLER_WAIT, JUGGLER_PEKA_PRE, JUGGLER_PEKA_POST,
-    JUGGLER_BIG_REVEAL, JUGGLER_REG_REVEAL, JUGGLER_MISS_LINES,
+    JUGGLER_BIG_REVEAL, JUGGLER_REG_REVEAL, JUGGLER_HYPER_REVEAL, JUGGLER_MISS_LINES,
     SLOT_BET,
 )
 from cogs.embed_utils import pad_embed
@@ -33,9 +33,12 @@ def roll_juggler(setting) -> dict:
     返り値: {bonus: None/'big'/'reg', koyaku: key/None, payout: 子役払い}"""
     b = JUGGLER_BONUS[setting]
     r = random.random()
-    if r < b["big"]:
+    # ハイパー → BIG → REG → ハズレ の順で抜く（プレミアを最優先で確定）
+    if r < b["hyper"]:
+        bonus = "hyper"
+    elif r < b["hyper"] + b["big"]:
         bonus = "big"
-    elif r < b["big"] + b["reg"]:
+    elif r < b["hyper"] + b["big"] + b["reg"]:
         bonus = "reg"
     else:
         bonus = None
@@ -378,7 +381,11 @@ async def _reveal_bonus(interaction, uid, bonus):
     if _alive(uid, sid) is None:
         return
 
-    if bonus == "big":
+    if bonus == "hyper":
+        net = JUGGLER_HYPER_NET
+        head = random.choice(JUGGLER_HYPER_REVEAL)
+        color = discord.Color.from_rgb(255, 80, 200)   # プレミア専用カラー
+    elif bonus == "big":
         net = JUGGLER_BIG_NET
         head = random.choice(JUGGLER_BIG_REVEAL)
         color = discord.Color.red()
@@ -396,6 +403,11 @@ async def _reveal_bonus(interaction, uid, bonus):
     e.set_footer(text="🎰 回す ── 次のゲームへ")
     pad_embed(e, target_fields=3)
     await render(interaction, uid, e)
+
+    # 純増が大きければBOT告知
+    from cogs.bigwin import announce_big_win
+    await announce_big_win(interaction, interaction.user, "ジャグラー",
+                           net, balance=new_bal)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

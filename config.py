@@ -851,7 +851,7 @@ SEA_FISH = [
     {"name":"空き缶",        "rarity":"trash",      "value":0,     "emoji":"🥫"},
     {"name":"古い錨",        "rarity":"trash",      "value":0,     "emoji":"⚓"},
     {"name":"謎の瓶",        "rarity":"trash",      "value":30,    "emoji":"🍾"},
-    {"name":"海賊の地図",    "rarity":"trash",      "value":30,    "emoji":"🗺️"},
+    {"name":"ボロボロの紙くず",  "rarity":"trash",      "value":30,    "emoji":"📄"},
     {"name":"錆びた缶詰",    "rarity":"trash",      "value":0,     "emoji":"🥫"},
     {"name":"ともせの眼鏡",  "rarity":"trash",      "value":0,     "emoji":"👓"},
     {"name":"ビニール袋",    "rarity":"trash",      "value":0,     "emoji":"🛍️"},
@@ -914,6 +914,12 @@ SEA_FISH = [
     {"name":"シーラカンス",  "rarity":"legend",     "value":22500, "emoji":"👑"},
     {"name":"ラブカ",        "rarity":"legend",     "value":30000, "emoji":"😱"},
 ]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🎊 大勝利アナウンス（BOT告知）
+#   1回の勝ち額がこの値以上になったら、プレイ中のチャンネルにBOTが告知する。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BIG_WIN_ANNOUNCE = 10000
 
 CHINCHIRO_AI_PAYOUT = 1.00   # テラ銭は取らない（=100%払い戻し）。公平勝負。
 
