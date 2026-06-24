@@ -121,19 +121,16 @@ def build_view(uid: str) -> discord.ui.View:
 async def render(interaction: discord.Interaction, uid: str, embed: discord.Embed):
     """現在の状態に応じたViewでメッセージを更新（DEBUG版）"""
     view = build_view(uid)
-    done = interaction.response.is_done()
-    print(f"[SLOT] render呼出 uid={uid} is_done={done}", flush=True)
     try:
-        if done:
+        if interaction.response.is_done():
             await interaction.edit_original_response(embed=embed, view=view)
-            print("[SLOT] ✅ edit_original_response 成功", flush=True)
         else:
             await interaction.response.edit_message(embed=embed, view=view)
-            print("[SLOT] ✅ response.edit_message 成功", flush=True)
-    except Exception as e:
-        import traceback
-        print(f"[SLOT] ❌ 画面更新 失敗: {type(e).__name__}: {e}", flush=True)
-        traceback.print_exc()
+    except discord.HTTPException:
+        try:
+            await interaction.edit_original_response(embed=embed, view=view)
+        except Exception:
+            pass
 
 
 def _set_auto_label(view: discord.ui.View, uid: str):
@@ -229,19 +226,13 @@ class SlotGameView(discord.ui.View):
             await interaction.response.send_message("ゲームが見つかりません", ephemeral=True); return
         if g.get("spinning"):
             await interaction.response.send_message("⏳ 処理中です...", ephemeral=True); return
-        print(f"[SLOT] 🎰 回すボタン押下 uid={uid} state={g['state']}", flush=True)
         g["spinning"] = True
         await interaction.response.defer()
-        print("[SLOT] defer完了", flush=True)
         try:
             if g["state"] == "god":
                 await _advance_god(interaction, uid)
             else:
                 await _normal_spin(interaction, uid)
-        except Exception as e:
-            import traceback
-            print(f"[SLOT] ❌❌ 例外発生: {type(e).__name__}: {e}", flush=True)
-            traceback.print_exc()
         finally:
             gg = active_slots.get(uid)
             if gg:
@@ -360,9 +351,7 @@ async def _normal_spin(interaction, uid):
     if bal < SLOT_BET:
         await interaction.followup.send("❌ コインが足りません", ephemeral=True); return
     db.update_balance(uid, guild_id, -SLOT_BET)
-    print(f"[SLOT] ベット天引きOK setting={g.get('setting')}", flush=True)
     res = roll_normal_spin(g["setting"])
-    print(f"[SLOT] 抽選結果 res={res}", flush=True)
 
     # 聖域は専用突入へ直行
     if res["type"] == "god" and res["premium"]:
@@ -374,13 +363,10 @@ async def _normal_spin(interaction, uid):
 
     # 溜め演出
     wkey = "god" if res["type"] == "god" else (res.get("yaku") or "blank")
-    print(f"[SLOT] wkey={wkey}", flush=True)
     weights = SLOT_EFFECT_WEIGHTS.get(wkey, SLOT_EFFECT_WEIGHTS["blank"])
     tier = _weighted_choice(weights)
-    print(f"[SLOT] tier={tier}", flush=True)
     eff_text = random.choice(SLOT_EFFECTS[tier])
     wait = SLOT_WAIT["god"] if tier == "god_confirm" else SLOT_WAIT[tier]
-    print(f"[SLOT] eff_text/wait 取得OK wait={wait} render直前", flush=True)
     e1 = discord.Embed(description=eff_text,
                        color=discord.Color.from_rgb(80, 0, 140) if tier in ("hot", "superhot", "god_confirm")
                        else discord.Color.dark_gray())
