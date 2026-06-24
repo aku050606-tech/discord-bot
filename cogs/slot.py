@@ -168,10 +168,11 @@ def build_view(uid: str) -> discord.ui.View:
     return SlotGameView(uid)
 
 
-async def render(interaction: discord.Interaction, uid: str, embed: discord.Embed):
+async def render(interaction: discord.Interaction, uid: str, embed: discord.Embed, buttons: bool = True):
     """現在の状態に応じたViewでメッセージを更新する。
-    返ってきたメッセージを view.message に保持し、時間切れ時にボタンを無効化できるようにする。"""
-    view = build_view(uid)
+    buttons=False のときは空View（ボタン非表示）で描画し、演出中の連打を防ぐ。
+    入力待ちのフレームだけ buttons=True（通常View）でボタンを出す。"""
+    view = build_view(uid) if buttons else discord.ui.View(timeout=1)
     msg = None
     try:
         if interaction.response.is_done():
@@ -185,7 +186,7 @@ async def render(interaction: discord.Interaction, uid: str, embed: discord.Embe
         except Exception:
             msg = None
     try:
-        if msg is not None:
+        if buttons and msg is not None:
             view.message = msg
     except Exception:
         pass
@@ -433,7 +434,7 @@ async def _normal_spin(interaction, uid):
         wait = SLOT_WAIT["god"] if tier == "god_confirm" else SLOT_WAIT[tier]
         e1 = discord.Embed(description=eff_text, color=discord.Color.from_rgb(80, 0, 140))
         pad_embed(e1, target_fields=4)
-        await render(interaction, uid, e1)
+        await render(interaction, uid, e1, buttons=False)
         await asyncio.sleep(wait)
         g = _alive(uid, sid)
         if g is None:
@@ -468,7 +469,7 @@ async def _normal_spin(interaction, uid):
                        color=discord.Color.from_rgb(80, 0, 140) if tier in ("hot", "superhot", "god_confirm")
                        else discord.Color.dark_gray())
     pad_embed(e1, target_fields=4)
-    await render(interaction, uid, e1)
+    await render(interaction, uid, e1, buttons=False)
     await asyncio.sleep(wait)
 
     g = _alive(uid, sid)
@@ -499,7 +500,7 @@ async def _enter_god(interaction, uid):
                       description=f"```\n{get_reel('entry')}\n```\n{l2}",
                       color=discord.Color.from_rgb(120, 0, 200))
     pad_embed(e, target_fields=3)
-    await render(interaction, uid, e)
+    await render(interaction, uid, e, buttons=False)
     await asyncio.sleep(SLOT_WAIT["god"])
 
     g = _alive(uid, sid)
@@ -536,7 +537,7 @@ async def _enter_holy(interaction, uid):
                           color=discord.Color.from_rgb(255, 215, 0) if i == 3
                           else discord.Color.from_rgb(20, 0, 40))
         pad_embed(e, target_fields=3)
-        await render(interaction, uid, e)
+        await render(interaction, uid, e, buttons=False)
         await asyncio.sleep(SLOT_WAIT[f"holy_{i}"])
         if _alive(uid, sid) is None:
             return
@@ -596,9 +597,16 @@ async def _advance_god(interaction, uid):
         g["state"] = "god"
         e.set_footer(text="🎰 回す ── 次のゲームへ")
     pad_embed(e, target_fields=4)
-    await render(interaction, uid, e)
     if r["rankup_to"]:
+        # 昇格演出の間はボタンを出さず、終わってから入力を受け付ける
+        sid = g["sid"]
+        await render(interaction, uid, e, buttons=False)
         await asyncio.sleep(SLOT_WAIT["rankup"])
+        if _alive(uid, sid) is None:
+            return
+        await render(interaction, uid, e, buttons=True)
+    else:
+        await render(interaction, uid, e)
 
 
 async def _reveal_aim(interaction, uid):
@@ -614,7 +622,7 @@ async def _reveal_aim(interaction, uid):
         emo, txt = GOD_FEINT_INTRO
         e0 = discord.Embed(title=emo, description=txt, color=discord.Color.dark_gray())
         pad_embed(e0, target_fields=3)
-        await render(interaction, uid, e0)
+        await render(interaction, uid, e0, buttons=False)
         await asyncio.sleep(SLOT_WAIT["feint"])
     else:
         await asyncio.sleep(_aim_wait(g["god"]))
@@ -668,7 +676,7 @@ async def _finish_god(interaction, uid, feint=False):
         emo, txt = random.choice(GOD_END_EFFECTS)
     e0 = discord.Embed(title=emo, description=txt, color=discord.Color.dark_gray())
     pad_embed(e0, target_fields=3)
-    await render(interaction, uid, e0)
+    await render(interaction, uid, e0, buttons=False)
     await asyncio.sleep(1.0)
     if _alive(uid, sid) is None:
         return
