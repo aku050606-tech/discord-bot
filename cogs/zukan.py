@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from config import (LAKE_FISH, RIVER_FISH, SEA_FISH, RARITY_COLORS, AREA_BOSS,
-                    TREASURE_BY_AREA)
+                    TREASURE_BY_AREA, RARE_TRASH_BY_AREA)
 
 db = Database()
 
@@ -24,7 +24,12 @@ def fish_items(area):
     return [f for f in FISH_BY_AREA[area] if f["rarity"] not in ("trash", "boss")]
 
 def trash_items(area):
-    return [f for f in FISH_BY_AREA[area] if f["rarity"] == "trash"]
+    # 通常ごみ ＋ レアごみ（売値1000・各エリア2種）。レアごみには rare フラグを付ける。
+    normal = [{"name": f["name"], "emoji": f["emoji"], "value": f.get("value", 0), "rare": False}
+              for f in FISH_BY_AREA[area] if f["rarity"] == "trash"]
+    rares = [{"name": t["name"], "emoji": t["emoji"], "value": t["value"], "rare": True}
+             for t in RARE_TRASH_BY_AREA.get(area, [])]
+    return normal + rares
 
 def treasure_items(area):
     out = []
@@ -145,9 +150,18 @@ class ZukanAreaView(discord.ui.View):
             items = trash_items(area)
             done = len([f for f in items if f["name"] in caught])
             embed.description = f"**収集 {done}/{len(items)} 種**"
+            normal = [f for f in items if not f.get("rare")]
+            rares  = [f for f in items if f.get("rare")]
             lines = [f"✅ {f['emoji']} {f['name']}" if f["name"] in caught else "❓ ???"
-                     for f in items]
+                     for f in normal]
             embed.add_field(name="ごみコレクション", value="\n".join(lines) or "—", inline=False)
+            if rares:
+                rlines = [f"✅ {f['emoji']} {f['name']} — {f['value']:,}"
+                          if f["name"] in caught else "❓ ???"
+                          for f in rares]
+                got = len([f for f in rares if f["name"] in caught])
+                embed.add_field(name=f"✨ レアごみ（{got}/{len(rares)}・売値1000）",
+                                value="\n".join(rlines), inline=False)
 
         else:  # treasure
             items = treasure_items(area)

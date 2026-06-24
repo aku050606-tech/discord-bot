@@ -133,6 +133,22 @@ def ai_action(strength: int, to_call: int) -> str:
 
 poker_rooms: dict[str, dict] = {}
 
+# vs-AIモードの進行中ゲーム（user_id -> game dict）
+ai_games: dict[str, dict] = {}
+
+# vs-AI 1ストリートあたりのレイズ上限
+AI_MAX_RAISES = 3
+
+def _new_ai_game(guild_id, ante, deck, player_hand, ai_hand, community):
+    """vs-AI のゲーム状態を生成。street_* はストリートごとにリセットされるベット。"""
+    return {
+        "guild_id": guild_id, "ante": ante, "deck": deck,
+        "player_hand": player_hand, "ai_hand": ai_hand, "community": community,
+        "community_shown": [], "stage": "preflop",
+        "pot": ante * 2, "player_bet": ante, "ai_bet": ante,
+        "street_player": 0, "street_ai": 0, "street_bet": 0, "raises": 0,
+    }
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 対人ポーカー：2人ヘッズアップ・テキサスホールデム（本格ベット制）
 # 手札は伏せ、手番が来たらメンションで通知。ボタン一発でエフェメラルのアクション画面。
@@ -466,16 +482,32 @@ def build_ai_embed(game: dict, action_log: str = "") -> discord.Embed:
 
 class PokerAIView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str):
-        super().__init__(timeout=900)
+        super().__init__(timeout=1800)
         self.user_id = user_id
         self.guild_id = guild_id
+        self.processing = False
 
     def get_game(self):
         return ai_games.get(self.user_id)
 
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        """ボタン共通の入口チェック。通ればTrue。失敗時は必ず応答を返す
+        （無応答returnを無くして『インタラクション失敗』を防ぐ）。"""
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return False
+        if self.processing:
+            await interaction.response.send_message("⏳ 処理中です…少し待ってね", ephemeral=True)
+            return False
+        if self.get_game() is None:
+            await interaction.response.send_message(
+                "⌛ このポーカーは終了しています（時間切れ、またはBOTの再起動）。\n"
+                "`/poker` でもう一度始めてね。", ephemeral=True)
+            return False
+        return True
+
     def advance_stage(self, game: dict):
         stage = game["stage"]
-        deck = game["deck"]
         if stage == "preflop":
             game["community_shown"] = game["community"][:3]
             game["stage"] = "flop"
@@ -487,26 +519,68 @@ class PokerAIView(discord.ui.View):
             game["stage"] = "river"
         elif stage == "river":
             game["stage"] = "showdown"
+        # 新ストリート：ベットをリセット（プレイヤー先手）
+        game["street_player"] = 0
+        game["street_ai"] = 0
+        game["street_bet"] = 0
+        game["raises"] = 0
 
-    async def do_ai_action(self, game: dict) -> str:
+    def _sync_buttons(self, game: dict):
+        """場況に応じてボタンの活殺を切り替える（コール額が無ければチェックのみ等）。"""
+        tc = game["street_bet"] - game["street_player"]
+        can_raise = game["raises"] < AI_MAX_RAISES
+        for ch in self.children:
+            if not isinstance(ch, discord.ui.Button):
+                continue
+            if ch.label == "コール":
+                ch.disabled = tc <= 0
+            elif ch.label == "チェック":
+                ch.disabled = tc > 0
+            elif ch.label == "レイズ":
+                ch.disabled = not can_raise
+            # フォールドは常時可能
+
+    def _ai_respond(self, game: dict):
+        """AIの応手。戻り値 (status, log)。status: fold|closed|need_player。
+        AI側のチップはハウス資金（実残高は動かさず pot/ai_bet のみ加算）。"""
+        tc_ai = game["street_bet"] - game["street_ai"]
         equity = ai_equity(game["ai_hand"], game["community_shown"])
-        to_call = game["player_bet"] - game["ai_bet"]  # AIが追いつくのに必要な額
-        action = ai_decide(equity, to_call, game["pot"], game["ante"])
-        ante = game["ante"]
+        decision = ai_decide(equity, tc_ai, game["pot"], game["ante"])
 
-        if action == "fold":
-            return "fold"
-        elif action == "raise":
-            raise_amount = min(ante * 2, 2000)
-            game["ai_bet"] += raise_amount
-            game["pot"] += raise_amount
-            return f"🔺 レイズ！ +{raise_amount:,} ナトコイン"
-        else:
-            diff = game["player_bet"] - game["ai_bet"]
-            if diff > 0:
-                game["ai_bet"] += diff
-                game["pot"] += diff
-            return "✅ コール"
+        if decision == "fold":
+            if tc_ai <= 0:
+                decision = "call"          # タダなら降りずチェック
+            else:
+                return ("fold", "🏳️ AIフォールド")
+        if decision == "raise" and game["raises"] >= AI_MAX_RAISES:
+            decision = "call"              # 上限到達 → コール/チェック
+
+        if decision == "raise":
+            unit = min(game["ante"] * 2, 2000)
+            new_level = game["street_bet"] + unit
+            pay = new_level - game["street_ai"]
+            game["street_ai"] += pay
+            game["ai_bet"] += pay
+            game["pot"] += pay
+            game["street_bet"] = game["street_ai"]
+            game["raises"] += 1
+            return ("need_player", f"🔺 AIレイズ +{pay:,}")
+
+        # call / check
+        if tc_ai > 0:
+            game["street_ai"] += tc_ai
+            game["ai_bet"] += tc_ai
+            game["pot"] += tc_ai
+            return ("closed", f"✅ AIコール {tc_ai:,}")
+        return ("closed", "⏭️ AIチェック")
+
+    async def _finish(self, interaction, game, embed):
+        """結果表示してゲーム終了（もう一回／戻るボタン）。"""
+        ai_games.pop(self.user_id, None)
+        self.clear_items()
+        self.add_item(PokerAgainButton(game["ante"], self.user_id))
+        self.add_item(PokerBackButton(self.user_id))
+        await interaction.response.edit_message(embed=embed, view=self)
 
     async def handle_player_action(self, interaction: discord.Interaction, action: str, raise_amount: int = 0):
         game = self.get_game()
@@ -514,70 +588,98 @@ class PokerAIView(discord.ui.View):
             await interaction.response.send_message("ゲームが見つかりません", ephemeral=True)
             return
 
-        player_log = ""
+        uid, g = self.user_id, self.guild_id
+        tc = game["street_bet"] - game["street_player"]
+
+        # ── フォールド ──
         if action == "fold":
-            new_bal = db.get_balance(self.user_id, self.guild_id)
+            new_bal = db.get_balance(uid, g)
             embed = discord.Embed(title="🤖 ポーカー vs AI — 結果", color=discord.Color.red())
-            embed.add_field(name="結果", value=f"🏳️ フォールド。AIの勝ち！\nポット {game['pot']:,} ナトコイン没収", inline=False)
+            embed.add_field(name="あなたの手札", value=hand_str(game["player_hand"]), inline=True)
+            embed.add_field(name="AIの手札", value=hand_str(game["ai_hand"]), inline=True)
+            embed.add_field(name="結果", value=f"🏳️ フォールド。AIの勝ち\n-{game['player_bet']:,} ナトコイン", inline=False)
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
-            ai_games.pop(self.user_id, None)
-            self.clear_items()
-            self.add_item(PokerAgainButton(game["ante"], self.user_id))
-            self.add_item(PokerBackButton(self.user_id))
-            await interaction.response.edit_message(embed=embed, view=self)
+            await self._finish(interaction, game, embed)
             return
 
-        elif action == "call":
-            diff = game["ai_bet"] - game["player_bet"]
-            if diff > 0:
-                bal = db.get_balance(self.user_id, self.guild_id)
-                if bal < diff:
-                    diff = bal
-                db.update_balance(self.user_id, self.guild_id, -diff)
-                game["player_bet"] += diff
-                game["pot"] += diff
-            player_log = "✅ コール"
-
-        elif action == "raise":
-            total = raise_amount
-            bal = db.get_balance(self.user_id, self.guild_id)
-            if bal < total:
-                await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
+        # ── プレイヤーの行動を適用 ──
+        if action == "check":
+            if tc > 0:
+                await interaction.response.send_message("❌ チェックできません（コールかフォールドを）", ephemeral=True)
                 return
-            db.update_balance(self.user_id, self.guild_id, -total)
-            game["player_bet"] += total
-            game["pot"] += total
-            player_log = f"🔺 レイズ +{total:,} ナトコイン"
-
-        elif action == "check":
             player_log = "⏭️ チェック"
+        elif action == "call":
+            if tc <= 0:
+                await interaction.response.send_message("❌ コールする額がありません（チェックを）", ephemeral=True)
+                return
+            bal = db.get_balance(uid, g)
+            pay = min(tc, bal)
+            db.update_balance(uid, g, -pay)
+            game["street_player"] += pay
+            game["player_bet"] += pay
+            game["pot"] += pay
+            player_log = f"✅ コール {pay:,}"
+        elif action == "raise":
+            if game["raises"] >= AI_MAX_RAISES:
+                await interaction.response.send_message("❌ これ以上レイズできません", ephemeral=True)
+                return
+            bal = db.get_balance(uid, g)
+            if bal <= tc:
+                await interaction.response.send_message(f"❌ レイズする残高が足りません（残高: {bal:,}）", ephemeral=True)
+                return
+            unit = min(game["ante"] * 2, 2000)
+            new_level = game["street_bet"] + unit
+            pay = min(new_level - game["street_player"], bal)
+            db.update_balance(uid, g, -pay)
+            game["street_player"] += pay
+            game["player_bet"] += pay
+            game["pot"] += pay
+            game["street_bet"] = game["street_player"]
+            game["raises"] += 1
+            player_log = f"🔺 レイズ +{pay:,}"
+        else:
+            return
 
-        # AIアクション
-        ai_log = await self.do_ai_action(game)
-        if ai_log == "fold":
-            # AIフォールド → プレイヤー勝ち
-            db.update_balance(self.user_id, self.guild_id, game["pot"])
-            new_bal = db.get_balance(self.user_id, self.guild_id)
+        # ── コールでベットが揃ったらストリート確定（AIは既に行動済み）──
+        if action == "call":
+            await self._after_street_closed(interaction, game, player_log, "")
+            return
+
+        # ── それ以外（チェック/ベット/レイズ）→ AIが応手 ──
+        status, ai_log = self._ai_respond(game)
+        if status == "fold":
+            db.update_balance(uid, g, game["pot"])
+            new_bal = db.get_balance(uid, g)
+            fold_net = game["pot"] - game.get("player_bet", 0)
             embed = discord.Embed(title="🤖 ポーカー vs AI — 結果", color=discord.Color.gold())
             embed.add_field(name="あなたの手札", value=hand_str(game["player_hand"]), inline=True)
             embed.add_field(name="AIの手札", value=hand_str(game["ai_hand"]), inline=True)
-            embed.add_field(name="結果", value=f"🏳️ AIがフォールド！あなたの勝ち！\n+{game['pot']:,} ナトコイン獲得！", inline=False)
+            embed.add_field(name="結果", value=f"🏳️ AIがフォールド！あなたの勝ち\n+{game['pot']:,} ナトコイン", inline=False)
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
-            ai_games.pop(self.user_id, None)
-            self.clear_items()
-            self.add_item(PokerAgainButton(game["ante"], self.user_id))
-            self.add_item(PokerBackButton(self.user_id))
+            await self._finish(interaction, game, embed)
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "ポーカー",
+                                   fold_net, balance=new_bal, detail="AIフォールド勝ち")
+            return
+
+        if status == "need_player":
+            # AIがレイズ → プレイヤーが応じる番。進行せずアクション画面を再表示
+            embed = build_ai_embed(game, f"あなた: {player_log}\nAI: {ai_log}\n→ あなたの番です")
+            self._sync_buttons(game)
             await interaction.response.edit_message(embed=embed, view=self)
             return
 
-        # ステージ進行
+        # status == closed → ストリート確定
+        await self._after_street_closed(interaction, game, player_log, ai_log)
+
+    async def _after_street_closed(self, interaction, game, player_log, ai_log):
         if game["stage"] == "river":
             await self.showdown(interaction, game, player_log, ai_log)
             return
-
         self.advance_stage(game)
-        combined_log = f"あなた: {player_log}\nAI: {ai_log}"
-        embed = build_ai_embed(game, combined_log)
+        log = f"あなた: {player_log}" + (f"\nAI: {ai_log}" if ai_log else "")
+        embed = build_ai_embed(game, log)
+        self._sync_buttons(game)
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def showdown(self, interaction, game, player_log, ai_log):
@@ -595,14 +697,17 @@ class PokerAIView(discord.ui.View):
             db.update_balance(self.user_id, self.guild_id, game["pot"])
             result_text = f"あなたの勝ち！ +{game['pot']:,} ナトコイン獲得！"
             embed.color = discord.Color.gold()
+            won_net = game["pot"] - game.get("player_bet", 0)
         elif ai_score > p_score:
             result_text = f"AIの勝ち！ -{game['player_bet']:,} ナトコイン損失"
             embed.color = discord.Color.red()
+            won_net = 0
         else:
             half = game["pot"] // 2
             db.update_balance(self.user_id, self.guild_id, half)
             result_text = f"引き分け！ {half:,} ナトコイン返還"
             embed.color = discord.Color.blue()
+            won_net = 0
 
         new_bal = db.get_balance(self.user_id, self.guild_id)
         embed.add_field(name="🏆 結果", value=result_text, inline=False)
@@ -614,37 +719,53 @@ class PokerAIView(discord.ui.View):
         self.add_item(PokerBackButton(self.user_id))
         await interaction.response.edit_message(embed=embed, view=self)
 
+        # 勝ち額が大きければBOT告知
+        if won_net >= 0:
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "ポーカー",
+                                   won_net, balance=new_bal, detail=p_name)
+
     @discord.ui.button(label="コール", style=discord.ButtonStyle.primary, emoji="✅", row=0)
     async def call(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+        if not await self._guard(interaction):
             return
-        await self.handle_player_action(interaction, "call")
+        self.processing = True
+        try:
+            await self.handle_player_action(interaction, "call")
+        finally:
+            self.processing = False
 
     @discord.ui.button(label="チェック", style=discord.ButtonStyle.secondary, emoji="⏭️", row=0)
     async def check(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+        if not await self._guard(interaction):
             return
-        await self.handle_player_action(interaction, "check")
+        self.processing = True
+        try:
+            await self.handle_player_action(interaction, "check")
+        finally:
+            self.processing = False
 
     @discord.ui.button(label="レイズ", style=discord.ButtonStyle.danger, emoji="🔺", row=0)
     async def raise_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+        if not await self._guard(interaction):
             return
         game = self.get_game()
-        if not game:
-            return
         amount = min(game["ante"] * 2, 2000)   # レイズは最大2,000ナトコインまで
-        await self.handle_player_action(interaction, "raise", raise_amount=amount)
+        self.processing = True
+        try:
+            await self.handle_player_action(interaction, "raise", raise_amount=amount)
+        finally:
+            self.processing = False
 
     @discord.ui.button(label="フォールド", style=discord.ButtonStyle.secondary, emoji="🏳️", row=1)
     async def fold(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+        if not await self._guard(interaction):
             return
-        await self.handle_player_action(interaction, "fold")
+        self.processing = True
+        try:
+            await self.handle_player_action(interaction, "fold")
+        finally:
+            self.processing = False
 
     async def on_timeout(self):
         ai_games.pop(self.user_id, None)
@@ -676,14 +797,11 @@ class PokerAgainButton(discord.ui.Button):
         player_hand = [deck.pop(), deck.pop()]
         ai_hand = [deck.pop(), deck.pop()]
         community = [deck.pop() for _ in range(5)]
-        ai_games[uid] = {
-            "guild_id": guild_id, "ante": self.ante, "deck": deck,
-            "player_hand": player_hand, "ai_hand": ai_hand, "community": community,
-            "community_shown": [], "stage": "preflop",
-            "pot": self.ante * 2, "player_bet": self.ante, "ai_bet": self.ante,
-        }
-        embed = build_ai_embed(ai_games[uid], "ゲーム開始！コール・チェック・レイズ・フォールドで行動してね")
-        await interaction.response.edit_message(embed=embed, view=PokerAIView(uid, guild_id))
+        ai_games[uid] = _new_ai_game(guild_id, self.ante, deck, player_hand, ai_hand, community)
+        embed = build_ai_embed(ai_games[uid], "ゲーム開始！チェック・ベット（レイズ）・フォールドで行動してね")
+        view = PokerAIView(uid, guild_id)
+        view._sync_buttons(ai_games[uid])
+        await interaction.response.edit_message(embed=embed, view=view)
 
 class PokerBackButton(discord.ui.Button):
     def __init__(self, user_id: str):
@@ -730,22 +848,11 @@ class PokerModeView(discord.ui.View):
         ai_hand = [deck.pop(), deck.pop()]
         community = [deck.pop() for _ in range(5)]
 
-        ai_games[uid] = {
-            "guild_id": guild_id,
-            "ante": ante,
-            "deck": deck,
-            "player_hand": player_hand,
-            "ai_hand": ai_hand,
-            "community": community,
-            "community_shown": [],
-            "stage": "preflop",
-            "pot": ante * 2,  # アンティ両者分
-            "player_bet": ante,
-            "ai_bet": ante,
-        }
+        ai_games[uid] = _new_ai_game(guild_id, ante, deck, player_hand, ai_hand, community)
 
-        embed = build_ai_embed(ai_games[uid], "ゲーム開始！コール・チェック・レイズ・フォールドで行動してね")
+        embed = build_ai_embed(ai_games[uid], "ゲーム開始！チェック・ベット（レイズ）・フォールドで行動してね")
         view = PokerAIView(uid, guild_id)
+        view._sync_buttons(ai_games[uid])
         await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="⚔️ 人と対戦", style=discord.ButtonStyle.success)

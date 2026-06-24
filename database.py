@@ -78,6 +78,10 @@ class Database:
             treasure_maps INTEGER DEFAULT 0,
             last_area TEXT DEFAULT 'lake'
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS chinchiro_ban (
+            user_id TEXT, guild_id TEXT, ban_date TEXT,
+            PRIMARY KEY (user_id, guild_id)
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -131,6 +135,35 @@ class Database:
             )
         conn.commit()
         conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # チンチロ 本日出禁（払えず追い出された人。日付が変われば自動解除）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def ban_chinchiro_today(self, user_id, guild_id, today):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute(
+            "UPDATE chinchiro_ban SET ban_date = ? WHERE user_id = ? AND guild_id = ?",
+            (today, user_id, guild_id),
+        )
+        if c.rowcount == 0:
+            c.execute(
+                "INSERT INTO chinchiro_ban (user_id, guild_id, ban_date) VALUES (?, ?, ?)",
+                (user_id, guild_id, today),
+            )
+        conn.commit()
+        conn.close()
+
+    def is_chinchiro_banned(self, user_id, guild_id, today):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute(
+            "SELECT ban_date FROM chinchiro_ban WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        row = c.fetchone()
+        conn.close()
+        return bool(row and row[0] == today)
 
     def get_ranking(self, guild_id, limit=10):
         conn = self.get_conn()

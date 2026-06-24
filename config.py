@@ -491,6 +491,25 @@ ZUKAN_ALL_BONUS      = 90000
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TREASURE_MAP_DROP_RATE = 0.05   # ごみを釣った時、5%で「宝の地図」になる
 
+# ── レアなゴミ（ごみの中に低確率で混ざる。売値はALL 1000コイン）──
+#   宝の地図を引かなかったごみ抽選の中で、さらにこの確率でレアごみに昇格する。
+#   エリア別に2種類ずつ（湖・川・海）。図鑑は各エリアの「ごみ」に並ぶ。
+RARE_TRASH_RATE = 0.03   # ごみのうち約3%がレアごみに
+RARE_TRASH_BY_AREA = {
+    "lake":  [
+        {"name": "古銭の束",            "value": 1000, "emoji": "🪙"},
+        {"name": "アンティークのカギ",   "value": 1000, "emoji": "🗝️"},
+    ],
+    "river": [
+        {"name": "油まみれの高級腕時計", "value": 1000, "emoji": "⌚"},
+        {"name": "金歯",                "value": 1000, "emoji": "🦷"},
+    ],
+    "sea":   [
+        {"name": "防水ケース入りスマホ", "value": 1000, "emoji": "📱"},
+        {"name": "片方だけのダイヤピアス","value": 1000, "emoji": "💎"},
+    ],
+}
+
 # 宝の地図を使った時の抽選（rank, 確率, (最小, 最大)報酬）
 TREASURE_OUTCOMES = [
     ("miss",    0.509, (0, 0)),
@@ -851,7 +870,7 @@ SEA_FISH = [
     {"name":"空き缶",        "rarity":"trash",      "value":0,     "emoji":"🥫"},
     {"name":"古い錨",        "rarity":"trash",      "value":0,     "emoji":"⚓"},
     {"name":"謎の瓶",        "rarity":"trash",      "value":30,    "emoji":"🍾"},
-    {"name":"海賊の地図",    "rarity":"trash",      "value":30,    "emoji":"🗺️"},
+    {"name":"ボロボロの紙くず",  "rarity":"trash",      "value":30,    "emoji":"📄"},
     {"name":"錆びた缶詰",    "rarity":"trash",      "value":0,     "emoji":"🥫"},
     {"name":"ともせの眼鏡",  "rarity":"trash",      "value":0,     "emoji":"👓"},
     {"name":"ビニール袋",    "rarity":"trash",      "value":0,     "emoji":"🛍️"},
@@ -914,6 +933,16 @@ SEA_FISH = [
     {"name":"シーラカンス",  "rarity":"legend",     "value":22500, "emoji":"👑"},
     {"name":"ラブカ",        "rarity":"legend",     "value":30000, "emoji":"😱"},
 ]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🎊 大勝利アナウンス（BOT告知）
+#   1回の勝ち額がこの値以上になったら、プレイ中のチャンネルにBOTが告知する。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BIG_WIN_ANNOUNCE = 10000
+
+# 大勝利アナウンスを出す固定チャンネルID。
+#   0 にすると「ゲームを遊んだチャンネル」にそのまま出す（従来動作）。
+BIG_WIN_ANNOUNCE_CHANNEL_ID = 1519413046039019712
 
 CHINCHIRO_AI_PAYOUT = 1.00   # テラ銭は取らない（=100%払い戻し）。公平勝負。
 
