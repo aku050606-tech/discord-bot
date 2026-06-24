@@ -238,13 +238,13 @@ class BlackjackAIView(discord.ui.View):
             embed.add_field(name="結果", value=result, inline=False)
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(self.user_id, None)
-            self.clear_items()
-            self.add_item(BJAgainButton(game["bet"] if "bet" in game else bet, self.user_id, self.guild_id))
-            self.add_item(BJBackButton(self.user_id))
+            net = refund - bet
+            end_view = _bj_post_view(self.user_id, self.guild_id, bet, net)
         else:
             embed.add_field(name="ディーラーの手札", value=hand_str(game["dealer"], hide_second=True), inline=False)
             embed.set_footer(text=f"賭け: {bet:,} ナトコイン")
-        await interaction.response.edit_message(embed=embed, view=self)
+            end_view = self
+        await interaction.response.edit_message(embed=embed, view=end_view)
 
     @discord.ui.button(label="ヒット", style=discord.ButtonStyle.primary, emoji="👆")
     async def hit(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -333,9 +333,7 @@ class BJAgainButton(discord.ui.Button):
             embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} ナトコイン（1.5倍）", inline=False)
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(uid, None)
-            view.clear_items()
-            view.add_item(BJAgainButton(bet, uid, guild_id))
-            view.add_item(BJBackButton(uid))
+            view = _bj_post_view(uid, guild_id, bet, winnings)
         await interaction.response.edit_message(embed=embed, view=view)
 
 class BJBackButton(discord.ui.Button):
@@ -349,6 +347,25 @@ class BJBackButton(discord.ui.Button):
             return
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 勝利後のView（ダブルアップ or もう一回）共通
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _bj_again_view(bet, uid, guild_id):
+    v = discord.ui.View(timeout=60)
+    v.add_item(BJAgainButton(bet, uid, guild_id))
+    v.add_item(BJBackButton(uid))
+    return v
+
+
+def _bj_post_view(uid, guild_id, bet, net):
+    """net>0ならダブルアップ入口、それ以外は通常のもう一回View。"""
+    if net > 0:
+        from cogs.doubleup import build_entry_view
+        return build_entry_view(uid, guild_id, net, "ブラックジャック",
+                                lambda: _bj_again_view(bet, uid, guild_id))
+    return _bj_again_view(bet, uid, guild_id)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -392,9 +409,7 @@ class BlackjackModeView(discord.ui.View):
             embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} ナトコイン（1.5倍）", inline=False)
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(user_id, None)
-            view.clear_items()
-            view.add_item(BJAgainButton(bet, user_id, guild_id))
-            view.add_item(BJBackButton(user_id))
+            view = _bj_post_view(user_id, guild_id, bet, winnings)
         await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="⚔️ 人と対戦", style=discord.ButtonStyle.success)

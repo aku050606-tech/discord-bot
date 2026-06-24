@@ -326,7 +326,13 @@ class CoinflipChoiceView(discord.ui.View):
         embed.add_field(name="あなた", value="表" if choice == "heads" else "裏", inline=True)
         embed.add_field(name="判定", value=f"{'🎉 勝ち！' if won else '😢 負け...'} {net:+,} ナトコイン", inline=False)
         embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
-        await interaction.response.edit_message(embed=embed, view=CoinflipAgainView(self.bet, self.user_id))
+        if won and net > 0:
+            from cogs.doubleup import build_entry_view
+            view = build_entry_view(uid, guild_id, net, "コインフリップ",
+                                    lambda: CoinflipAgainView(self.bet, self.user_id))
+        else:
+            view = CoinflipAgainView(self.bet, self.user_id)
+        await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="表 (Heads)", style=discord.ButtonStyle.primary)
     async def heads(self, interaction: discord.Interaction, button: discord.ui.Button):

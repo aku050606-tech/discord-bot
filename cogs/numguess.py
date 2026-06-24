@@ -6,10 +6,11 @@ import random
 
 db = Database()
 
-MAX_TRIES = 7
+MAX_TRIES = 5
 
-# 配当表：1回目99倍、早いほど高配当
-MULTIPLIERS = {1: 99, 2: 15, 3: 10, 4: 7, 5: 5, 6: 3, 7: 1.5}
+# 配当表：1回目は夢の×50！ 5回・ヒントありで出率≒105%（最適プレイ時）。
+# 5回だと二分探索でも全部は当てられない（31/100が当たり圏）＝ギャンブル性あり。
+MULTIPLIERS = {1: 50, 2: 8, 3: 3, 4: 1.4, 5: 1.0}
 
 # 進行中ゲーム
 active_games: dict[str, dict] = {}
@@ -91,7 +92,14 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
             )
             embed.add_field(name="獲得ナトコイン", value=f"+{winnings:,} ナトコイン", inline=True)
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
-            await interaction.response.edit_message(embed=embed, view=NumguessResultView(bet, self.user_id))
+            net = winnings - bet
+            if net > 0:
+                from cogs.doubleup import build_entry_view
+                view = build_entry_view(self.user_id, self.guild_id, net, "数字当て",
+                                        lambda: NumguessResultView(bet, self.user_id))
+            else:
+                view = NumguessResultView(bet, self.user_id)
+            await interaction.response.edit_message(embed=embed, view=view)
 
         elif tries >= MAX_TRIES:
             # ゲームオーバー

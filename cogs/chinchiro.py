@@ -123,6 +123,10 @@ class ChinchiroAIView(discord.ui.View):
         embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
 
         view = ChinchiroAgainView(self.user_id, self.guild_id, self.bet)
+        if net > 0:
+            from cogs.doubleup import build_entry_view
+            view = build_entry_view(self.user_id, self.guild_id, net, "チンチロ",
+                                    lambda: ChinchiroAgainView(self.user_id, self.guild_id, self.bet))
         await interaction.response.edit_message(embed=embed, view=view)
 
 class ChinchiroAgainView(discord.ui.View):
