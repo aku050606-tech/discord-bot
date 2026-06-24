@@ -119,7 +119,7 @@ GOD_TRIGGER_GROUP = {
 }
 
 # ── GODランク定義 ──
-GOD_ZONE_NAME = "EVENT HORIZON"
+GOD_ZONE_NAME = "GRAVITAS GAME"
 GOD_RANKS = [   # 子役で到達できるランク（上限PULSAR）
     {"key": "nova",      "name": "NOVA",      "rate": 0.25, "emoji": "💫"},
     {"key": "flare",     "name": "FLARE",     "rate": 0.50, "emoji": "🔥"},
@@ -239,11 +239,8 @@ SLOT_EFFECT_WEIGHTS = {
 #     (絵文字, 1行目, 2行目)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 GOD_ENTRY_EFFECTS = [
-    ("☯️", "EVENT HORIZON", "── 事象の地平線を、超えた。"),
-    ("🌀", "空間が、歪む──", "重力に呑まれていく…！"),
-    ("🌑", "……と、思いきや。", "引き返せない領域へ。"),
-    ("💥", "臨界、突破ァ！！", "新しい星が、生まれる──"),
-    ("☯️", "──　確定。", "GOD、来た。"),   # ☯️確定演出から繋ぐ版
+    ("☯️", "GRAVITAS GAME", "── 事象の地平線を、超えた。"),
+    ("☯️", "──　確定。", "GRAVITAS GAME へ、ようこそ。"),
 ]
 
 # ②-B 聖域突入演出（専用・7秒3ビート）

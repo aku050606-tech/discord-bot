@@ -257,7 +257,7 @@ class SlotMachineButton(discord.ui.Button):
             "pending": None, "pending_god": None, "spinning": False, "sid": uuid.uuid4().hex,
         }
         embed = discord.Embed(
-            title=f"🎰 SLOT — {self.machine_no}番台",
+            title=f"🎰 GRAVITAS — {self.machine_no}番台",
             description=(f"**{SLOT_BET}ナトコイン**掛け\n"
                          f"設定は回して確かめよう。\n"
                          f"☯️ **{GOD_ZONE_NAME}** を目指せ──"),
@@ -269,7 +269,7 @@ class SlotMachineButton(discord.ui.Button):
 
 def build_select_embed() -> discord.Embed:
     return discord.Embed(
-        title="🎰 SLOT — 台選択",
+        title="🎰 GRAVITAS — 台選択",
         description=f"**{SLOT_BET}ナトコイン**掛け\n1〜10番台から選んでください！",
         color=discord.Color.dark_purple()
     )
@@ -734,7 +734,7 @@ class Slot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="slot", description="スロット — EVENT HORIZONを目指せ")
+    @app_commands.command(name="slot", description="GRAVITAS — GRAVITAS GAMEを目指せ")
     async def slot(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         g = active_slots.get(uid)
