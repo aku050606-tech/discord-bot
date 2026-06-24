@@ -30,6 +30,7 @@ async def load_extensions():
     await bot.load_extension("cogs.chinchiro")
     await bot.load_extension("cogs.shop")
     await bot.load_extension("cogs.menu")
+    await bot.load_extension("cogs.admin")
 
 @bot.event
 async def on_ready():

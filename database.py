@@ -280,6 +280,15 @@ class Database:
         conn.commit()
         conn.close()
 
+    def get_guild_users(self, guild_id):
+        """そのサーバーに残高レコードを持つ全ユーザーIDを返す（全員配布用）"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT user_id FROM economy WHERE guild_id = ?", (guild_id,))
+        users = [r[0] for r in c.fetchall()]
+        conn.close()
+        return users
+
     def get_all_zukan_stats(self, guild_id):
         conn = self.get_conn()
         c = conn.cursor()
