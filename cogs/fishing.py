@@ -83,7 +83,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
 
     bal = db.get_balance(uid, guild_id)
     if bal < cost:
-        await _send_error(f"❌ コインが足りません（{area_info['name']}は{cost}コイン / 残高: {bal:,}）")
+        await _send_error(f"❌ ナトコインが足りません（{area_info['name']}は{cost}ナトコイン / 残高: {bal:,}）")
         return
 
     if cost > 0:
@@ -167,7 +167,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             db.set_zukan_bonus(uid, f"complete_{area}")
             db.update_balance(uid, guild_id, ZUKAN_COMPLETE_BONUS)
             new_bal = db.get_balance(uid, guild_id)
-            bonus_msg = f"\n🎊 **{area_info['name']}図鑑コンプリート！** +{ZUKAN_COMPLETE_BONUS:,} コイン！"
+            bonus_msg = f"\n🎊 **{area_info['name']}図鑑コンプリート！** +{ZUKAN_COMPLETE_BONUS:,} ナトコイン！"
 
     if not db.check_zukan_bonus(uid, "complete_all"):
         all_complete = True
@@ -181,7 +181,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             db.set_zukan_bonus(uid, "complete_all")
             db.update_balance(uid, guild_id, ZUKAN_ALL_BONUS)
             new_bal = db.get_balance(uid, guild_id)
-            bonus_msg += f"\n🌟 **全図鑑コンプリート！** +{ZUKAN_ALL_BONUS:,} コイン！！"
+            bonus_msg += f"\n🌟 **全図鑑コンプリート！** +{ZUKAN_ALL_BONUS:,} ナトコイン！！"
 
     # ウェイト時間（レア度に応じて：SR以上は長めの溜め）
     wait_time = FISHING_WAIT_SUPER if rarity in ("super_rare", "legend") else FISHING_WAIT_NORMAL
@@ -213,10 +213,10 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     desc = ""
     if rarity == "trash":
         embed3.title = f"{fish['emoji']} {fish['name']}"
-        desc = f"ゴミだった...\n換金額: **0コイン**"
+        desc = f"ゴミだった...\n換金額: **0ナトコイン**"
     else:
         embed3.title = f"{display_emoji} {display_name} を釣り上げた！"
-        desc = f"レアリティ: **{rarity_label}**\n換金額: **{value:,} コイン**"
+        desc = f"レアリティ: **{rarity_label}**\n換金額: **{value:,} ナトコイン**"
         if is_golden:
             desc += "\n👑 **金冠！** 通常の2倍！"
         if is_new:
@@ -231,7 +231,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
     rod_uses = gear["rod_uses"] if gear["rod_uses"] < 999999 else "∞"
     embed3.description = desc
-    embed3.set_footer(text=f"残高: {new_bal:,} コイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
+    embed3.set_footer(text=f"残高: {new_bal:,} ナトコイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
     pad_embed(embed3, target_fields=4)
 
     view = FishResultView(area, show_shadow, uid, guild_id)
@@ -256,15 +256,15 @@ class FishResultView(discord.ui.View):
     async def back_area(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import FishMenuView
         embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10コイン\n竹竿でOK", inline=True)
-        embed.add_field(name="🏔️ 川", value="50コイン\nグラス竿以上", inline=True)
-        embed.add_field(name="🌊 海", value="100コイン\nカーボン竿以上", inline=True)
+        embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
+        embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
+        embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
         await interaction.response.edit_message(embed=embed, view=FishMenuView())
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back_menu(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
 
 
 class ShadowButton(discord.ui.Button):
@@ -313,7 +313,7 @@ class ShadowChoiceView(discord.ui.View):
             new_bal = db.get_balance(self.uid, self.guild_id)
             embed = discord.Embed(
                 title=f"💥 {boss['emoji']} {boss['name']} を釣り上げた！！！",
-                description=f"伝説の生物が釣れた！！！\n換金額: **{BOSS_REWARD:,} コイン**\n残高: **{new_bal:,} コイン**",
+                description=f"伝説の生物が釣れた！！！\n換金額: **{BOSS_REWARD:,} ナトコイン**\n残高: **{new_bal:,} ナトコイン**",
                 color=discord.Color.red()
             )
         else:
@@ -349,7 +349,7 @@ class BackToFishView(discord.ui.View):
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
 
 
 class Fishing(commands.Cog):
@@ -360,9 +360,9 @@ class Fishing(commands.Cog):
     async def fish(self, interaction: discord.Interaction):
         from cogs.menu import FishMenuView
         embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10コイン\n竹竿でOK", inline=True)
-        embed.add_field(name="🏔️ 川", value="50コイン\nグラス竿以上", inline=True)
-        embed.add_field(name="🌊 海", value="100コイン\nカーボン竿以上", inline=True)
+        embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
+        embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
+        embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
         await interaction.response.send_message(embed=embed, view=FishMenuView())
 
 async def setup(bot):

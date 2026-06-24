@@ -249,7 +249,7 @@ class SlotMachineButton(discord.ui.Button):
             await interaction.response.send_message("❌ すでにプレイ中です", ephemeral=True); return
         bal = db.get_balance(uid, guild_id)
         if bal < SLOT_BET:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True); return
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True); return
         setting = get_machine_setting(self.machine_no)
         active_slots[uid] = {
             "machine": self.machine_no, "setting": setting, "guild_id": guild_id,
@@ -258,13 +258,21 @@ class SlotMachineButton(discord.ui.Button):
         }
         embed = discord.Embed(
             title=f"🎰 SLOT — {self.machine_no}番台",
-            description=(f"**{SLOT_BET}コイン**掛け\n"
+            description=(f"**{SLOT_BET}ナトコイン**掛け\n"
                          f"設定は回して確かめよう。\n"
                          f"☯️ **{GOD_ZONE_NAME}** を目指せ──"),
             color=discord.Color.dark_purple()
         )
-        embed.add_field(name="残高", value=f"{bal:,} コイン", inline=True)
+        embed.add_field(name="残高", value=f"{bal:,} ナトコイン", inline=True)
         await interaction.response.edit_message(embed=embed, view=SlotGameView(uid))
+
+
+def build_select_embed() -> discord.Embed:
+    return discord.Embed(
+        title="🎰 SLOT — 台選択",
+        description=f"**{SLOT_BET}ナトコイン**掛け\n1〜10番台から選んでください！",
+        color=discord.Color.dark_purple()
+    )
 
 
 class SlotSelectView(discord.ui.View):
@@ -276,7 +284,7 @@ class SlotSelectView(discord.ui.View):
     @discord.ui.button(label="🏠 戻る", style=discord.ButtonStyle.secondary, row=4)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
 
 
 # ── 通常/GOD進行用View（回す・やめる）──
@@ -307,14 +315,20 @@ class SlotGameView(discord.ui.View):
             if gg:
                 gg["spinning"] = False
 
-    @discord.ui.button(label="やめる", style=discord.ButtonStyle.secondary, emoji="🚪")
-    async def quit_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="🎰 台選択に戻る", style=discord.ButtonStyle.secondary, row=1)
+    async def to_select(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
         active_slots.pop(self.user_id, None)
-        embed = discord.Embed(title="🚪 終了", description="またね！", color=discord.Color.dark_gray())
-        self.clear_items()
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.edit_message(embed=build_select_embed(), view=SlotSelectView())
+
+    @discord.ui.button(label="🏠 メニューに戻る", style=discord.ButtonStyle.secondary, row=1)
+    async def to_menu(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
+        active_slots.pop(self.user_id, None)
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
 
     async def on_timeout(self):
         await _handle_timeout(self)
@@ -445,10 +459,10 @@ async def _normal_spin(interaction, uid):
 
     # ───── 通常ゲーム ─────
     if bal < SLOT_BET:
-        await interaction.followup.send("❌ コインが足りません", ephemeral=True); return
+        await interaction.followup.send("❌ ナトコインが足りません", ephemeral=True); return
     db.update_balance(uid, guild_id, -SLOT_BET)
     res = roll_normal_spin(g["setting"])
-    # 払い出しは演出前に確定（途中で落ちてもコイン保全）
+    # 払い出しは演出前に確定（途中で落ちてもナトコイン保全）
     if res.get("payout"):
         db.update_balance(uid, guild_id, res["payout"])
 
@@ -484,8 +498,8 @@ async def _normal_spin(interaction, uid):
     e = discord.Embed(title=title, description=f"```\n{get_reel(reel_key)}\n```",
                       color=discord.Color.blue() if payout else discord.Color.dark_gray())
     if payout:
-        e.add_field(name="獲得", value=f"+{payout:,} コイン", inline=True)
-    e.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+        e.add_field(name="獲得", value=f"+{payout:,} ナトコイン", inline=True)
+    e.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
     pad_embed(e, target_fields=4)
     await render(interaction, uid, e)
 
@@ -586,7 +600,7 @@ async def _advance_god(interaction, uid):
                       color=discord.Color.from_rgb(150, 60, 220))
     e.add_field(name="今回", value=f"+{r['payout']:,}", inline=True)
     e.add_field(name="セット", value=f"{cur_set}", inline=True)
-    e.add_field(name="累計", value=f"{god['total']:,} コイン", inline=True)
+    e.add_field(name="累計", value=f"{god['total']:,} ナトコイン", inline=True)
 
     if r["set_done"]:
         # 1セット(10G)完走 → 継続抽選を「狙え」で開示
@@ -652,8 +666,8 @@ async def _reveal_aim(interaction, uid):
                           color=color)
         e.add_field(name="ランク", value=f"{info['emoji']} **{info['name']}**", inline=True)
         e.add_field(name="セット", value=f"{g['god']['sets']}", inline=True)
-        e.add_field(name="累計", value=f"{g['god']['total']:,} コイン", inline=True)
-        e.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+        e.add_field(name="累計", value=f"{g['god']['total']:,} ナトコイン", inline=True)
+        e.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
         pad_embed(e, target_fields=5)
         await render(interaction, uid, e)
     else:
@@ -698,8 +712,8 @@ async def _finish_god(interaction, uid, feint=False):
     e = discord.Embed(title=head, description=finish_line, color=color)
     e.add_field(name="到達ランク", value=f"{mx['emoji']} **{mx['name']}**", inline=True)
     e.add_field(name="セット数", value=f"{sets}", inline=True)
-    e.add_field(name="💰 一撃合計", value=f"**{total:,}** コイン", inline=False)
-    e.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+    e.add_field(name="💰 一撃合計", value=f"**{total:,}** ナトコイン", inline=False)
+    e.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
     pad_embed(e, target_fields=5)
 
     g = _alive(uid, sid)
@@ -730,12 +744,7 @@ class Slot(commands.Cog):
             await interaction.response.send_message(
                 "⏳ 演出の途中です。数秒待ってからもう一度お試しください。", ephemeral=True); return
         active_slots.pop(uid, None)
-        embed = discord.Embed(
-            title="🎰 SLOT — 台選択",
-            description=f"**{SLOT_BET}コイン**掛け\n1〜10番台から選んでください！",
-            color=discord.Color.dark_purple()
-        )
-        await interaction.response.send_message(embed=embed, view=SlotSelectView())
+        await interaction.response.send_message(embed=build_select_embed(), view=SlotSelectView())
 
 
 async def setup(bot):

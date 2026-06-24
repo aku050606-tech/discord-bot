@@ -39,7 +39,7 @@ class ShopView(discord.ui.View):
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
 
 
 async def show_rod_shop(interaction: discord.Interaction):
@@ -53,13 +53,13 @@ async def show_rod_shop(interaction: discord.Interaction):
         description="竿は「耐久性」で消耗。消費量 → 🏞️湖 1 ／ 🏔️川 2 ／ 🌊海 3（海ほど早く減る）",
         color=discord.Color.green()
     )
-    embed.set_footer(text=f"残高: {bal:,} コイン | 現在の装備: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）")
+    embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在の装備: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）")
 
     for rod_id, rod in FISHING_RODS.items():
         inv_uses = gear["rod_inventory"].get(rod_id, 0)
         status = f"所持中（耐久 {inv_uses}）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["rod_id"] == rod_id else ""
-        price_str = "無料" if rod["price"] == 0 else f"{rod['price']:,}コイン"
+        price_str = "無料" if rod["price"] == 0 else f"{rod['price']:,}ナトコイン"
         if rod.get("river_ban"):
             area_str = "行ける場所: 🏞️湖 のみ"
         elif rod.get("sea_ban"):
@@ -83,13 +83,13 @@ async def show_reel_shop(interaction: discord.Interaction):
     bal = db.get_balance(uid, guild_id)
 
     embed = discord.Embed(title="🎡 リールショップ", color=discord.Color.blue())
-    embed.set_footer(text=f"残高: {bal:,} コイン | 現在: {FISHING_REELS[gear['reel_id']]['name']}（残り{gear['reel_uses'] if gear['reel_uses'] < 999999 else '∞'}回）")
+    embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在: {FISHING_REELS[gear['reel_id']]['name']}（残り{gear['reel_uses'] if gear['reel_uses'] < 999999 else '∞'}回）")
 
     for reel_id, reel in FISHING_REELS.items():
         inv_uses = gear["reel_inventory"].get(reel_id, 0)
         status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["reel_id"] == reel_id else ""
-        price_str = "無料" if reel["price"] == 0 else f"{reel['price']:,}コイン"
+        price_str = "無料" if reel["price"] == 0 else f"{reel['price']:,}ナトコイン"
         parts = []
         bs = _stars(reel.get("boss_appear_bonus", 0), _REEL_BOSS_MAX)
         cs = _stars(reel.get("crown_bonus", 0), _REEL_CROWN_MAX)
@@ -115,13 +115,13 @@ async def show_line_shop(interaction: discord.Interaction):
     bal = db.get_balance(uid, guild_id)
 
     embed = discord.Embed(title="🧵 ラインショップ", color=discord.Color.purple())
-    embed.set_footer(text=f"残高: {bal:,} コイン | 現在: {FISHING_LINES[gear['line_id']]['name']}（残り{gear['line_uses'] if gear['line_uses'] < 999999 else '∞'}回）")
+    embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在: {FISHING_LINES[gear['line_id']]['name']}（残り{gear['line_uses'] if gear['line_uses'] < 999999 else '∞'}回）")
 
     for line_id, line in FISHING_LINES.items():
         inv_uses = gear["line_inventory"].get(line_id, 0)
         status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["line_id"] == line_id else ""
-        price_str = "無料" if line["price"] == 0 else f"{line['price']:,}コイン"
+        price_str = "無料" if line["price"] == 0 else f"{line['price']:,}ナトコイン"
         parts = []
         cs = _stars(line.get("crown_bonus", 0), _LINE_CROWN_MAX)
         if cs:
@@ -200,7 +200,7 @@ class RodShopView(discord.ui.View):
 
 class BuyRodButton(discord.ui.Button):
     def __init__(self, rod_id, rod, uid, guild_id):
-        super().__init__(label=f"{rod['name']} {rod['price']:,}コイン", style=discord.ButtonStyle.success)
+        super().__init__(label=f"{rod['name']} {rod['price']:,}ナトコイン", style=discord.ButtonStyle.success)
         self.rod_id = rod_id
         self.rod = rod
         self.uid = uid
@@ -213,7 +213,7 @@ class BuyRodButton(discord.ui.Button):
 
         bal = db.get_balance(self.uid, self.guild_id)
         if bal < self.rod["price"]:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         gear = db.get_gear(self.uid)
@@ -250,7 +250,7 @@ class ReelShopView(discord.ui.View):
 
 class BuyReelButton(discord.ui.Button):
     def __init__(self, reel_id, reel, uid, guild_id):
-        super().__init__(label=f"{reel['name']} {reel['price']:,}コイン", style=discord.ButtonStyle.success)
+        super().__init__(label=f"{reel['name']} {reel['price']:,}ナトコイン", style=discord.ButtonStyle.success)
         self.reel_id = reel_id
         self.reel = reel
         self.uid = uid
@@ -263,7 +263,7 @@ class BuyReelButton(discord.ui.Button):
 
         bal = db.get_balance(self.uid, self.guild_id)
         if bal < self.reel["price"]:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         gear = db.get_gear(self.uid)
@@ -299,7 +299,7 @@ class LineShopView(discord.ui.View):
 
 class BuyLineButton(discord.ui.Button):
     def __init__(self, line_id, line, uid, guild_id):
-        super().__init__(label=f"{line['name']} {line['price']:,}コイン", style=discord.ButtonStyle.success)
+        super().__init__(label=f"{line['name']} {line['price']:,}ナトコイン", style=discord.ButtonStyle.success)
         self.line_id = line_id
         self.line = line
         self.uid = uid
@@ -312,7 +312,7 @@ class BuyLineButton(discord.ui.Button):
 
         bal = db.get_balance(self.uid, self.guild_id)
         if bal < self.line["price"]:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         gear = db.get_gear(self.uid)

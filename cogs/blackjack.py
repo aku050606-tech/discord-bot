@@ -63,7 +63,7 @@ def build_pvp_embed(room: dict, phase_ended=False) -> discord.Embed:
             embed.add_field(name=f"{p1['name']} の手札", value=hand_str(p1["hand"]), inline=False)
             embed.add_field(name=f"🎮 {p2['name']} の番（{v2}）", value=hand_str(p2["hand"]), inline=False)
 
-    embed.add_field(name="ポット", value=f"{room['pot']:,} コイン", inline=True)
+    embed.add_field(name="ポット", value=f"{room['pot']:,} ナトコイン", inline=True)
     return embed
 
 
@@ -173,7 +173,7 @@ class PvPWaitView(discord.ui.View):
 
         bal = db.get_balance(uid, room["guild_id"])
         if bal < room["bet"]:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         db.update_balance(uid, room["guild_id"], -room["bet"])
@@ -224,26 +224,26 @@ class BlackjackAIView(discord.ui.View):
             embed.add_field(name=f"ディーラーの手札（{d_val}）", value=hand_str(game["dealer"]), inline=False)
             # 賭け金はゲーム開始時に引き済み → 勝ちはbet*2返却、引き分けはbet返却、負けは0
             if p_val > 21:
-                result, refund, color = f"💥 バスト！ -{bet:,} コイン", 0, discord.Color.red()
+                result, refund, color = f"💥 バスト！ -{bet:,} ナトコイン", 0, discord.Color.red()
             elif d_val > 21 or p_val > d_val:
-                result, refund, color = f"🎉 勝ち！ +{bet:,} コイン", bet * 2, discord.Color.gold()
+                result, refund, color = f"🎉 勝ち！ +{bet:,} ナトコイン", bet * 2, discord.Color.gold()
             elif p_val == d_val:
                 result, refund, color = "🤝 引き分け！ ±0", bet, discord.Color.blue()
             else:
-                result, refund, color = f"😢 負け！ -{bet:,} コイン", 0, discord.Color.red()
+                result, refund, color = f"😢 負け！ -{bet:,} ナトコイン", 0, discord.Color.red()
             embed.color = color
             if refund > 0:
                 db.update_balance(self.user_id, self.guild_id, refund)
             new_bal = db.get_balance(self.user_id, self.guild_id)
             embed.add_field(name="結果", value=result, inline=False)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(self.user_id, None)
             self.clear_items()
             self.add_item(BJAgainButton(game["bet"] if "bet" in game else bet, self.user_id, self.guild_id))
             self.add_item(BJBackButton(self.user_id))
         else:
             embed.add_field(name="ディーラーの手札", value=hand_str(game["dealer"], hide_second=True), inline=False)
-            embed.set_footer(text=f"賭け: {bet:,} コイン")
+            embed.set_footer(text=f"賭け: {bet:,} ナトコイン")
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="ヒット", style=discord.ButtonStyle.primary, emoji="👆")
@@ -282,7 +282,7 @@ class BlackjackAIView(discord.ui.View):
             return
         bal = db.get_balance(self.user_id, self.guild_id)
         if bal < game["bet"]:
-            await interaction.response.send_message("コインが足りません", ephemeral=True)
+            await interaction.response.send_message("ナトコインが足りません", ephemeral=True)
             return
         db.update_balance(self.user_id, self.guild_id, -game["bet"])
         game["bet"] *= 2
@@ -311,7 +311,7 @@ class BJAgainButton(discord.ui.Button):
         guild_id = self.guild_id
         bal = db.get_balance(uid, guild_id)
         if bal < bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(uid, guild_id, -bet)
         deck = make_deck()
@@ -323,15 +323,15 @@ class BJAgainButton(discord.ui.Button):
         embed = discord.Embed(title="🤖 ブラックジャック vs AI", color=discord.Color.dark_green())
         embed.add_field(name=f"あなたの手札（{p_val}）", value=hand_str(player), inline=False)
         embed.add_field(name="ディーラーの手札", value=hand_str(dealer, hide_second=True), inline=False)
-        embed.set_footer(text=f"賭け: {bet:,} コイン")
+        embed.set_footer(text=f"賭け: {bet:,} ナトコイン")
         view = BlackjackAIView(uid, guild_id)
         if p_val == 21:
             winnings = int(bet * 1.5)
             db.update_balance(uid, guild_id, bet + winnings)
             new_bal = db.get_balance(uid, guild_id)
             embed.color = discord.Color.gold()
-            embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} コイン（1.5倍）", inline=False)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+            embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} ナトコイン（1.5倍）", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(uid, None)
             view.clear_items()
             view.add_item(BJAgainButton(bet, uid, guild_id))
@@ -348,7 +348,7 @@ class BJBackButton(discord.ui.Button):
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -381,7 +381,7 @@ class BlackjackModeView(discord.ui.View):
         embed = discord.Embed(title="🤖 ブラックジャック vs AI", color=discord.Color.dark_green())
         embed.add_field(name=f"あなたの手札（{p_val}）", value=hand_str(player), inline=False)
         embed.add_field(name="ディーラーの手札", value=hand_str(dealer, hide_second=True), inline=False)
-        embed.set_footer(text=f"賭け: {bet:,} コイン | ヒット / スタンド / ダブルダウン")
+        embed.set_footer(text=f"賭け: {bet:,} ナトコイン | ヒット / スタンド / ダブルダウン")
 
         view = BlackjackAIView(user_id, guild_id)
         if p_val == 21:
@@ -389,8 +389,8 @@ class BlackjackModeView(discord.ui.View):
             db.update_balance(user_id, guild_id, bet + winnings)
             new_bal = db.get_balance(user_id, guild_id)
             embed.color = discord.Color.gold()
-            embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} コイン（1.5倍）", inline=False)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+            embed.add_field(name="結果", value=f"🃏 ブラックジャック！ +{winnings:,} ナトコイン（1.5倍）", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(user_id, None)
             view.clear_items()
             view.add_item(BJAgainButton(bet, user_id, guild_id))
@@ -419,7 +419,7 @@ class BlackjackModeView(discord.ui.View):
             title="⚔️ ブラックジャック 対人戦",
             description=(
                 f"**{interaction.user.display_name}** がブラックジャック対人戦を開始！\n"
-                f"賭け金: **{bet:,} コイン**\n\n"
+                f"賭け金: **{bet:,} ナトコイン**\n\n"
                 f"「参加して対戦！」ボタンを押して挑戦しよう！"
             ),
             color=discord.Color.blue()
@@ -437,21 +437,21 @@ class Blackjack(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="blackjack", description="ブラックジャック！AIと対戦 or 人と対戦を選べる")
-    @app_commands.describe(bet="賭けるコイン数（最低10）")
+    @app_commands.describe(bet="賭けるナトコイン数（最低10）")
     async def blackjack(self, interaction: discord.Interaction, bet: int):
         if bet < 10:
-            await interaction.response.send_message("❌ 最低10コインから", ephemeral=True)
+            await interaction.response.send_message("❌ 最低10ナトコインから", ephemeral=True)
             return
         user_id = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
         bal = db.get_balance(user_id, guild_id)
         if bal < bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         embed = discord.Embed(
             title="🃏 ブラックジャック",
-            description=f"賭け金: **{bet:,} コイン**\n\nモードを選んでください！",
+            description=f"賭け金: **{bet:,} ナトコイン**\n\nモードを選んでください！",
             color=discord.Color.dark_green()
         )
         embed.add_field(name="🤖 AIと対戦", value="ディーラーBOTと1対1。いつでも即プレイ！", inline=True)

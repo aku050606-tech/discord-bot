@@ -63,39 +63,5 @@ class Fortune(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="tarot", description="タロットカードを1枚引く")
-    async def tarot(self, interaction: discord.Interaction):
-        cards = [
-            ("🌟 愚者", "新しい始まり、冒険、無限の可能性"),
-            ("🔮 魔術師", "意志の力、スキル、集中力"),
-            ("🌙 女教皇", "直感、神秘、内なる知識"),
-            ("👑 女帝", "豊かさ、創造性、母性"),
-            ("🏛️ 皇帝", "権威、安定、リーダーシップ"),
-            ("⚡ 塔", "突然の変化、覚醒、破壊と再生"),
-            ("☀️ 太陽", "成功、喜び、活力"),
-            ("🌟 星", "希望、インスピレーション、平和"),
-            ("🌑 月", "幻想、恐れ、潜在意識"),
-            ("⚖️ 正義", "公平、真実、バランス"),
-        ]
-
-        reversed_texts = [
-            "逆位置: 慎重に行動すること。",
-            "逆位置: 内省の時。",
-            "逆位置: 停滞を感じるが、突破口は近い。",
-        ]
-
-        rng = random.Random()
-        card_name, meaning = rng.choice(cards)
-        is_reversed = rng.random() < 0.3
-        suffix = rng.choice(reversed_texts) if is_reversed else ""
-
-        embed = discord.Embed(
-            title=f"🃏 タロット占い",
-            description=f"**{card_name}{'（逆位置）' if is_reversed else ''}**\n\n{meaning}\n\n{suffix}",
-            color=discord.Color.purple()
-        )
-        embed.set_footer(text=f"{interaction.user.display_name} が引いたカード")
-        await interaction.response.send_message(embed=embed)
-
 async def setup(bot):
     await bot.add_cog(Fortune(bot))

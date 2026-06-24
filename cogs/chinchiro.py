@@ -117,10 +117,10 @@ class ChinchiroAIView(discord.ui.View):
         embed.color = color
         embed.add_field(
             name="結果",
-            value=f"{'🎉 ' if net > 0 else '😢 ' if net < 0 else '🤝 '}{result}！ {'+' if net >= 0 else ''}{net:,} コイン",
+            value=f"{'🎉 ' if net > 0 else '😢 ' if net < 0 else '🤝 '}{result}！ {'+' if net >= 0 else ''}{net:,} ナトコイン",
             inline=False
         )
-        embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+        embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
 
         view = ChinchiroAgainView(self.user_id, self.guild_id, self.bet)
         await interaction.response.edit_message(embed=embed, view=view)
@@ -139,11 +139,11 @@ class ChinchiroAgainView(discord.ui.View):
             return
         bal = db.get_balance(self.user_id, self.guild_id)
         if bal < self.bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(self.user_id, self.guild_id, -self.bet)
         embed = discord.Embed(title="🎲 チンチロ vs AI", description="サイコロを振ってください！", color=discord.Color.blue())
-        embed.set_footer(text=f"賭け: {self.bet:,} コイン")
+        embed.set_footer(text=f"賭け: {self.bet:,} ナトコイン")
         view = ChinchiroAIView(self.user_id, self.guild_id, self.bet)
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -171,7 +171,7 @@ class ChinchiroPvPView(discord.ui.View):
 
         bal = db.get_balance(uid, room["guild_id"])
         if bal < room["bet"]:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         db.update_balance(uid, room["guild_id"], -room["bet"])
@@ -181,7 +181,7 @@ class ChinchiroPvPView(discord.ui.View):
 
         embed = discord.Embed(
             title="🎲 チンチロ 対人戦",
-            description=f"**{room['host_name']}** vs **{room['guest_name']}**\nポット: {room['pot']:,} コイン",
+            description=f"**{room['host_name']}** vs **{room['guest_name']}**\nポット: {room['pot']:,} ナトコイン",
             color=discord.Color.blue()
         )
         view = ChinchiroPvPGameView(self.room_id)
@@ -244,7 +244,7 @@ class ChinchiroPvPGameView(discord.ui.View):
             db.update_balance(room["host_id"], room["guild_id"], pot // 2)
             db.update_balance(room["guest_id"], room["guild_id"], pot // 2)
 
-        embed.add_field(name="結果", value=f"{result}\nポット: {prize:,} コイン（手数料{fee:,}コイン）", inline=False)
+        embed.add_field(name="結果", value=f"{result}\nポット: {prize:,} ナトコイン（手数料{fee:,}ナトコイン）", inline=False)
         embed.color = discord.Color.gold()
 
         view = ChinchiroPvPContinueView(self.room_id)
@@ -270,7 +270,7 @@ class ChinchiroPvPContinueView(discord.ui.View):
         guest_bal = db.get_balance(room["guest_id"], room["guild_id"])
 
         if host_bal < bet or guest_bal < bet:
-            await interaction.response.send_message("❌ どちらかのコインが足りません", ephemeral=True)
+            await interaction.response.send_message("❌ どちらかのナトコインが足りません", ephemeral=True)
             pvp_rooms.pop(self.room_id, None)
             return
 
@@ -280,7 +280,7 @@ class ChinchiroPvPContinueView(discord.ui.View):
 
         embed = discord.Embed(
             title="🎲 チンチロ 対人戦",
-            description=f"**{room['host_name']}** vs **{room['guest_name']}**\nポット: {room['pot']:,} コイン",
+            description=f"**{room['host_name']}** vs **{room['guest_name']}**\nポット: {room['pot']:,} ナトコイン",
             color=discord.Color.blue()
         )
         view = ChinchiroPvPGameView(self.room_id)
@@ -304,7 +304,7 @@ class ChinchiroModeView(discord.ui.View):
         guild_id = str(interaction.guild.id)
         bal = db.get_balance(uid, guild_id)
         if bal < self.bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(uid, guild_id, -self.bet)
         embed = discord.Embed(
@@ -312,7 +312,7 @@ class ChinchiroModeView(discord.ui.View):
             description="サイコロを振ってください！",
             color=discord.Color.blue()
         )
-        embed.set_footer(text=f"賭け: {self.bet:,} コイン")
+        embed.set_footer(text=f"賭け: {self.bet:,} ナトコイン")
         view = ChinchiroAIView(uid, guild_id, self.bet)
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -323,7 +323,7 @@ class ChinchiroModeView(discord.ui.View):
         room_id = f"chinchiro_{uid}"
         bal = db.get_balance(uid, guild_id)
         if bal < self.bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(uid, guild_id, -self.bet)
         pvp_rooms[room_id] = {
@@ -337,7 +337,7 @@ class ChinchiroModeView(discord.ui.View):
         }
         embed = discord.Embed(
             title="🎲 チンチロ 対人戦 — 募集中",
-            description=f"**{interaction.user.display_name}** がチンチロ対人戦を開始！\n賭け金: **{self.bet:,} コイン**\n\n参加ボタンを押して挑戦しよう！",
+            description=f"**{interaction.user.display_name}** がチンチロ対人戦を開始！\n賭け金: **{self.bet:,} ナトコイン**\n\n参加ボタンを押して挑戦しよう！",
             color=discord.Color.blue()
         )
         view = ChinchiroPvPView(room_id)
@@ -348,20 +348,20 @@ class Chinchiro(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="chinchiro", description="チンチロで勝負！AIと対戦 or 人と対戦")
-    @app_commands.describe(bet="賭けるコイン数（最低10）")
+    @app_commands.describe(bet="賭けるナトコイン数（最低10）")
     async def chinchiro(self, interaction: discord.Interaction, bet: int = 100):
         if bet < 10:
-            await interaction.response.send_message("❌ 最低10コインから", ephemeral=True)
+            await interaction.response.send_message("❌ 最低10ナトコインから", ephemeral=True)
             return
         uid = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
         bal = db.get_balance(uid, guild_id)
         if bal < bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         embed = discord.Embed(
             title="🎲 チンチロ",
-            description=f"賭け金: **{bet:,} コイン**\n\nモードを選んでください！",
+            description=f"賭け金: **{bet:,} ナトコイン**\n\nモードを選んでください！",
             color=discord.Color.blue()
         )
         embed.add_field(name="🤖 AIと対戦", value="出率90%のAIディーラーと勝負！", inline=True)

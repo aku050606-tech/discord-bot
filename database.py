@@ -1,6 +1,20 @@
+import os
 import sqlite3
+import json
 
-DB_PATH = "bot_data.db"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 保存先パス
+#   Railwayで永続ボリュームをマウントすると RAILWAY_VOLUME_MOUNT_PATH が
+#   自動でセットされる（例: /data）。そこに bot_data.db を置くことで
+#   再デプロイ・再起動してもデータが残る。
+#   ローカル実行時は環境変数が無いのでカレントに bot_data.db を作る。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DB_DIR = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", ".")
+DB_PATH = os.path.join(DB_DIR, "bot_data.db")
+
+# スタート所持金（新規ユーザーの初期残高）
+STARTING_BALANCE = 3000
+
 
 class Database:
     def __init__(self):
@@ -10,12 +24,21 @@ class Database:
         return sqlite3.connect(self.path)
 
     def initialize(self):
+        # 保存先ディレクトリが無ければ作る（ボリューム未マウント時の保険）
+        os.makedirs(DB_DIR, exist_ok=True)
+
         conn = self.get_conn()
         c = conn.cursor()
+        # economy は (user_id, guild_id) を主キーにして、サーバーごとに残高を分離する
         c.execute("""CREATE TABLE IF NOT EXISTS economy (
-            user_id TEXT PRIMARY KEY, guild_id TEXT,
-            balance INTEGER DEFAULT 1000000, total_earned INTEGER DEFAULT 0,
-            last_daily TEXT
+            user_id TEXT, guild_id TEXT,
+            balance INTEGER DEFAULT {start}, total_earned INTEGER DEFAULT 0,
+            last_daily TEXT,
+            PRIMARY KEY (user_id, guild_id)
+        )""".format(start=STARTING_BALANCE))
+        c.execute("""CREATE TABLE IF NOT EXISTS send_log (
+            user_id TEXT, guild_id TEXT, amount INTEGER,
+            sent_date TEXT
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS zukan (
             user_id TEXT, area TEXT, fish_name TEXT,
@@ -48,61 +71,129 @@ class Database:
         )""")
         conn.commit()
         conn.close()
-        print("✅ データベース初期化完了")
+        print(f"✅ データベース初期化完了（保存先: {self.path}）")
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 残高（サーバーごとに分離）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def get_balance(self, user_id, guild_id):
         conn = self.get_conn()
         c = conn.cursor()
-        c.execute("SELECT balance FROM economy WHERE user_id = ?", (user_id,))
+        c.execute("SELECT balance FROM economy WHERE user_id = ? AND guild_id = ?", (user_id, guild_id))
         row = c.fetchone()
         if row is None:
-            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, 1000000)", (user_id, guild_id))
+            c.execute(
+                "INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)",
+                (user_id, guild_id, STARTING_BALANCE),
+            )
             conn.commit()
             conn.close()
-            return 1000000
+            return STARTING_BALANCE
         conn.close()
         return row[0]
 
     def update_balance(self, user_id, guild_id, amount):
         conn = self.get_conn()
         c = conn.cursor()
-        c.execute("UPDATE economy SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+        c.execute(
+            "UPDATE economy SET balance = balance + ? WHERE user_id = ? AND guild_id = ?",
+            (amount, user_id, guild_id),
+        )
         if c.rowcount == 0:
-            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)", (user_id, guild_id, 1000000 + amount))
+            c.execute(
+                "INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)",
+                (user_id, guild_id, STARTING_BALANCE + amount),
+            )
         conn.commit()
         conn.close()
 
     def set_balance(self, user_id, guild_id, amount):
         conn = self.get_conn()
         c = conn.cursor()
-        c.execute("UPDATE economy SET balance = ? WHERE user_id = ?", (amount, user_id))
+        c.execute(
+            "UPDATE economy SET balance = ? WHERE user_id = ? AND guild_id = ?",
+            (amount, user_id, guild_id),
+        )
         if c.rowcount == 0:
-            c.execute("INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)", (user_id, guild_id, amount))
+            c.execute(
+                "INSERT INTO economy (user_id, guild_id, balance) VALUES (?, ?, ?)",
+                (user_id, guild_id, amount),
+            )
         conn.commit()
         conn.close()
 
     def get_ranking(self, guild_id, limit=10):
         conn = self.get_conn()
         c = conn.cursor()
-        c.execute("SELECT user_id, balance FROM economy WHERE guild_id = ? ORDER BY balance DESC LIMIT ?", (guild_id, limit))
+        c.execute(
+            "SELECT user_id, balance FROM economy WHERE guild_id = ? ORDER BY balance DESC LIMIT ?",
+            (guild_id, limit),
+        )
         rows = c.fetchall()
         conn.close()
         return rows
 
-    def get_last_daily(self, user_id):
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # デイリー（サーバーごと）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def get_last_daily(self, user_id, guild_id):
         conn = self.get_conn()
         c = conn.cursor()
-        c.execute("SELECT last_daily FROM economy WHERE user_id = ?", (user_id,))
+        c.execute(
+            "SELECT last_daily FROM economy WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
         row = c.fetchone()
         conn.close()
         return row[0] if row else None
 
-    def set_last_daily(self, user_id, date_str):
+    def set_last_daily(self, user_id, guild_id, date_str):
         conn = self.get_conn()
         c = conn.cursor()
-        c.execute("UPDATE economy SET last_daily = ? WHERE user_id = ?", (date_str, user_id))
+        c.execute(
+            "UPDATE economy SET last_daily = ? WHERE user_id = ? AND guild_id = ?",
+            (date_str, user_id, guild_id),
+        )
+        if c.rowcount == 0:
+            c.execute(
+                "INSERT INTO economy (user_id, guild_id, balance, last_daily) VALUES (?, ?, ?, ?)",
+                (user_id, guild_id, STARTING_BALANCE, date_str),
+            )
         conn.commit()
         conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 送金ログ（1日の送金上限の判定に使う）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def add_send_log(self, user_id, guild_id, amount):
+        from datetime import date
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO send_log (user_id, guild_id, amount, sent_date) VALUES (?, ?, ?, ?)",
+            (user_id, guild_id, amount, str(date.today())),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_today_sent(self, user_id, guild_id):
+        from datetime import date
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM send_log WHERE user_id = ? AND guild_id = ? AND sent_date = ?",
+            (user_id, guild_id, str(date.today())),
+        )
+        total = c.fetchone()[0]
+        conn.close()
+        return total or 0
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 図鑑
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def add_zukan(self, user_id, area, fish_name):
         conn = self.get_conn()
@@ -202,7 +293,6 @@ class Database:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def get_gear(self, user_id):
-        import json
         conn = self.get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM fishing_gear WHERE user_id = ?", (user_id,))
@@ -228,7 +318,6 @@ class Database:
         }
 
     def _init_gear(self, user_id):
-        import json
         conn = self.get_conn()
         c = conn.cursor()
         c.execute("""INSERT OR IGNORE INTO fishing_gear
@@ -243,7 +332,6 @@ class Database:
         conn.close()
 
     def save_gear(self, user_id, gear):
-        import json
         conn = self.get_conn()
         c = conn.cursor()
         c.execute("""INSERT OR REPLACE INTO fishing_gear

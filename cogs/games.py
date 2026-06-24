@@ -37,10 +37,10 @@ class Games(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="slot", description="スロットマシンを回す！")
-    @app_commands.describe(bet="賭けるコイン数（最低10）")
+    @app_commands.describe(bet="賭けるナトコイン数（最低10）")
     async def slot(self, interaction: discord.Interaction, bet: int):
         if bet < 10:
-            await interaction.response.send_message("❌ 最低10コインから賭けられます", ephemeral=True)
+            await interaction.response.send_message("❌ 最低10ナトコインから賭けられます", ephemeral=True)
             return
 
         user_id = str(interaction.user.id)
@@ -49,7 +49,7 @@ class Games(commands.Cog):
 
         if bal < bet:
             await interaction.response.send_message(
-                f"❌ コインが足りません（残高: {bal:,} コイン）", ephemeral=True
+                f"❌ ナトコインが足りません（残高: {bal:,} ナトコイン）", ephemeral=True
             )
             return
 
@@ -65,34 +65,34 @@ class Games(commands.Cog):
 
         if won > bet:
             color = discord.Color.gold()
-            result_text = f"🎉 **{combo} 当たり！** +{won:,} コイン (×{won//bet}倍)"
+            result_text = f"🎉 **{combo} 当たり！** +{won:,} ナトコイン (×{won//bet}倍)"
         elif won == bet:
             color = discord.Color.blue()
             result_text = f"😐 ペア！ 賭け金返還"
         else:
             color = discord.Color.red()
-            result_text = f"😢 ハズレ... -{bet:,} コイン"
+            result_text = f"😢 ハズレ... -{bet:,} ナトコイン"
 
         embed = discord.Embed(title="🎰 スロットマシン", color=color)
         embed.add_field(name="リール", value=f"[ {reels_display} ]", inline=False)
         embed.add_field(name="結果", value=result_text, inline=False)
         embed.add_field(
             name="残高",
-            value=f"{new_bal:,} コイン（{'+' if net >= 0 else ''}{net:,}）",
+            value=f"{new_bal:,} ナトコイン（{'+' if net >= 0 else ''}{net:,}）",
             inline=False
         )
-        embed.set_footer(text=f"賭け: {bet:,} コイン")
+        embed.set_footer(text=f"賭け: {bet:,} ナトコイン")
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="coinflip", description="コインを投げて賭けをする")
-    @app_commands.describe(choice="表(heads)か裏(tails)か", bet="賭けるコイン数")
+    @app_commands.command(name="coinflip", description="ナトコインを投げて賭けをする")
+    @app_commands.describe(choice="表(heads)か裏(tails)か", bet="賭けるナトコイン数")
     @app_commands.choices(choice=[
         app_commands.Choice(name="表 (Heads)", value="heads"),
         app_commands.Choice(name="裏 (Tails)", value="tails"),
     ])
     async def coinflip(self, interaction: discord.Interaction, choice: str, bet: int):
         if bet < 10:
-            await interaction.response.send_message("❌ 最低10コインから賭けられます", ephemeral=True)
+            await interaction.response.send_message("❌ 最低10ナトコインから賭けられます", ephemeral=True)
             return
 
         user_id = str(interaction.user.id)
@@ -101,7 +101,7 @@ class Games(commands.Cog):
 
         if bal < bet:
             await interaction.response.send_message(
-                f"❌ コインが足りません（残高: {bal:,} コイン）", ephemeral=True
+                f"❌ ナトコインが足りません（残高: {bal:,} ナトコイン）", ephemeral=True
             )
             return
 
@@ -111,11 +111,11 @@ class Games(commands.Cog):
         if won:
             db.update_balance(user_id, guild_id, bet)
             color = discord.Color.green()
-            result_text = f"🎉 **当たり！** +{bet:,} コイン"
+            result_text = f"🎉 **当たり！** +{bet:,} ナトコイン"
         else:
             db.update_balance(user_id, guild_id, -bet)
             color = discord.Color.red()
-            result_text = f"😢 **ハズレ！** -{bet:,} コイン"
+            result_text = f"😢 **ハズレ！** -{bet:,} ナトコイン"
 
         result_emoji = "🪙表" if result == "heads" else "🪙裏"
         new_bal = db.get_balance(user_id, guild_id)
@@ -124,7 +124,7 @@ class Games(commands.Cog):
         embed.add_field(name="結果", value=result_emoji, inline=True)
         embed.add_field(name="あなたの選択", value="表" if choice == "heads" else "裏", inline=True)
         embed.add_field(name="判定", value=result_text, inline=False)
-        embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+        embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):

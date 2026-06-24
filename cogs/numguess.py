@@ -35,7 +35,7 @@ def build_game_embed(game: dict, message: str = "") -> discord.Embed:
     embed.add_field(name="💰 配当表", value=table, inline=True)
     embed.add_field(
         name="📊 状況",
-        value=f"残り回数: **{remaining}回**\n次の配当: **×{next_mult}**\n賭け: **{bet:,} コイン**",
+        value=f"残り回数: **{remaining}回**\n次の配当: **×{next_mult}**\n賭け: **{bet:,} ナトコイン**",
         inline=True
     )
     return embed
@@ -89,8 +89,8 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
                 description=f"答えは **{answer}** でした！\n{tries}回目で正解 → **×{mult}倍** 配当！",
                 color=discord.Color.gold()
             )
-            embed.add_field(name="獲得コイン", value=f"+{winnings:,} コイン", inline=True)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            embed.add_field(name="獲得ナトコイン", value=f"+{winnings:,} ナトコイン", inline=True)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
             await interaction.response.edit_message(embed=embed, view=NumguessResultView(bet, self.user_id))
 
         elif tries >= MAX_TRIES:
@@ -99,10 +99,10 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
             new_bal = db.get_balance(self.user_id, self.guild_id)
             embed = discord.Embed(
                 title="💀 ゲームオーバー",
-                description=f"正解は **{answer}** でした！\n{MAX_TRIES}回全て外れ... -{bet:,} コイン",
+                description=f"正解は **{answer}** でした！\n{MAX_TRIES}回全て外れ... -{bet:,} ナトコイン",
                 color=discord.Color.red()
             )
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
             await interaction.response.edit_message(embed=embed, view=NumguessResultView(bet, self.user_id))
 
         else:
@@ -136,10 +136,10 @@ class NumguessPlayView(discord.ui.View):
             new_bal = db.get_balance(self.user_id, self.guild_id)
             embed = discord.Embed(
                 title="🏳️ ゲーム終了",
-                description=f"答えは **{game['answer']}** でした\n賭け金 {game['bet']:,} コイン没収",
+                description=f"答えは **{game['answer']}** でした\n賭け金 {game['bet']:,} ナトコイン没収",
                 color=discord.Color.dark_gray()
             )
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=True)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
             await interaction.response.edit_message(embed=embed, view=NumguessResultView(game["bet"], self.user_id))
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
@@ -149,7 +149,7 @@ class NumguessPlayView(discord.ui.View):
             return
         game = active_games.pop(self.user_id, None)
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
 
     async def on_timeout(self):
         active_games.pop(self.user_id, None)
@@ -170,7 +170,7 @@ class NumguessResultView(discord.ui.View):
         guild_id = str(interaction.guild.id)
         bal = db.get_balance(uid, guild_id)
         if bal < self.bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(uid, guild_id, -self.bet)
         answer = random.randint(1, 100)
@@ -185,7 +185,7 @@ class NumguessResultView(discord.ui.View):
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
 
 
 class NumberGuess(commands.Cog):
@@ -193,7 +193,7 @@ class NumberGuess(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="numguess", description="1〜100の数字を当てよう！当てるほど高配当")
-    @app_commands.describe(bet="賭けるコイン数（最低10）")
+    @app_commands.describe(bet="賭けるナトコイン数（最低10）")
     async def numguess(self, interaction: discord.Interaction, bet: int):
         uid = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
@@ -204,12 +204,12 @@ class NumberGuess(commands.Cog):
             )
             return
         if bet < 10:
-            await interaction.response.send_message("❌ 最低10コインから", ephemeral=True)
+            await interaction.response.send_message("❌ 最低10ナトコインから", ephemeral=True)
             return
 
         bal = db.get_balance(uid, guild_id)
         if bal < bet:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         db.update_balance(uid, guild_id, -bet)

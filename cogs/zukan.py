@@ -59,7 +59,7 @@ class ZukanAreaView(discord.ui.View):
             for f in fishes:
                 if f["name"] in caught:
                     crown = " 👑" if f["name"] in crowns else ""
-                    lines.append(f"✅{crown} {f['name']} — {f['value']:,}コイン")
+                    lines.append(f"✅{crown} {f['name']} — {f['value']:,}ナトコイン")
                 else:
                     lines.append("❓ ???")
             embed.add_field(
@@ -71,7 +71,7 @@ class ZukanAreaView(discord.ui.View):
         # ボス
         boss = AREA_BOSS[area]
         boss_caught = boss["name"] in caught
-        boss_line = f"✅ {boss['emoji']} {boss['name']} — {boss['value']:,}コイン" if boss_caught else "❓ ???（隠し）"
+        boss_line = f"✅ {boss['emoji']} {boss['name']} — {boss['value']:,}ナトコイン" if boss_caught else "❓ ???（隠し）"
         embed.add_field(name="👻 主（隠し）", value=boss_line, inline=False)
 
         await interaction.response.edit_message(embed=embed, view=self)
@@ -100,7 +100,7 @@ class ZukanAreaView(discord.ui.View):
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction, button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
 
 
 class Zukan(commands.Cog):

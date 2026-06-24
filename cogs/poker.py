@@ -111,7 +111,7 @@ class PokerView(discord.ui.View):
             return
         bal = db.get_balance(uid, room["guild_id"])
         if bal < room["ante"]:
-            await interaction.response.send_message(f"コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(uid, room["guild_id"], -room["ante"])
         room["players"].append({"id": uid, "name": interaction.user.display_name, "hand": []})
@@ -119,7 +119,7 @@ class PokerView(discord.ui.View):
         names = "\n".join(f"{i+1}. {p['name']}" for i, p in enumerate(room["players"]))
         embed = discord.Embed(
             title="⚔️ ポーカー 対人戦 — 参加者募集中",
-            description=f"参加費: **{room['ante']:,} コイン** | ポット: **{room['pot']:,} コイン**\n\n{names}",
+            description=f"参加費: **{room['ante']:,} ナトコイン** | ポット: **{room['pot']:,} ナトコイン**\n\n{names}",
             color=discord.Color.dark_green()
         )
         await interaction.response.edit_message(embed=embed, view=self)
@@ -164,7 +164,7 @@ class PokerView(discord.ui.View):
             )
         embed.add_field(
             name="🏆 勝者",
-            value=f"**{winner['name']}** が {room['pot']:,} コイン獲得！",
+            value=f"**{winner['name']}** が {room['pot']:,} ナトコイン獲得！",
             inline=False
         )
         poker_rooms.pop(self.room_id, None)
@@ -194,9 +194,9 @@ def build_ai_embed(game: dict, action_log: str = "") -> discord.Embed:
     if community:
         embed.add_field(name="コミュニティカード", value=hand_str(community), inline=False)
 
-    embed.add_field(name="ポット", value=f"{game['pot']:,} コイン", inline=True)
-    embed.add_field(name="あなたの賭け", value=f"{game['player_bet']:,} コイン", inline=True)
-    embed.add_field(name="AIの賭け", value=f"{game['ai_bet']:,} コイン", inline=True)
+    embed.add_field(name="ポット", value=f"{game['pot']:,} ナトコイン", inline=True)
+    embed.add_field(name="あなたの賭け", value=f"{game['player_bet']:,} ナトコイン", inline=True)
+    embed.add_field(name="AIの賭け", value=f"{game['ai_bet']:,} ナトコイン", inline=True)
 
     if action_log:
         embed.add_field(name="💬 AIのアクション", value=action_log, inline=False)
@@ -239,7 +239,7 @@ class PokerAIView(discord.ui.View):
             raise_amount = ante * 2
             game["ai_bet"] += raise_amount
             game["pot"] += raise_amount
-            return f"🔺 レイズ！ +{raise_amount:,} コイン"
+            return f"🔺 レイズ！ +{raise_amount:,} ナトコイン"
         else:
             diff = game["player_bet"] - game["ai_bet"]
             if diff > 0:
@@ -257,8 +257,8 @@ class PokerAIView(discord.ui.View):
         if action == "fold":
             new_bal = db.get_balance(self.user_id, self.guild_id)
             embed = discord.Embed(title="🤖 ポーカー vs AI — 結果", color=discord.Color.red())
-            embed.add_field(name="結果", value=f"🏳️ フォールド。AIの勝ち！\nポット {game['pot']:,} コイン没収", inline=False)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+            embed.add_field(name="結果", value=f"🏳️ フォールド。AIの勝ち！\nポット {game['pot']:,} ナトコイン没収", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             ai_games.pop(self.user_id, None)
             self.clear_items()
             self.add_item(PokerAgainButton(game["ante"], self.user_id))
@@ -281,12 +281,12 @@ class PokerAIView(discord.ui.View):
             total = raise_amount
             bal = db.get_balance(self.user_id, self.guild_id)
             if bal < total:
-                await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+                await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
                 return
             db.update_balance(self.user_id, self.guild_id, -total)
             game["player_bet"] += total
             game["pot"] += total
-            player_log = f"🔺 レイズ +{total:,} コイン"
+            player_log = f"🔺 レイズ +{total:,} ナトコイン"
 
         elif action == "check":
             player_log = "⏭️ チェック"
@@ -300,8 +300,8 @@ class PokerAIView(discord.ui.View):
             embed = discord.Embed(title="🤖 ポーカー vs AI — 結果", color=discord.Color.gold())
             embed.add_field(name="あなたの手札", value=hand_str(game["player_hand"]), inline=True)
             embed.add_field(name="AIの手札", value=hand_str(game["ai_hand"]), inline=True)
-            embed.add_field(name="結果", value=f"🏳️ AIがフォールド！あなたの勝ち！\n+{game['pot']:,} コイン獲得！", inline=False)
-            embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+            embed.add_field(name="結果", value=f"🏳️ AIがフォールド！あなたの勝ち！\n+{game['pot']:,} ナトコイン獲得！", inline=False)
+            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             ai_games.pop(self.user_id, None)
             self.clear_items()
             self.add_item(PokerAgainButton(game["ante"], self.user_id))
@@ -332,20 +332,20 @@ class PokerAIView(discord.ui.View):
 
         if p_score > ai_score:
             db.update_balance(self.user_id, self.guild_id, game["pot"])
-            result_text = f"あなたの勝ち！ +{game['pot']:,} コイン獲得！"
+            result_text = f"あなたの勝ち！ +{game['pot']:,} ナトコイン獲得！"
             embed.color = discord.Color.gold()
         elif ai_score > p_score:
-            result_text = f"AIの勝ち！ -{game['player_bet']:,} コイン損失"
+            result_text = f"AIの勝ち！ -{game['player_bet']:,} ナトコイン損失"
             embed.color = discord.Color.red()
         else:
             half = game["pot"] // 2
             db.update_balance(self.user_id, self.guild_id, half)
-            result_text = f"引き分け！ {half:,} コイン返還"
+            result_text = f"引き分け！ {half:,} ナトコイン返還"
             embed.color = discord.Color.blue()
 
         new_bal = db.get_balance(self.user_id, self.guild_id)
         embed.add_field(name="🏆 結果", value=result_text, inline=False)
-        embed.add_field(name="残高", value=f"{new_bal:,} コイン", inline=False)
+        embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
 
         ai_games.pop(self.user_id, None)
         self.clear_items()
@@ -406,7 +406,7 @@ class PokerAgainButton(discord.ui.Button):
         guild_id = str(interaction.guild.id)
         bal = db.get_balance(uid, guild_id)
         if bal < self.ante:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(uid, guild_id, -self.ante)
         deck = make_deck()
@@ -433,7 +433,7 @@ class PokerBackButton(discord.ui.Button):
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView(self.user_id))
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -457,7 +457,7 @@ class PokerModeView(discord.ui.View):
 
         bal = db.get_balance(uid, guild_id)
         if bal < ante:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         db.update_balance(uid, guild_id, -ante)
@@ -499,7 +499,7 @@ class PokerModeView(discord.ui.View):
 
         bal = db.get_balance(uid, guild_id)
         if bal < ante:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         db.update_balance(uid, guild_id, -ante)
@@ -516,7 +516,7 @@ class PokerModeView(discord.ui.View):
         embed = discord.Embed(
             title="⚔️ ポーカー 対人戦 — 参加者募集中",
             description=(
-                f"参加費（アンティ）: **{ante:,} コイン**\n"
+                f"参加費（アンティ）: **{ante:,} ナトコイン**\n"
                 f"最大6人まで参加可能\n\n"
                 f"「参加する」を押して参加してね！全員揃ったらホストが開始！"
             ),
@@ -536,22 +536,22 @@ class Poker(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="poker", description="テキサスホールデム！AIと対戦 or 人と対戦を選べる")
-    @app_commands.describe(ante="参加費（アンティ）コイン数")
+    @app_commands.describe(ante="参加費（アンティ）ナトコイン数")
     async def poker(self, interaction: discord.Interaction, ante: int = 100):
         if ante < 10:
-            await interaction.response.send_message("❌ アンティは最低10コイン", ephemeral=True)
+            await interaction.response.send_message("❌ アンティは最低10ナトコイン", ephemeral=True)
             return
 
         uid = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
         bal = db.get_balance(uid, guild_id)
         if bal < ante:
-            await interaction.response.send_message(f"❌ コインが足りません（残高: {bal:,}）", ephemeral=True)
+            await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
 
         embed = discord.Embed(
             title="♠️ ポーカー",
-            description=f"アンティ: **{ante:,} コイン**\n\nモードを選んでください！",
+            description=f"アンティ: **{ante:,} ナトコイン**\n\nモードを選んでください！",
             color=discord.Color.dark_green()
         )
         embed.add_field(name="🤖 AIと対戦", value="フロップ→ターン→リバーの本格形式。コール・レイズ・フォールドで読み合い！", inline=False)
