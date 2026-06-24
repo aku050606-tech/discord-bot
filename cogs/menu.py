@@ -269,7 +269,7 @@ class BetModal(discord.ui.Modal):
             await interaction.response.edit_message(embed=embed, view=CoinflipChoiceView(bet, self.user_id))
 
 
-def make_bet_view(user_id: str, guild_id: str, game_type: str, title: str, back_label: str = "🏠 ホームへ戻る"):
+def make_bet_view(user_id: str, guild_id: str, game_type: str, title: str, back_label: str = "◀️ カジノへ戻る"):
     """賭け金入力ボタン1つのViewを生成"""
     class BetView(discord.ui.View):
         def __init__(self):
@@ -288,7 +288,7 @@ def make_bet_view(user_id: str, guild_id: str, game_type: str, title: str, back_
         @discord.ui.button(label=back_label, style=discord.ButtonStyle.secondary)
         async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
             if not await check_user(interaction, self._user_id): return
-            await go_home(interaction, self._user_id)
+            await open_casino_menu(interaction, self._user_id)
 
     return BetView()
 
@@ -355,6 +355,11 @@ class CoinflipChoiceView(discord.ui.View):
     async def tails(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.do_flip(interaction, "tails")
 
+    @discord.ui.button(label="◀️ 戻る", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await check_user(interaction, self.user_id): return
+        await open_casino_menu(interaction, self.user_id)
+
 
 class CoinflipAgainView(discord.ui.View):
     def __init__(self, bet: int, user_id: str):
@@ -368,10 +373,10 @@ class CoinflipAgainView(discord.ui.View):
         embed = discord.Embed(title="🪙 コインフリップ", description="表・裏どちらに賭けますか？", color=discord.Color.gold())
         await interaction.response.edit_message(embed=embed, view=CoinflipChoiceView(self.bet, self.user_id))
 
-    @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀️ カジノへ戻る", style=discord.ButtonStyle.secondary)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await check_user(interaction, self.user_id): return
-        await go_home(interaction, self.user_id)
+        await open_casino_menu(interaction, self.user_id)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

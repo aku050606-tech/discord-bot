@@ -115,6 +115,11 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
                 view = NumguessResultView(bet, self.user_id)
             await interaction.response.edit_message(embed=embed, view=view)
 
+            # 勝ち額が大きければBOT告知
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "数字当て",
+                                   net, balance=new_bal)
+
         elif tries >= MAX_TRIES:
             # ゲームオーバー
             active_games.pop(self.user_id, None)
@@ -164,14 +169,14 @@ class NumguessPlayView(discord.ui.View):
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
             await interaction.response.edit_message(embed=embed, view=NumguessResultView(game["bet"], self.user_id))
 
-    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀️ カジノへ戻る", style=discord.ButtonStyle.secondary)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
         game = active_games.pop(self.user_id, None)
-        from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
+        from cogs.menu import open_casino_menu
+        await open_casino_menu(interaction, self.user_id)
 
     async def on_timeout(self):
         active_games.pop(self.user_id, None)
@@ -201,13 +206,13 @@ class NumguessResultView(discord.ui.View):
         embed = build_game_embed(game, "1〜100の数字を当ててください！")
         await interaction.response.edit_message(embed=embed, view=NumguessPlayView(uid, guild_id))
 
-    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="◀️ カジノへ戻る", style=discord.ButtonStyle.secondary)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
-        from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
+        from cogs.menu import open_casino_menu
+        await open_casino_menu(interaction, self.user_id)
 
 
 class NumberGuess(commands.Cog):

@@ -10,6 +10,11 @@
 import discord
 import random
 
+try:
+    from config import BIG_WIN_ANNOUNCE
+except Exception:
+    BIG_WIN_ANNOUNCE = 10000
+
 MAX_CHAIN = 5
 SUITS = ["♠️", "♥️", "♦️", "♣️"]
 RANK_NAME = {1: "A", 11: "J", 12: "Q", 13: "K"}
@@ -113,6 +118,13 @@ class DoubleUpChoiceView(discord.ui.View):
             new_stake = self.stake * 2
             new_chain = self.chain + 1
             bal = db.get_balance(self.user_id, self.guild_id)
+            # 勝ち分が初めて閾値を超えた瞬間だけBOT告知（連打スパム防止）
+            if self.stake < BIG_WIN_ANNOUNCE <= new_stake:
+                from cogs.bigwin import announce_big_win
+                await announce_big_win(interaction, interaction.user,
+                                       f"{self.title}のダブルアップ",
+                                       new_stake, balance=bal,
+                                       detail=f"{new_chain}連目で大勝ち！")
             if new_chain >= MAX_CHAIN:
                 e = _done_embed(self.title,
                                 f"{cards_line}\n→ ✅ **当たり！**\n"

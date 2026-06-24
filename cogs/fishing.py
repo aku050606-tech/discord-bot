@@ -137,6 +137,13 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             show_shadow = True
 
     fish = pick_fish(area, rarity)
+
+    # ── レアなゴミ：ごみを引いたとき低確率で「売値1000」のレアごみに昇格 ──
+    got_rare_trash = False
+    if rarity == "trash" and random.random() < RARE_TRASH_RATE:
+        fish = random.choice(RARE_TRASH_BY_AREA[area])
+        got_rare_trash = True
+
     value = fish["value"]
 
     # 金冠判定（基礎 + ライン + リール）
@@ -157,7 +164,10 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     is_new = False
     new_crown = False
     if rarity == "trash":
-        if random.random() < TREASURE_MAP_DROP_RATE:
+        if got_rare_trash:
+            # レアごみ：宝の地図抽選はせず、ごみ図鑑（通常ごみと同じキー）に登録
+            is_new = db.add_zukan(uid, area + "_trash", fish["name"])
+        elif random.random() < TREASURE_MAP_DROP_RATE:
             db.add_treasure_map(uid, 1)
             got_map = True
         else:
@@ -231,6 +241,13 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             desc = ("ごみの中に、古びた地図が紛れていた…！\n"
                     "釣りメニューの「🗺️ 宝の地図を使う」で運試し！\n"
                     f"所持枚数: **{db.get_treasure_maps(uid)}枚**")
+        elif got_rare_trash:
+            embed3.color = 0x1abc9c
+            embed3.title = f"✨ レアごみ発見！ {fish['emoji']} {fish['name']}"
+            desc = (f"ただのゴミかと思いきや…**お宝級**だ！\n"
+                    f"換金額: **{value:,} ナトコイン**")
+            if is_new:
+                desc += "\n🗑️✨ **レアごみ図鑑に新しく登録されました！**"
         else:
             embed3.title = f"{fish['emoji']} {fish['name']}"
             desc = f"ゴミだった...\n換金額: **0ナトコイン**"
@@ -259,6 +276,15 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     view = FishResultView(area, show_shadow, uid, guild_id)
     await interaction.edit_original_response(embed=embed3, view=view)
     active_fishing.discard(uid)
+
+    # 換金額が大きい、またはレジェンドを釣ったらBOT告知（魚名はネタバレなので出さない）
+    if rarity != "trash" and value > 0:
+        from cogs.bigwin import announce_big_win
+        is_legend = rarity == "legend"
+        await announce_big_win(interaction, interaction.user, "釣り",
+                               value, balance=new_bal,
+                               detail=("✨ レジェンド級の大物！" if is_legend else None),
+                               force=is_legend)
 
 
 class FishResultView(discord.ui.View):
@@ -338,13 +364,21 @@ class ShadowChoiceView(discord.ui.View):
                 description=f"伝説の生物が釣れた！！！\n換金額: **{BOSS_REWARD:,} ナトコイン**\n残高: **{new_bal:,} ナトコイン**",
                 color=discord.Color.red()
             )
+            boss_caught = True
         else:
             embed = discord.Embed(
                 title="🌊 逃げられた...",
                 description="影は深みへ消えていった...\nまた会えるかもしれない。",
                 color=discord.Color.dark_blue()
             )
+            boss_caught = False
         await interaction.followup.edit_message(interaction.message.id, embed=embed, view=BackToFishView(self.area))
+
+        # ボス捕獲は超大物 → BOT告知（魚名はネタバレなので出さない）
+        if boss_caught:
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "釣り（ヌシ）",
+                                   BOSS_REWARD, balance=new_bal)
 
     @discord.ui.button(label="安全に引き上げる", style=discord.ButtonStyle.secondary, emoji="✋")
     async def pull(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -424,6 +458,12 @@ async def use_treasure_map(interaction: discord.Interaction, edit: bool = True):
         await interaction.response.edit_message(embed=embed, view=view)
     else:
         await interaction.response.send_message(embed=embed, view=view)
+
+    # 宝の地図の報酬が大きければBOT告知
+    if rank != "miss":
+        from cogs.bigwin import announce_big_win
+        await announce_big_win(interaction, interaction.user, "宝の地図",
+                               reward, balance=db.get_balance(uid, guild_id))
 
 
 class TreasureResultView(discord.ui.View):

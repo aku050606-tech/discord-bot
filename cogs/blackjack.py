@@ -321,6 +321,23 @@ class PvPWaitView(discord.ui.View):
                                                 view=view, allowed_mentions=_ping)
         room["message"] = interaction.message
 
+    @discord.ui.button(label="◀️ 中止（賭け金返却）", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        room = pvp_rooms.get(self.room_id)
+        if not room:
+            await interaction.response.send_message("ルームが見つかりません", ephemeral=True)
+            return
+        if str(interaction.user.id) != self.host_id:
+            await interaction.response.send_message("募集者だけが中止できます", ephemeral=True)
+            return
+        if room.get("p2"):
+            await interaction.response.send_message("すでに対戦相手が参加しています", ephemeral=True)
+            return
+        db.update_balance(self.host_id, room["guild_id"], room["bet"])
+        pvp_rooms.pop(self.room_id, None)
+        from cogs.menu import open_casino_menu
+        await open_casino_menu(interaction, str(interaction.user.id))
+
     async def on_timeout(self):
         pvp_rooms.pop(self.room_id, None)
 
@@ -365,6 +382,10 @@ class BlackjackAIView(discord.ui.View):
             active_games.pop(self.user_id, None)
             net = refund - bet
             end_view = _bj_post_view(self.user_id, self.guild_id, bet, net)
+            if net > 0:
+                from cogs.bigwin import announce_big_win
+                await announce_big_win(interaction, interaction.user, "ブラックジャック",
+                                       net, balance=new_bal)
         else:
             embed.add_field(name="ディーラーの手札", value=hand_str(game["dealer"], hide_second=True), inline=False)
             embed.set_footer(text=f"賭け: {bet:,} ナトコイン")
@@ -459,19 +480,24 @@ class BJAgainButton(discord.ui.Button):
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(uid, None)
             view = _bj_post_view(uid, guild_id, bet, winnings)
+            await interaction.response.edit_message(embed=embed, view=view)
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "ブラックジャック",
+                                   winnings, balance=new_bal, detail="🃏 ブラックジャック（1.5倍）")
+            return
         await interaction.response.edit_message(embed=embed, view=view)
 
 class BJBackButton(discord.ui.Button):
     def __init__(self, user_id: str):
-        super().__init__(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+        super().__init__(label="◀️ カジノへ戻る", style=discord.ButtonStyle.secondary)
         self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
-        from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(self.user_id))
+        from cogs.menu import open_casino_menu
+        await open_casino_menu(interaction, self.user_id)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -535,6 +561,11 @@ class BlackjackModeView(discord.ui.View):
             embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
             active_games.pop(user_id, None)
             view = _bj_post_view(user_id, guild_id, bet, winnings)
+            await interaction.response.edit_message(embed=embed, view=view)
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "ブラックジャック",
+                                   winnings, balance=new_bal, detail="🃏 ブラックジャック（1.5倍）")
+            return
         await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="⚔️ 人と対戦", style=discord.ButtonStyle.success)
