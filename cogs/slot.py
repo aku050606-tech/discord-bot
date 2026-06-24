@@ -119,21 +119,21 @@ def build_view(uid: str) -> discord.ui.View:
 
 
 async def render(interaction: discord.Interaction, uid: str, embed: discord.Embed):
-    """現在の状態に応じたViewでメッセージを更新（環境差に強い確実な方式）"""
+    """現在の状態に応じたViewでメッセージを更新（DEBUG版）"""
     view = build_view(uid)
+    done = interaction.response.is_done()
+    print(f"[SLOT] render呼出 uid={uid} is_done={done}", flush=True)
     try:
-        if interaction.response.is_done():
-            # defer済み or 2回目以降の更新 → 元メッセージを直接編集
+        if done:
             await interaction.edit_original_response(embed=embed, view=view)
+            print("[SLOT] ✅ edit_original_response 成功", flush=True)
         else:
-            # 最初の更新 → コンポーネント応答で即編集
             await interaction.response.edit_message(embed=embed, view=view)
-    except discord.HTTPException:
-        # 念のためのフォールバック
-        try:
-            await interaction.edit_original_response(embed=embed, view=view)
-        except Exception:
-            pass
+            print("[SLOT] ✅ response.edit_message 成功", flush=True)
+    except Exception as e:
+        import traceback
+        print(f"[SLOT] ❌ 画面更新 失敗: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
 
 
 def _set_auto_label(view: discord.ui.View, uid: str):
@@ -229,8 +229,10 @@ class SlotGameView(discord.ui.View):
             await interaction.response.send_message("ゲームが見つかりません", ephemeral=True); return
         if g.get("spinning"):
             await interaction.response.send_message("⏳ 処理中です...", ephemeral=True); return
+        print(f"[SLOT] 🎰 回すボタン押下 uid={uid} state={g['state']}", flush=True)
         g["spinning"] = True
         await interaction.response.defer()
+        print("[SLOT] defer完了", flush=True)
         try:
             if g["state"] == "god":
                 await _advance_god(interaction, uid)
