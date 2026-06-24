@@ -50,6 +50,21 @@ SLOT_SETTINGS = {
     6: {"koyaku_mult": 1.0, "god_mult": 1.16, "premium_per": 4500, "entry": "super6"},
 }
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🧪 テスト台（10番台専用・本番前の動作確認用）
+#   GODまで時間がかかる確認作業を短縮するための一時的な台。
+#   ▶ 公開前に確認が済んだら SLOT_TEST_ENABLED = False にする（またはこのブロックごと削除）。
+#   ・1スピンの内訳: 聖域 / 通常GOD / 通常小役 をこの確率で振り分ける（すぐ当たる）
+#   ・戻り率は度外視（あくまで挙動確認用）。1〜9番台には一切影響しない。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SLOT_TEST_ENABLED = True       # ← False で10番台も通常設定に戻る（本番モード）
+SLOT_TEST_MACHINE = 10         # テスト台の番号
+SLOT_TEST_PREMIUM_RATE = 0.20  # 聖域(SINGULARITY)へ突入する確率
+SLOT_TEST_GOD_RATE     = 0.60  # ここまでに通常GODへ（= 聖域20% + 通常GOD40%）。残り40%は通常小役/ハズレ
+# テスト台用の擬似設定。entry は良い入口(vgood)にして伸びも確認しやすくしておく。
+SLOT_SETTINGS["T"] = {"koyaku_mult": 1.0, "god_mult": 1.0, "premium_per": 5200,
+                      "entry": "vgood", "test": True}
+
 # ── 通常時 小役 (キー, 基本払い出し, 出現率) ──
 # 上から順に判定し、最初に当たった1役を採用（順送り）
 SLOT_KOYAKU = [
