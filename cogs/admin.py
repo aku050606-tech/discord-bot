@@ -83,7 +83,7 @@ def build_admin_embed(interaction: discord.Interaction = None) -> discord.Embed:
 
 class AdminMenuView(discord.ui.View):
     def __init__(self, admin_id: str):
-        super().__init__(timeout=300)
+        super().__init__(timeout=900)
         self.admin_id = admin_id
 
     async def _guard(self, interaction) -> bool:
@@ -171,7 +171,7 @@ class AdminUserSelect(discord.ui.UserSelect):
 
 class AdminUserSelectView(discord.ui.View):
     def __init__(self, admin_id: str, action: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.admin_id = admin_id
         self.add_item(AdminUserSelect(admin_id, action))
 
@@ -278,7 +278,7 @@ class AdminDistributeModal(discord.ui.Modal, title="📢 全員に配布する�
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class AdminBackView(discord.ui.View):
     def __init__(self, admin_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.admin_id = admin_id
 
     @discord.ui.button(label="◀ メニューへ戻る", style=discord.ButtonStyle.secondary)

@@ -347,6 +347,11 @@ class ChinchiroModeView(discord.ui.View):
         view = ChinchiroPvPView(room_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
+    @discord.ui.button(label="🔙 カジノへ戻る", style=discord.ButtonStyle.secondary, row=4)
+    async def __back_casino(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.menu import open_casino_menu
+        await open_casino_menu(interaction)
+
 class Chinchiro(commands.Cog):
     def __init__(self, bot):
         self.bot = bot

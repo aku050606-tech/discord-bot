@@ -793,6 +793,11 @@ class PokerModeView(discord.ui.View):
 # Cog
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    @discord.ui.button(label="🔙 カジノへ戻る", style=discord.ButtonStyle.secondary, row=4)
+    async def __back_casino(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.menu import open_casino_menu
+        await open_casino_menu(interaction)
+
 class Poker(commands.Cog):
     def __init__(self, bot):
         self.bot = bot

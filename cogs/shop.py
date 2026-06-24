@@ -18,7 +18,7 @@ _LINE_CROWN_MAX = max(l.get("crown_bonus", 0) for l in FISHING_LINES.values())
 
 class ShopView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
 
     @discord.ui.button(label="🎋 釣り竿", style=discord.ButtonStyle.primary, row=0)
     async def rod_shop(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -182,7 +182,7 @@ async def show_equip(interaction: discord.Interaction):
 
 class RodShopView(discord.ui.View):
     def __init__(self, uid, guild_id, gear, bal):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.uid = uid
         self.guild_id = guild_id
         self.gear = gear
@@ -234,7 +234,7 @@ class BuyRodButton(discord.ui.Button):
 
 class ReelShopView(discord.ui.View):
     def __init__(self, uid, guild_id, gear, bal):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.uid = uid
         self.guild_id = guild_id
 
@@ -283,7 +283,7 @@ class BuyReelButton(discord.ui.Button):
 
 class LineShopView(discord.ui.View):
     def __init__(self, uid, guild_id, gear, bal):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.uid = uid
         self.guild_id = guild_id
 
@@ -336,7 +336,7 @@ class BuyLineButton(discord.ui.Button):
 
 class EquipView(discord.ui.View):
     def __init__(self, uid, gear):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.uid = uid
         self.gear = gear
 
@@ -407,7 +407,7 @@ class EquipRodButton(discord.ui.Button):
 
 class EquipReelView(discord.ui.View):
     def __init__(self, uid, gear):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.uid = uid
         for reel_id, uses in gear["reel_inventory"].items():
             if uses > 0:
@@ -449,7 +449,7 @@ class EquipReelButton(discord.ui.Button):
 
 class EquipLineView(discord.ui.View):
     def __init__(self, uid, gear):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.uid = uid
         for line_id, uses in gear["line_inventory"].items():
             if uses > 0:

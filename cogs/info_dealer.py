@@ -137,7 +137,7 @@ async def _check(interaction, user_id) -> bool:
 class InfoResultView(discord.ui.View):
     """各キャラのセリフ表示後に出す戻り導線"""
     def __init__(self, user_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     @discord.ui.button(label="◀ 情報屋に戻る", style=discord.ButtonStyle.secondary)
@@ -154,7 +154,7 @@ class InfoResultView(discord.ui.View):
 
 class InfoDealerView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     @discord.ui.button(label="🧑‍💼 店長", style=discord.ButtonStyle.success, row=0)
@@ -247,7 +247,7 @@ class ProPickButton(discord.ui.Button):
 
 class ProPickView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.user_id = user_id
         for i in range(1, 6):
             self.add_item(ProPickButton(i, user_id))

@@ -71,7 +71,7 @@ class TeamSplit(commands.Cog):
 
 class ResplitView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
 
     @discord.ui.button(label="もう一度シャッフル", style=discord.ButtonStyle.secondary, emoji="🔀")
     async def resplit(self, interaction: discord.Interaction, button: discord.ui.Button):

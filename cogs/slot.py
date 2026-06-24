@@ -221,6 +221,46 @@ async def render(interaction: discord.Interaction, uid: str, embed: discord.Embe
         pass
 
 
+class _RecoverView(discord.ui.View):
+    """フリーズ/セッション切れ時の復帰用。もう一度遊ぶ・メニューへ。"""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🎰 もう一度遊ぶ", style=discord.ButtonStyle.primary)
+    async def again(self, interaction: discord.Interaction, button: discord.ui.Button):
+        active_slots.pop(str(interaction.user.id), None)
+        await interaction.response.edit_message(embed=build_select_embed(), view=SlotSelectView())
+
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+    async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
+        active_slots.pop(str(interaction.user.id), None)
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+
+
+async def _ensure_buttons(interaction: discord.Interaction, uid: str):
+    """演出処理の最後に必ず呼ぶ。何が起きても操作ボタンを復活させ、絶対に固まらせない。"""
+    try:
+        g = active_slots.get(uid)
+        if g:
+            # 現在の状態に応じたボタン付きViewを再アタッチ（embedは現状のまま維持）
+            await interaction.edit_original_response(view=build_view(uid))
+        else:
+            e = discord.Embed(
+                title="⌛ プレイ終了",
+                description="このプレイは終了しています。下のボタンか `/slot` で再開できます。",
+                color=discord.Color.dark_gray())
+            await interaction.edit_original_response(embed=e, view=_RecoverView())
+    except Exception:
+        # 最後の保険：editできない場合はエフェメラルで復帰導線を出す
+        try:
+            await interaction.followup.send(
+                "⚠️ 表示の更新に失敗しました。`/slot` でいつでも再開できます。", ephemeral=True)
+        except Exception:
+            pass
+
+
 async def _expire(interaction: discord.Interaction, view: discord.ui.View):
     """セッションが見つからないボタン押下時に、無言で失敗させず明示的に終了表示する。"""
     try:
@@ -331,7 +371,7 @@ async def start_test_slot(interaction):
 
 class SlotSelectView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)
         for i in range(1, 6):
             self.add_item(SlotMachineButton(i))
 
@@ -350,7 +390,7 @@ class SlotSelectView(discord.ui.View):
 # ── 通常/GOD進行用View（回す・やめる）──
 class SlotGameView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=600)
+        super().__init__(timeout=None)
         self.user_id = user_id
 
     @discord.ui.button(label="回す", style=discord.ButtonStyle.primary, emoji="🎰")
@@ -374,6 +414,7 @@ class SlotGameView(discord.ui.View):
             gg = active_slots.get(uid)
             if gg:
                 gg["spinning"] = False
+            await _ensure_buttons(interaction, uid)
 
     @discord.ui.button(label="🎰 台選択に戻る", style=discord.ButtonStyle.secondary, row=1)
     async def to_select(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -397,7 +438,7 @@ class SlotGameView(discord.ui.View):
 # ── ルート選択用View（ORBIT・BIG BANG）──
 class SlotRouteView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=600)
+        super().__init__(timeout=None)
         self.user_id = user_id
 
     async def _choose(self, interaction, up):
@@ -419,6 +460,7 @@ class SlotRouteView(discord.ui.View):
             gg = active_slots.get(uid)
             if gg:
                 gg["spinning"] = False
+            await _ensure_buttons(interaction, uid)
 
     @discord.ui.button(label="🛰️ ORBIT", style=discord.ButtonStyle.primary)
     async def orbit(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -440,7 +482,7 @@ class SlotRouteView(discord.ui.View):
 # ── 「狙え」用View（継続抽選を狙え）──
 class SlotAimView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=600)
+        super().__init__(timeout=None)
         self.user_id = user_id
         # 狙えボタンのラベルをランク連動に
         g = active_slots.get(user_id)
@@ -470,6 +512,7 @@ class SlotAimView(discord.ui.View):
             gg = active_slots.get(uid)
             if gg:
                 gg["spinning"] = False
+            await _ensure_buttons(interaction, uid)
 
     async def on_timeout(self):
         await _handle_timeout(self)

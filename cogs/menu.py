@@ -71,7 +71,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
 
 class MainMenuView(discord.ui.View):
     def __init__(self, user_id: str = None):
-        super().__init__(timeout=300)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     async def _check(self, interaction):
@@ -143,9 +143,19 @@ class MainMenuView(discord.ui.View):
 # カジノメニュー（スロット以外のゲーム）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+async def open_casino_menu(interaction, user_id=None):
+    """カジノメニューを開く（各ゲームの『戻る』から共通で使う）。"""
+    uid = user_id or str(interaction.user.id)
+    embed = discord.Embed(
+        title="🃏 カジノ",
+        description="遊ぶゲームを選んでください\nベット **100〜2,000** ナトコイン",
+        color=discord.Color.dark_purple(),
+    )
+    await interaction.response.edit_message(embed=embed, view=CasinoMenuView(uid))
+
 class CasinoMenuView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=300)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     async def _check(self, interaction):
@@ -260,7 +270,7 @@ def make_bet_view(user_id: str, guild_id: str, game_type: str, title: str, back_
     """賭け金入力ボタン1つのViewを生成"""
     class BetView(discord.ui.View):
         def __init__(self):
-            super().__init__(timeout=60)
+            super().__init__(timeout=900)
             self._user_id = user_id
             self._guild_id = guild_id
             self._game_type = game_type
@@ -299,7 +309,7 @@ def CoinflipBetView(user_id: str):
 
 class CoinflipChoiceView(discord.ui.View):
     def __init__(self, bet: int, user_id: str):
-        super().__init__(timeout=30)
+        super().__init__(timeout=900)
         self.bet = bet
         self.user_id = user_id
 
@@ -345,7 +355,7 @@ class CoinflipChoiceView(discord.ui.View):
 
 class CoinflipAgainView(discord.ui.View):
     def __init__(self, bet: int, user_id: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.bet = bet
         self.user_id = user_id
 
@@ -427,7 +437,7 @@ class FishMenuView(discord.ui.View):
 
 class WalletMenuView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     async def _check(self, interaction):
@@ -582,7 +592,7 @@ class UserPicker(discord.ui.UserSelect):
 
 class SendSelectView(discord.ui.View):
     def __init__(self, sender_id: str, guild_id: str, remaining: int):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.sender_id = sender_id
         self.guild_id = guild_id
         self.remaining = remaining
@@ -596,7 +606,7 @@ class SendSelectView(discord.ui.View):
 
 class SendBackView(discord.ui.View):
     def __init__(self, user_id: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary)

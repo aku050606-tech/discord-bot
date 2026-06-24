@@ -1,7 +1,9 @@
-"""共通ダブルアップ（ハイ＆ロー・7基準）。
+"""共通ダブルアップ（対コンピューター・ハイ＆ロー）。
 - 勝った『勝ち分(net)』だけを賭ける。外しても元の賭け金は戻る（マイルド方式）。
-- 1枚めくって 8〜K=ハイ / A〜6=ロー / 7はハズレ。プレイヤーがハイ/ローを選ぶ。
-- 勝率 6/13 ≒ 46%、2倍配当 → 1回あたり期待値 ≒ 0.92（軽い胴元有利）。
+- 「自分のカード」がコンピューターのカードより高い/低いかを当てる。
+  ⬆️高い/⬇️ローを先に宣言 → 両者のカードを同時にめくって勝負（引き分けは負け）。
+  ※コンピューターのカードを見てから選べると必ず有利な方を選べてしまい勝率72%＝経済破壊になるため、
+    宣言してからめくる方式にして勝率6/13≒46%（フェアな2倍配当）を保つ。
 - チェーンは最大5連。各回「確定」できる。対人戦には付けない。
 勝ち分(net)は呼び出し時点で既に残高に反映済みである前提。
 """
@@ -45,7 +47,7 @@ def _done_embed(title, desc, color, balance):
 
 class DoubleUpEntryView(discord.ui.View):
     def __init__(self, user_id, guild_id, stake, title, again_factory, chain=0):
-        super().__init__(timeout=90)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
         self.stake = stake          # いま賭けられる勝ち分（残高に反映済み）
@@ -58,8 +60,9 @@ class DoubleUpEntryView(discord.ui.View):
         if not await _check(interaction, self.user_id): return
         e = discord.Embed(
             title=f"🎴 {self.title} — ダブルアップ（{self.chain + 1}/{MAX_CHAIN}連）",
-            description=(f"次のカードは？\n"
-                        f"**8〜K = ⬆️ハイ / A〜6 = ⬇️ロー**（7はハズレ）\n\n"
+            description=(f"コンピューターと1枚ずつ勝負！\n"
+                        f"**あなたのカードはコンピューターより高い？低い？**\n"
+                        f"先に宣言して、同時にめくります（同じ数字は負け）。\n\n"
                         f"賭け中の勝ち分: **{self.stake:,} ナトコイン**\n"
                         f"当たれば **{self.stake * 2:,}** に倍増、外すと勝ち分を失う（元の賭け金は戻る）"),
             color=discord.Color.dark_gold(),
@@ -79,7 +82,7 @@ class DoubleUpEntryView(discord.ui.View):
 
 class DoubleUpChoiceView(discord.ui.View):
     def __init__(self, user_id, guild_id, stake, title, again_factory, chain):
-        super().__init__(timeout=90)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
         self.stake = stake
@@ -91,15 +94,20 @@ class DoubleUpChoiceView(discord.ui.View):
         if not await _check(interaction, self.user_id): return
         from database import Database
         db = Database()
-        r, s = draw_card()
-        if r == 7:
-            win = False
-        elif r >= 8:
-            win = (pick == "high")
-        else:  # 1〜6
-            win = (pick == "low")
+        cr, cs = draw_card()   # コンピューターのカード
+        pr, ps = draw_card()   # あなたのカード
+        if pr == cr:
+            win = False        # 同じ数字は負け
+        elif pick == "high":
+            win = pr > cr
+        else:
+            win = pr < cr
 
-        card = card_str(r, s)
+        comp = card_str(cr, cs)
+        mine = card_str(pr, ps)
+        pick_label = "⬆️高い" if pick == "high" else "⬇️低い"
+        cards_line = f"🤖 コンピューター: **{comp}**\n🙋 あなた: **{mine}**（宣言: {pick_label}）"
+
         if win:
             db.update_balance(self.user_id, self.guild_id, self.stake)  # 勝ち分を倍に
             new_stake = self.stake * 2
@@ -107,14 +115,14 @@ class DoubleUpChoiceView(discord.ui.View):
             bal = db.get_balance(self.user_id, self.guild_id)
             if new_chain >= MAX_CHAIN:
                 e = _done_embed(self.title,
-                                f"🎴 {card} → ✅ **当たり！**\n"
+                                f"{cards_line}\n→ ✅ **当たり！**\n"
                                 f"🏆 {MAX_CHAIN}連達成！ **{new_stake:,} ナトコイン** を確定！",
                                 discord.Color.gold(), bal)
                 await interaction.response.edit_message(embed=e, view=self.again_factory())
             else:
                 e = discord.Embed(
                     title=f"🎴 {self.title} — ダブルアップ成功（{new_chain}/{MAX_CHAIN}連）",
-                    description=(f"🎴 {card} → ✅ **当たり！**\n"
+                    description=(f"{cards_line}\n→ ✅ **当たり！**\n"
                                 f"勝ち分が **{new_stake:,} ナトコイン** に倍増！\n\n"
                                 f"さらに挑戦する？ それとも確定する？"),
                     color=discord.Color.gold(),
@@ -126,17 +134,17 @@ class DoubleUpChoiceView(discord.ui.View):
         else:
             db.update_balance(self.user_id, self.guild_id, -self.stake)  # 勝ち分没収
             bal = db.get_balance(self.user_id, self.guild_id)
-            reason = "7だ…！残念！" if r == 7 else "外れ…！"
+            reason = "同じ数字…！" if pr == cr else "外れ…！"
             e = _done_embed(self.title,
-                            f"🎴 {card} → 💀 **ハズレ（{reason}）**\n"
+                            f"{cards_line}\n→ 💀 **ハズレ（{reason}）**\n"
                             f"勝ち分 **{self.stake:,} ナトコイン** を失った…（元の賭け金は戻っています）",
                             discord.Color.red(), bal)
             await interaction.response.edit_message(embed=e, view=self.again_factory())
 
-    @discord.ui.button(label="⬆️ ハイ (8〜K)", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="⬆️ 高い", style=discord.ButtonStyle.primary)
     async def high(self, interaction, button):
         await self._resolve(interaction, "high")
 
-    @discord.ui.button(label="⬇️ ロー (A〜6)", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="⬇️ 低い", style=discord.ButtonStyle.primary)
     async def low(self, interaction, button):
         await self._resolve(interaction, "low")

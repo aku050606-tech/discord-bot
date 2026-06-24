@@ -263,7 +263,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
 
 class FishResultView(discord.ui.View):
     def __init__(self, area, show_shadow, uid, guild_id):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.area = area
         self.uid = uid
         self.guild_id = guild_id
@@ -310,7 +310,7 @@ class ShadowButton(discord.ui.Button):
 
 class ShadowChoiceView(discord.ui.View):
     def __init__(self, area, uid, guild_id):
-        super().__init__(timeout=30)
+        super().__init__(timeout=900)
         self.area = area
         self.uid = uid
         self.guild_id = guild_id
@@ -361,7 +361,7 @@ class ShadowChoiceView(discord.ui.View):
 
 class BackToFishView(discord.ui.View):
     def __init__(self, area):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.area = area
 
     @discord.ui.button(label="もう一回釣る！", style=discord.ButtonStyle.primary, emoji="🎣")
