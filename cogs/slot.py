@@ -591,8 +591,8 @@ class Slot(commands.Cog):
     @app_commands.command(name="slot", description="スロット — EVENT HORIZONを目指せ")
     async def slot(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
-        if uid in active_slots:
-            await interaction.response.send_message("❌ すでにプレイ中です", ephemeral=True); return
+        # 古い(固まった)セッションが残っていれば自動クリアして必ず始められるように
+        active_slots.pop(uid, None)
         embed = discord.Embed(
             title="🎰 SLOT — 台選択",
             description=f"**{SLOT_BET}コイン**掛け\n1〜10番台から選んでください！",

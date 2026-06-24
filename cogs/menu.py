@@ -206,12 +206,14 @@ class GameMenuView(discord.ui.View):
     @discord.ui.button(label="🎰 スロット", style=discord.ButtonStyle.primary, row=0)
     async def slot(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
+        from cogs.slot import active_slots, SlotSelectView, SLOT_BET, GOD_ZONE_NAME
+        active_slots.pop(self.user_id, None)  # 古いセッションを必ずクリア
         embed = discord.Embed(
-            title="🎰 スロット — 台選択",
-            description="1〜10番台から選んでください！\n設定は台によって違います。高設定を探せ！\n1回 **60コイン**",
-            color=discord.Color.dark_green()
+            title="🎰 SLOT — 台選択",
+            description=f"1〜10番台から選んでください！\n設定は台によって違います。高設定を探せ！\n☯️ **{GOD_ZONE_NAME}** を目指せ──\n1回 **{SLOT_BET}コイン**",
+            color=discord.Color.dark_purple()
         )
-        await interaction.response.edit_message(embed=embed, view=SlotWithBackView(self.user_id))
+        await interaction.response.edit_message(embed=embed, view=SlotSelectView())
 
     @discord.ui.button(label="🃏 ブラックジャック", style=discord.ButtonStyle.primary, row=0)
     async def blackjack(self, interaction: discord.Interaction, button: discord.ui.Button):
