@@ -119,8 +119,21 @@ def build_view(uid: str) -> discord.ui.View:
 
 
 async def render(interaction: discord.Interaction, uid: str, embed: discord.Embed):
-    """defer 済み前提：現在の状態に応じたViewでメッセージを更新"""
-    await interaction.followup.edit_message(interaction.message.id, embed=embed, view=build_view(uid))
+    """現在の状態に応じたViewでメッセージを更新（環境差に強い確実な方式）"""
+    view = build_view(uid)
+    try:
+        if interaction.response.is_done():
+            # defer済み or 2回目以降の更新 → 元メッセージを直接編集
+            await interaction.edit_original_response(embed=embed, view=view)
+        else:
+            # 最初の更新 → コンポーネント応答で即編集
+            await interaction.response.edit_message(embed=embed, view=view)
+    except discord.HTTPException:
+        # 念のためのフォールバック
+        try:
+            await interaction.edit_original_response(embed=embed, view=view)
+        except Exception:
+            pass
 
 
 def _set_auto_label(view: discord.ui.View, uid: str):
