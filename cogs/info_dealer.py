@@ -120,10 +120,8 @@ def pro_result(machine_no: int):
 def build_info_embed() -> discord.Embed:
     e = discord.Embed(
         title="🕵️ 情報屋",
-        description=("誰に聞く？\n\n"
-                     "🧑‍💼 **店長** … 無料・何度でも\n"
-                     "👴 **常連のじいさん** … 1日1回・ふわっとヒント\n"
-                     f"🕶️ **スロプロ** … 1日1回・**{INFO_PRO_COST:,}ナトコイン**・台の良し悪しをズバリ"),
+        description=("薄暗い一角に、見知った顔が三人。\n"
+                     "気になるやつに、声をかけてみな。"),
         color=discord.Color.dark_gold(),
     )
     return e
