@@ -58,10 +58,17 @@ def roll_normal_spin(setting) -> dict:
         if r < SLOT_TEST_PREMIUM_RATE:
             return {"type": "god", "premium": True, "yaku": None, "payout": 0}
         if r < SLOT_TEST_GOD_RATE:
-            # 入口ランク/ルートを色々試せるよう契機役をランダムに（soft/mid/strong混在）
-            yaku = random.choice(["cherry", "suika", "weak", "schk", "schy"])
-            return {"type": "god", "premium": False, "yaku": yaku, "payout": 0}
-        # それ以外は通常の小役/ハズレ抽選に流す
+            # 🧪テスト台：必ず「レア役からの当選」になるよう契機をレア役に限定
+            #   weak=チャンス目(mid) / schk=強チャンス目(strong) / schy=強チェリー(strong)
+            #   → 当選ゲームでレア役を実払い出し付きで見せ、次ゲームで後告知される流れを試せる
+            yaku = random.choice(["weak", "schk", "schy"])
+            pay = next((p for k, p, _ in SLOT_KOYAKU if k == yaku), 60)
+            return {"type": "god", "premium": False, "yaku": yaku, "payout": pay}
+        # フォールスルーは小役/ハズレのみ（GOD抽選はしない＝GODは必ずレア役/聖域から）
+        for key, pay, prob in SLOT_KOYAKU:
+            if random.random() < prob:
+                return {"type": "koyaku", "yaku": key, "payout": int(pay * cfg["koyaku_mult"])}
+        return {"type": "blank", "yaku": None, "payout": 0}
     if random.random() < 1 / cfg["premium_per"]:
         return {"type": "god", "premium": True, "yaku": None, "payout": 0}
     for key, pay, prob in SLOT_KOYAKU:
@@ -76,7 +83,7 @@ def roll_normal_spin(setting) -> dict:
 def make_god_state(premium: bool, yaku, setting: int = 1):
     if premium:
         return {"premium": True, "rank_idx": None, "rate": GOD_SINGULARITY["rate"],
-                "total": 0, "sets": 0, "max_idx": None}
+                "total": 0, "sets": 0, "max_idx": None, "game": 0, "ranked": False}
     grp = GOD_TRIGGER_GROUP.get(yaku, "soft")
     # 設定別の入口ランク重み（設定差の本体。見えにくい所に隠す）
     profile = SLOT_SETTINGS[setting].get("entry", "good")
@@ -88,7 +95,7 @@ def make_god_state(premium: bool, yaku, setting: int = 1):
         if r < acc:
             idx = i; break
     return {"premium": False, "rank_idx": idx, "rate": GOD_RANKS[idx]["rate"],
-            "total": 0, "sets": 0, "max_idx": idx}
+            "total": 0, "sets": 0, "max_idx": idx, "game": 0, "ranked": False}
 
 
 def _draw_up(up) -> int:
@@ -108,24 +115,43 @@ def god_max_rank_info(g):
     return GOD_SINGULARITY if g["premium"] else GOD_RANKS[g["max_idx"]]
 
 
-def god_play_set(g, up):
-    payout = GOD_SET_BASE + _draw_up(up)
+def god_play_game(g, up):
+    """GOD中の1ゲームを消化する。子役抽選→払い出し→（強役なら）昇格抽選。
+    10ゲーム目（=GOD_SET_GAMES）でセット継続抽選まで行い continued を返す。"""
+    # 子役抽選（順送り・最初に当たった1役）
+    r = random.random(); acc = 0.0
+    chosen = GOD_GAME_KOYAKU[-1]
+    for row in GOD_GAME_KOYAKU:
+        acc += row[1]
+        if r < acc:
+            chosen = row; break
+    key, prob, rup, base, disp, emo = chosen
+
+    payout = int((base + _draw_up(up)) * GOD_PAYOUT_SCALE)
     g["total"] += payout
-    g["sets"] += 1
+    g["game"] += 1
+
+    # 昇格（1セット最大1回・1段ずつ・PULSAR上限）
     rankup_to = None
     rankup_yaku = None
-    if not g["premium"] and g["rank_idx"] < len(GOD_RANKS) - 1:
-        for key, p, upr, disp, emo in GOD_SET_KOYAKU:
-            if random.random() < p:
-                if random.random() < upr and g["rank_idx"] < len(GOD_RANKS) - 1:
-                    g["rank_idx"] += 1
-                    g["rate"] = GOD_RANKS[g["rank_idx"]]["rate"]
-                    g["max_idx"] = g["rank_idx"]
-                    rankup_to = GOD_RANKS[g["rank_idx"]]["key"]
-                    rankup_yaku = (disp, emo)
-                break
-    continued = random.random() < g["rate"]
-    return {"payout": payout, "continued": continued,
+    if (not g["premium"]) and (not g["ranked"]) and g["rank_idx"] < len(GOD_RANKS) - 1:
+        if random.random() < rup:
+            g["rank_idx"] += 1
+            g["rate"] = GOD_RANKS[g["rank_idx"]]["rate"]
+            g["max_idx"] = g["rank_idx"]
+            g["ranked"] = True
+            rankup_to = GOD_RANKS[g["rank_idx"]]["key"]
+            rankup_yaku = (disp, emo)
+
+    # セット終端なら継続抽選
+    set_done = g["game"] >= GOD_SET_GAMES
+    continued = None
+    if set_done:
+        g["sets"] += 1
+        continued = random.random() < g["rate"]
+
+    return {"koyaku": (key, disp, emo), "payout": payout,
+            "set_done": set_done, "continued": continued,
             "rankup_to": rankup_to, "rankup_yaku": rankup_yaku}
 
 
@@ -206,37 +232,6 @@ async def _handle_timeout(view: discord.ui.View):
         pass
 
 
-def _set_auto_label(view: discord.ui.View, uid: str):
-    g = active_slots.get(uid)
-    auto = g["auto"] if g else False
-    for c in view.children:
-        if getattr(c, "custom_id", None) == "slot_auto":
-            c.label = "🕹️ 手動" if auto else "⏩ オート"
-
-
-async def _toggle_auto(interaction: discord.Interaction, uid: str):
-    """オートボタン共通処理"""
-    g = active_slots.get(uid)
-    if not g:
-        await _expire(interaction, build_view(uid)); return
-    g["auto"] = not g["auto"]
-    if g["auto"] and g["state"] in ("god", "aim", "route"):
-        if g.get("spinning"):
-            await interaction.response.send_message("⏳ 処理中です...", ephemeral=True); return
-        g["spinning"] = True
-        await interaction.response.defer()
-        try:
-            await _resolve_god_auto(interaction, uid)
-        finally:
-            gg = active_slots.get(uid)
-            if gg:
-                gg["spinning"] = False
-        return
-    # 通常時のトグル：ラベル更新して再描画
-    view = build_view(uid)
-    await interaction.response.edit_message(view=view)
-
-
 # ── 台選択 ──
 class SlotMachineButton(discord.ui.Button):
     def __init__(self, machine_no: int):
@@ -257,8 +252,8 @@ class SlotMachineButton(discord.ui.Button):
         setting = get_machine_setting(self.machine_no)
         active_slots[uid] = {
             "machine": self.machine_no, "setting": setting, "guild_id": guild_id,
-            "state": "normal", "auto": False, "god": None, "up": None,
-            "pending": None, "spinning": False, "sid": uuid.uuid4().hex,
+            "state": "normal", "god": None, "up": None,
+            "pending": None, "pending_god": None, "spinning": False, "sid": uuid.uuid4().hex,
         }
         embed = discord.Embed(
             title=f"🎰 SLOT — {self.machine_no}番台",
@@ -268,7 +263,6 @@ class SlotMachineButton(discord.ui.Button):
             color=discord.Color.dark_purple()
         )
         embed.add_field(name="残高", value=f"{bal:,} コイン", inline=True)
-        embed.add_field(name="モード", value="🕹️ 手動", inline=True)
         await interaction.response.edit_message(embed=embed, view=SlotGameView(uid))
 
 
@@ -284,12 +278,11 @@ class SlotSelectView(discord.ui.View):
         await interaction.response.edit_message(embed=build_menu_embed(), view=MainMenuView())
 
 
-# ── 通常/GOD進行用View（回す・オート・やめる）──
+# ── 通常/GOD進行用View（回す・やめる）──
 class SlotGameView(discord.ui.View):
     def __init__(self, user_id: str):
         super().__init__(timeout=600)
         self.user_id = user_id
-        _set_auto_label(self, user_id)
 
     @discord.ui.button(label="回す", style=discord.ButtonStyle.primary, emoji="🎰")
     async def spin(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -313,12 +306,6 @@ class SlotGameView(discord.ui.View):
             if gg:
                 gg["spinning"] = False
 
-    @discord.ui.button(label="⏩ オート", style=discord.ButtonStyle.secondary, custom_id="slot_auto")
-    async def auto(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
-        await _toggle_auto(interaction, self.user_id)
-
     @discord.ui.button(label="やめる", style=discord.ButtonStyle.secondary, emoji="🚪")
     async def quit_game(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
@@ -332,12 +319,11 @@ class SlotGameView(discord.ui.View):
         await _handle_timeout(self)
 
 
-# ── ルート選択用View（ORBIT・BIG BANG・オート）──
+# ── ルート選択用View（ORBIT・BIG BANG）──
 class SlotRouteView(discord.ui.View):
     def __init__(self, user_id: str):
         super().__init__(timeout=600)
         self.user_id = user_id
-        _set_auto_label(self, user_id)
 
     async def _choose(self, interaction, up):
         uid = self.user_id
@@ -363,30 +349,24 @@ class SlotRouteView(discord.ui.View):
     async def orbit(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
-        await self._choose(interaction, GOD_UP_ORBIT)
+        await self._choose(interaction, GOD_GAME_UP_ORBIT)
 
     @discord.ui.button(label="💥 BIG BANG", style=discord.ButtonStyle.danger)
     async def bigbang(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
-        await self._choose(interaction, GOD_UP_BIGBANG)
+        await self._choose(interaction, GOD_GAME_UP_BIGBANG)
 
-    @discord.ui.button(label="⏩ オート", style=discord.ButtonStyle.secondary, custom_id="slot_auto")
-    async def auto(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
-        await _toggle_auto(interaction, self.user_id)
 
     async def on_timeout(self):
         await _handle_timeout(self)
 
 
-# ── 「狙え」用View（狙え・オート）──
+# ── 「狙え」用View（継続抽選を狙え）──
 class SlotAimView(discord.ui.View):
     def __init__(self, user_id: str):
         super().__init__(timeout=600)
         self.user_id = user_id
-        _set_auto_label(self, user_id)
         # 狙えボタンのラベルをランク連動に
         g = active_slots.get(user_id)
         if g and g.get("god"):
@@ -416,12 +396,6 @@ class SlotAimView(discord.ui.View):
             if gg:
                 gg["spinning"] = False
 
-    @discord.ui.button(label="⏩ オート", style=discord.ButtonStyle.secondary, custom_id="slot_auto")
-    async def auto(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
-        await _toggle_auto(interaction, self.user_id)
-
     async def on_timeout(self):
         await _handle_timeout(self)
 
@@ -436,22 +410,56 @@ async def _normal_spin(interaction, uid):
     sid = g["sid"]
     guild_id = g["guild_id"]
     bal = db.get_balance(uid, guild_id)
+    labels = {"replay": "🔄 リプレイ", "bell": "🔔 ベル", "cherry": "🍒 チェリー",
+              "suika": "🍉 スイカ！", "weak": "⭐ チャンス目", "schk": "🌠 強チャンス目！",
+              "schy": "🍒 強チェリー！"}
+
+    # ───── 後告知ゲーム：前ゲームで当選した契機の告知をここで出す ─────
+    # （当選ゲームでは普通の子役として見せ、告知は必ず次ゲームに繰り越す＝引いた瞬間にバレない）
+    pending = g.get("pending_god")
+    if pending:
+        g["pending_god"] = None
+        # 告知ゲームはベットのみ消費（残高不足なら無償告知で必ず救済）
+        if bal >= SLOT_BET:
+            db.update_balance(uid, guild_id, -SLOT_BET)
+        if pending["premium"]:
+            g["god"] = make_god_state(True, None, g["setting"])
+            await _enter_holy(interaction, uid)
+            return
+        # 溜め演出（☯️確定フラッシュ含む）→ 通常GOD突入
+        weights = SLOT_EFFECT_WEIGHTS.get("god", SLOT_EFFECT_WEIGHTS["blank"])
+        tier = _weighted_choice(weights)
+        eff_text = random.choice(SLOT_EFFECTS[tier])
+        wait = SLOT_WAIT["god"] if tier == "god_confirm" else SLOT_WAIT[tier]
+        e1 = discord.Embed(description=eff_text, color=discord.Color.from_rgb(80, 0, 140))
+        pad_embed(e1, target_fields=4)
+        await render(interaction, uid, e1)
+        await asyncio.sleep(wait)
+        g = _alive(uid, sid)
+        if g is None:
+            return
+        g["god"] = make_god_state(False, pending["yaku"], g["setting"])
+        await _enter_god(interaction, uid)
+        return
+
+    # ───── 通常ゲーム ─────
     if bal < SLOT_BET:
         await interaction.followup.send("❌ コインが足りません", ephemeral=True); return
     db.update_balance(uid, guild_id, -SLOT_BET)
     res = roll_normal_spin(g["setting"])
-    # 払い出しは演出前に確定させておく（途中で落ちてもコインは保全される）
+    # 払い出しは演出前に確定（途中で落ちてもコイン保全）
     if res.get("payout"):
         db.update_balance(uid, guild_id, res["payout"])
 
-    # 聖域は専用突入へ直行
-    if res["type"] == "god" and res["premium"]:
-        g["god"] = make_god_state(True, None, g["setting"])
-        await _enter_holy(interaction, uid)
-        return
+    # GOD当選 → この場では告知せず、次ゲームへ繰り越す。表示は“ただの子役/ハズレ”に偽装。
+    if res["type"] == "god":
+        g["pending_god"] = {"premium": res["premium"], "yaku": res.get("yaku")}
+        disp_yaku = None if res["premium"] else res.get("yaku")
+    else:
+        disp_yaku = res.get("yaku") if res["type"] == "koyaku" else None
 
-    # 溜め演出
-    wkey = "god" if res["type"] == "god" else (res.get("yaku") or "blank")
+    # 溜め演出（当選/非当選で重みを変えない＝見た目が完全に一致）
+    wkey = disp_yaku or "blank"
     weights = SLOT_EFFECT_WEIGHTS.get(wkey, SLOT_EFFECT_WEIGHTS["blank"])
     tier = _weighted_choice(weights)
     eff_text = random.choice(SLOT_EFFECTS[tier])
@@ -463,25 +471,15 @@ async def _normal_spin(interaction, uid):
     await render(interaction, uid, e1)
     await asyncio.sleep(wait)
 
-    # 演出後にセッション健在を確認（再起動・/slot再実行・時間切れ対策）
     g = _alive(uid, sid)
     if g is None:
         return
 
-    # 通常GOD突入
-    if res["type"] == "god":
-        g["god"] = make_god_state(False, res["yaku"], g["setting"])
-        await _enter_god(interaction, uid)
-        return
-
-    # 小役 / ハズレ
+    # 子役 / ハズレ表示（当選契機もここでは普通の役として見せる）
     payout = res.get("payout", 0)
     new_bal = db.get_balance(uid, guild_id)
-    reel_key = res["yaku"] if res["type"] == "koyaku" else "blank"
-    labels = {"replay": "🔄 リプレイ", "bell": "🔔 ベル", "cherry": "🍒 チェリー",
-              "suika": "🍉 スイカ！", "weak": "⭐ チャンス目", "schk": "🌠 強チャンス目！",
-              "schy": "🍒 強チェリー！"}
-    title = labels.get(res.get("yaku"), "　")
+    reel_key = disp_yaku if disp_yaku else "blank"
+    title = labels.get(disp_yaku, "　")
     e = discord.Embed(title=title, description=f"```\n{get_reel(reel_key)}\n```",
                       color=discord.Color.blue() if payout else discord.Color.dark_gray())
     if payout:
@@ -507,22 +505,16 @@ async def _enter_god(interaction, uid):
     g = _alive(uid, sid)
     if g is None:
         return
-
-    if g["auto"]:
-        g["up"] = GOD_UP_BALANCED
-        g["state"] = "god"
-        await _resolve_god_auto(interaction, uid)
-    else:
-        g["state"] = "route"
-        e2 = discord.Embed(
-            title="🧭 ROUTE SELECT",
-            description=("打ち方を選べ。\n\n"
-                         "🛰️ **ORBIT（軌道）** … コツコツ安定して伸ばす\n"
-                         "💥 **BIG BANG（爆発）** … 一撃に全振り、荒く跳ねる\n\n"
-                         "*期待値は同じ。変わるのは波の荒さだけ。*"),
-            color=discord.Color.from_rgb(120, 0, 200))
-        pad_embed(e2, target_fields=3)
-        await render(interaction, uid, e2)
+    g["state"] = "route"
+    e2 = discord.Embed(
+        title="🧭 ROUTE SELECT",
+        description=("打ち方を選べ。\n\n"
+                     "🛰️ **ORBIT（軌道）** … コツコツ安定して伸ばす\n"
+                     "💥 **BIG BANG（爆発）** … 一撃に全振り、荒く跳ねる\n\n"
+                     "*期待値は同じ。変わるのは波の荒さだけ。*"),
+        color=discord.Color.from_rgb(120, 0, 200))
+    pad_embed(e2, target_fields=3)
+    await render(interaction, uid, e2)
 
 
 async def _enter_holy(interaction, uid):
@@ -552,12 +544,10 @@ async def _enter_holy(interaction, uid):
     g = _alive(uid, sid)
     if g is None:
         return
-    g["up"] = GOD_UP_BALANCED
+    # 聖域はルート選択なし。中庸ルートで即1ゲーム目へ
+    g["up"] = GOD_GAME_UP_BALANCED
     g["state"] = "god"
-    if g["auto"]:
-        await _resolve_god_auto(interaction, uid)
-    else:
-        await _advance_god(interaction, uid)
+    await _advance_god(interaction, uid)
 
 
 def _aim_wait(g):
@@ -570,27 +560,42 @@ def _aim_wait(g):
 
 
 async def _advance_god(interaction, uid):
+    """GOD中の1ゲームを消化して開示する。10ゲーム目だけ継続抽選(aim)へ送る。"""
     g = active_slots.get(uid)
-    if g["auto"]:
-        await _resolve_god_auto(interaction, uid); return
-    r = god_play_set(g["god"], g["up"])
+    if not g:
+        return
+    god = g["god"]
+    r = god_play_game(god, g["up"])
     db.update_balance(uid, g["guild_id"], r["payout"])
-    g["pending"] = r
 
-    info = god_rank_info(g["god"])
-    desc = f"```\n{get_reel(info['key'])}\n```"
+    info = god_rank_info(god)
+    key, disp, emo = r["koyaku"]
+    if r["payout"] > 0:
+        koyaku_line = f"{emo} {disp}　**+{r['payout']:,}**"
+    else:
+        koyaku_line = "── ハズレ"
+    cur_set = god["sets"] + (0 if r["set_done"] else 1)
+    desc = (f"```\n{get_reel(info['key'])}\n```\n"
+            f"**SET {cur_set} ── GAME {god['game']}/{GOD_SET_GAMES}**\n{koyaku_line}")
     if r["rankup_to"]:
-        emo, txt = GOD_RANKUP_EFFECTS.get(r["rankup_to"], ("📈", "RANK UP"))
-        yaku_disp, yaku_emo = r["rankup_yaku"]
-        desc += f"\n{yaku_emo} {yaku_disp}！\n📈 **{emo} {txt}！！**"
+        ru_emo, ru_txt = GOD_RANKUP_EFFECTS.get(r["rankup_to"], ("📈", "RANK UP"))
+        ydisp, yemo = r["rankup_yaku"]
+        desc += f"\n{yemo} {ydisp}！\n📈 **{ru_emo} {ru_txt}！！**"
     e = discord.Embed(title=f"{info['emoji']} {info['name']}", description=desc,
                       color=discord.Color.from_rgb(150, 60, 220))
     e.add_field(name="今回", value=f"+{r['payout']:,}", inline=True)
-    e.add_field(name="セット", value=f"{g['god']['sets']}", inline=True)
-    e.add_field(name="累計", value=f"{g['god']['total']:,} コイン", inline=True)
-    e.set_footer(text=f"{GOD_AIM_LABELS.get(info['key'], '☯️ 狙え')} ── 継続を掴め")
+    e.add_field(name="セット", value=f"{cur_set}", inline=True)
+    e.add_field(name="累計", value=f"{god['total']:,} コイン", inline=True)
+
+    if r["set_done"]:
+        # 1セット(10G)完走 → 継続抽選を「狙え」で開示
+        g["pending"] = {"continued": r["continued"]}
+        g["state"] = "aim"
+        e.set_footer(text=f"{GOD_AIM_LABELS.get(info['key'], '☯️ 狙え')} ── 継続を掴め")
+    else:
+        g["state"] = "god"
+        e.set_footer(text="🎰 回す ── 次のゲームへ")
     pad_embed(e, target_fields=4)
-    g["state"] = "aim"
     await render(interaction, uid, e)
     if r["rankup_to"]:
         await asyncio.sleep(SLOT_WAIT["rankup"])
@@ -619,6 +624,9 @@ async def _reveal_aim(interaction, uid):
         return
 
     if continued:
+        # 次セットへ：ゲーム数と昇格フラグをリセット
+        g["god"]["game"] = 0
+        g["god"]["ranked"] = False
         g["state"] = "god"
         new_bal = db.get_balance(uid, g["guild_id"])
         info = god_rank_info(g["god"])
@@ -631,7 +639,8 @@ async def _reveal_aim(interaction, uid):
             title, sub = cut[2], cut[3]
             color = discord.Color.from_rgb(255, 0, 90) if kind == "rainbow" else discord.Color.gold()
         e = discord.Embed(title=title,
-                          description=f"```\n{get_reel(info['key'])}\n```" + (f"\n{sub}" if sub else ""),
+                          description=f"```\n{get_reel(info['key'])}\n```" + (f"\n{sub}" if sub else "")
+                                      + "\n🎰 回す ── 次セットへ",
                           color=color)
         e.add_field(name="ランク", value=f"{info['emoji']} **{info['name']}**", inline=True)
         e.add_field(name="セット", value=f"{g['god']['sets']}", inline=True)
@@ -641,21 +650,6 @@ async def _reveal_aim(interaction, uid):
         await render(interaction, uid, e)
     else:
         await _finish_god(interaction, uid, feint=feint)
-
-
-async def _resolve_god_auto(interaction, uid):
-    g = active_slots.get(uid)
-    if g.get("up") is None:
-        g["up"] = GOD_UP_BALANCED
-    pend = g.pop("pending", None)
-    if pend is not None and pend.get("continued") is False:
-        await _finish_god(interaction, uid); return
-    while True:
-        r = god_play_set(g["god"], g["up"])
-        db.update_balance(uid, g["guild_id"], r["payout"])
-        if not r["continued"]:
-            break
-    await _finish_god(interaction, uid)
 
 
 async def _finish_god(interaction, uid, feint=False):
@@ -668,17 +662,16 @@ async def _finish_god(interaction, uid, feint=False):
     mx = god_max_rank_info(god)
     total, sets, premium = god["total"], god["sets"], god["premium"]
 
-    if not g["auto"]:
-        if feint:
-            emo, txt = GOD_FEINT_END
-        else:
-            emo, txt = random.choice(GOD_END_EFFECTS)
-        e0 = discord.Embed(title=emo, description=txt, color=discord.Color.dark_gray())
-        pad_embed(e0, target_fields=3)
-        await render(interaction, uid, e0)
-        await asyncio.sleep(1.0)
-        if _alive(uid, sid) is None:
-            return
+    if feint:
+        emo, txt = GOD_FEINT_END
+    else:
+        emo, txt = random.choice(GOD_END_EFFECTS)
+    e0 = discord.Embed(title=emo, description=txt, color=discord.Color.dark_gray())
+    pad_embed(e0, target_fields=3)
+    await render(interaction, uid, e0)
+    await asyncio.sleep(1.0)
+    if _alive(uid, sid) is None:
+        return
 
     if premium:
         finish_line = GOD_FINISH_HOLY
@@ -708,6 +701,7 @@ async def _finish_god(interaction, uid, feint=False):
     g["god"] = None
     g["up"] = None
     g["pending"] = None
+    g["pending_god"] = None
     await render(interaction, uid, e)
 
 
