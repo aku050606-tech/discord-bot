@@ -81,15 +81,18 @@ class MainMenuView(discord.ui.View):
     @discord.ui.button(label="🎰 スロット", style=discord.ButtonStyle.primary, row=0)
     async def slot(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        from cogs.slot import active_slots, SlotSelectView, build_select_embed
+        from cogs.slot import active_slots
+        from cogs.juggler import active_jug, build_kishu_embed, KishuSelectView
         uid = str(interaction.user.id)
         g = active_slots.get(uid)
-        if g and g.get("spinning"):
+        jg = active_jug.get(uid)
+        if (g and g.get("spinning")) or (jg and jg.get("spinning")):
             await interaction.response.send_message(
                 "⏳ 演出の途中です。数秒待ってからもう一度お試しください。", ephemeral=True)
             return
         active_slots.pop(uid, None)
-        await interaction.response.edit_message(embed=build_select_embed(), view=SlotSelectView())
+        active_jug.pop(uid, None)
+        await interaction.response.edit_message(embed=build_kishu_embed(), view=KishuSelectView())
 
     @discord.ui.button(label="🎣 釣り", style=discord.ButtonStyle.success, row=0)
     async def fishing(self, interaction: discord.Interaction, button: discord.ui.Button):

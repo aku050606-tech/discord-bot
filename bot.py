@@ -25,6 +25,7 @@ async def load_extensions():
     await bot.load_extension("cogs.logger")
     await bot.load_extension("cogs.rewards")
     await bot.load_extension("cogs.slot")
+    await bot.load_extension("cogs.juggler")
     await bot.load_extension("cogs.fishing")
     await bot.load_extension("cogs.zukan")
     await bot.load_extension("cogs.chinchiro")

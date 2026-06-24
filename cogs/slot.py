@@ -381,6 +381,12 @@ class SlotSelectView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_info_embed(), view=InfoDealerView(str(interaction.user.id)))
 
+    @discord.ui.button(label="◀ 機種選択へ", style=discord.ButtonStyle.secondary, row=1)
+    async def to_kishu(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.juggler import build_kishu_embed, KishuSelectView
+        active_slots.pop(str(interaction.user.id), None)
+        await interaction.response.edit_message(embed=build_kishu_embed(), view=KishuSelectView())
+
     @discord.ui.button(label="🏠 戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
