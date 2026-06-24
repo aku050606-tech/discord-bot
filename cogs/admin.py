@@ -72,7 +72,8 @@ def build_admin_embed(interaction: discord.Interaction = None) -> discord.Embed:
             "➕ **補填** — 指定メンバーに加算\n"
             "➖ **没収** — 指定メンバーから減算（0未満にはならない）\n"
             "🎯 **残高を設定** — ちょうどその額に上書き\n"
-            "📢 **全員に配布** — このサーバーの全員に加算"
+            "📢 **全員に配布** — このサーバーの全員に加算\n"
+            "🧪 **テスト台** — すぐ GRAVITAS GAME に入れるスロットでAT演出を確認"
         ),
         inline=False,
     )
@@ -124,7 +125,13 @@ class AdminMenuView(discord.ui.View):
         if not await self._guard(interaction): return
         await interaction.response.send_modal(AdminDistributeModal(self.admin_id))
 
-    @discord.ui.button(label="閉じる", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="🧪 テスト台（スロット）", style=discord.ButtonStyle.primary, row=2)
+    async def test_slot(self, interaction, button):
+        if not await self._guard(interaction): return
+        from cogs.slot import start_test_slot
+        await start_test_slot(interaction)
+
+    @discord.ui.button(label="閉じる", style=discord.ButtonStyle.secondary, row=3)
     async def close(self, interaction, button):
         if not await self._guard(interaction): return
         await interaction.response.edit_message(

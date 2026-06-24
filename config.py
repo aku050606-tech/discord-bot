@@ -34,11 +34,32 @@ PVP_FEE_RATE = 0.10
 SLOT_BET = 60
 
 # 日付ベースでシード固定。1日1回、各台の設定(1〜6)を割り当て
-def get_daily_machines():
+# 末尾が 1 / 3 / 7 の日は「設定6を1台・設定1なし」のイベント日にする
+HIGH_SETTING_DAY_DIGITS = (1, 3, 7)
+
+def is_high_setting_day(today=None):
+    """その日が『設定6が1台入る熱い日（末尾1/3/7）』かどうか"""
     from datetime import date
-    seed = int(str(date.today()).replace("-", ""))
-    rng = __import__('random').Random(seed)
-    return [rng.randint(1, 6) for _ in range(10)]
+    if today is None:
+        today = date.today()
+    return (today.day % 10) in HIGH_SETTING_DAY_DIGITS
+
+def get_daily_machines(today=None):
+    """その日の各台(5台)の設定を返す。位置は日付シードで固定シャッフル。
+    ・末尾 1/3/7 の日 : 設定6を1台 + 設定2〜5（=設定1なし）
+    ・それ以外の日     : 設定1〜5を1台ずつ
+    """
+    from datetime import date
+    import random as _r
+    if today is None:
+        today = date.today()
+    rng = _r.Random(int(str(today).replace("-", "")))
+    if is_high_setting_day(today):
+        settings = [6, 2, 3, 4, 5]   # 設定6を1台、設定1は無し
+    else:
+        settings = [1, 2, 3, 4, 5]   # 設定1〜5を1台ずつ
+    rng.shuffle(settings)
+    return settings
 
 # ── 設定別パラメータ ──
 #   koyaku_mult : 小役払い出し倍率（高設定ほど持つ）
@@ -65,8 +86,8 @@ SLOT_SETTINGS = {
 #   ・1スピンの内訳: 聖域 / 通常GOD / 通常小役 をこの確率で振り分ける（すぐ当たる）
 #   ・戻り率は度外視（あくまで挙動確認用）。1〜9番台には一切影響しない。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SLOT_TEST_ENABLED = True       # ← False で10番台も通常設定に戻る（本番モード）
-SLOT_TEST_MACHINE = 10         # テスト台の番号
+SLOT_TEST_ENABLED = False      # 本番モード（True にすると SLOT_TEST_MACHINE 番台が即GODの確認用台になる）
+SLOT_TEST_MACHINE = 5          # テスト台の番号（5台運用に合わせて5へ。ENABLED=False の間は無効）
 SLOT_TEST_PREMIUM_RATE = 0.20  # 聖域(SINGULARITY)へ突入する確率
 SLOT_TEST_GOD_RATE     = 0.60  # ここまでに通常GODへ（= 聖域20% + 通常GOD40%）。残り40%は通常小役/ハズレ
 # テスト台用の擬似設定。entry は良い入口(vgood)にして伸びも確認しやすくしておく。
@@ -200,6 +221,37 @@ REELS = {
     "singularity": ["🌌", "🌌", "🌌"],
     "entry":       ["☯️", "☯️", "☯️"],
     "dark":        ["🌑", "🌑", "🌑"],
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ハズレのリール目（複数バリエーション・揃い目なし＝ハズレ感）
+#   効果は全て同一（ただのハズレ）。通常時/AT中の両方でランダムに選ぶ。
+#   ※「揃い」は当たりに見えるので入れない。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MISS_REELS = [
+    ["🌑", "⭐", "🌠"],
+    ["⭐", "🌑", "🌠"],
+    ["🌠", "🌑", "⭐"],
+    ["🌑", "🌠", "⭐"],
+    ["⭐", "🌠", "🌑"],
+    ["🌠", "⭐", "🌑"],
+]
+
+# AT中の子役 → リール目（REELSのキー）。ハズレは MISS_REELS からランダムに出す。
+GOD_KOYAKU_REEL = {
+    "strong": "schy",    # 強チェリー → 🍒🍒🍒
+    "suika":  "suika",   # スイカ     → 🍉🍉🍉
+    "cherry": "cherry",  # チェリー   → 🍒🌑⭐
+    "bell":   "bell",    # ベル       → 🔔🔔🔔
+}
+
+# 継続力を表す枠色（ランクが上がるほど熱く：青→橙→赤→マゼンタ→金）
+GOD_RANK_COLOR = {
+    "nova":        (90, 140, 230),
+    "flare":       (255, 140, 30),
+    "supernova":   (255, 90, 40),
+    "pulsar":      (220, 40, 140),
+    "singularity": (255, 205, 50),
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

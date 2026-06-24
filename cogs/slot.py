@@ -37,6 +37,35 @@ def get_reel(reel_key: str) -> str:
     return f"｜ {s[0]} ｜ {s[1]} ｜ {s[2]} ｜"
 
 
+def miss_reel() -> str:
+    """ハズレのリール目をランダムに1つ（揃い目なし・効果は全て同一）"""
+    s = random.choice(MISS_REELS)
+    return f"｜ {s[0]} ｜ {s[1]} ｜ {s[2]} ｜"
+
+
+def koyaku_reel(koyaku_key: str) -> str:
+    """AT中の子役をリール目で表現。ハズレ(blank等)は MISS_REELS から。"""
+    rk = GOD_KOYAKU_REEL.get(koyaku_key)
+    return get_reel(rk) if rk else miss_reel()
+
+
+def _all_ranks():
+    """ランク階段の並び（左=低 → 右=高）を [(key, emoji), ...] で返す"""
+    return [(r["key"], r["emoji"]) for r in GOD_RANKS] + \
+           [(GOD_SINGULARITY["key"], GOD_SINGULARITY["emoji"])]
+
+
+def rank_ladder(cur_key: str) -> str:
+    """継続ランクの階段。現在地を【】で強調（右にいるほど継続が高い）"""
+    return " ".join(f"【{emo}】" if k == cur_key else emo for k, emo in _all_ranks())
+
+
+def rank_color(cur_key: str) -> discord.Color:
+    """ランクが上がるほど熱い色（継続力の視覚化）"""
+    rgb = GOD_RANK_COLOR.get(cur_key, (150, 60, 220))
+    return discord.Color.from_rgb(*rgb)
+
+
 def _weighted_choice(weights: dict):
     r = random.random()
     acc = 0.0
@@ -270,18 +299,49 @@ class SlotMachineButton(discord.ui.Button):
 def build_select_embed() -> discord.Embed:
     return discord.Embed(
         title="🎰 GRAVITAS — 台選択",
-        description=f"**{SLOT_BET}ナトコイン**掛け\n1〜10番台から選んでください！",
+        description=f"**{SLOT_BET}ナトコイン**掛け\n1〜5番台から選んでください！",
         color=discord.Color.dark_purple()
     )
+
+
+async def start_test_slot(interaction):
+    """🧪 管理者専用テスト台を起動（設定T＝聖域/通常GODが即引ける）。AT演出の確認用。
+    呼び出し側で管理者チェック済みであること。"""
+    uid = str(interaction.user.id)
+    guild_id = str(interaction.guild.id)
+    if uid in active_slots:
+        await interaction.response.send_message("❌ すでにスロットをプレイ中です", ephemeral=True)
+        return
+    active_slots[uid] = {
+        "machine": "T", "setting": "T", "guild_id": guild_id,
+        "state": "normal", "god": None, "up": None,
+        "pending": None, "pending_god": None, "spinning": False, "sid": uuid.uuid4().hex,
+    }
+    bal = db.get_balance(uid, guild_id)
+    embed = discord.Embed(
+        title="🧪 GRAVITAS — テスト台（管理者専用）",
+        description=(f"**{SLOT_BET}ナトコイン**掛け\n"
+                     f"GRAVITAS GAME（聖域 / 通常）がすぐ引けます。AT演出の確認用。\n"
+                     f"☯️ **{GOD_ZONE_NAME}** を目指せ──"),
+        color=discord.Color.dark_teal(),
+    )
+    embed.add_field(name="残高", value=f"{bal:,} ナトコイン", inline=True)
+    await interaction.response.edit_message(embed=embed, view=SlotGameView(uid))
 
 
 class SlotSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=60)
-        for i in range(1, 11):
+        for i in range(1, 6):
             self.add_item(SlotMachineButton(i))
 
-    @discord.ui.button(label="🏠 戻る", style=discord.ButtonStyle.secondary, row=4)
+    @discord.ui.button(label="🕵️ 情報屋", style=discord.ButtonStyle.success, row=1)
+    async def info_dealer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.info_dealer import build_info_embed, InfoDealerView
+        await interaction.response.edit_message(
+            embed=build_info_embed(), view=InfoDealerView(str(interaction.user.id)))
+
+    @discord.ui.button(label="🏠 戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
@@ -493,9 +553,13 @@ async def _normal_spin(interaction, uid):
     # 子役 / ハズレ表示（当選契機もここでは普通の役として見せる）
     payout = res.get("payout", 0)
     new_bal = db.get_balance(uid, guild_id)
-    reel_key = disp_yaku if disp_yaku else "blank"
-    title = labels.get(disp_yaku, "　")
-    e = discord.Embed(title=title, description=f"```\n{get_reel(reel_key)}\n```",
+    if disp_yaku:
+        reel = get_reel(disp_yaku)
+        title = labels.get(disp_yaku, "　")
+    else:
+        reel = miss_reel()   # ハズレは複数パターンからランダム（揃い目なし）
+        title = "　"
+    e = discord.Embed(title=title, description=f"```\n{reel}\n```",
                       color=discord.Color.blue() if payout else discord.Color.dark_gray())
     if payout:
         e.add_field(name="獲得", value=f"+{payout:,} ナトコイン", inline=True)
@@ -585,19 +649,21 @@ async def _advance_god(interaction, uid):
 
     info = god_rank_info(god)
     key, disp, emo = r["koyaku"]
+    reel = koyaku_reel(key)   # 子役はその目、ハズレは MISS_REELS からランダム
     if r["payout"] > 0:
         koyaku_line = f"{emo} {disp}　**+{r['payout']:,}**"
     else:
-        koyaku_line = "── ハズレ"
+        koyaku_line = "　── ハズレ"
     cur_set = god["sets"] + (0 if r["set_done"] else 1)
-    desc = (f"```\n{get_reel(info['key'])}\n```\n"
+    desc = (f"{rank_ladder(info['key'])}\n"
+            f"```\n{reel}\n```\n"
             f"**SET {cur_set} ── GAME {god['game']}/{GOD_SET_GAMES}**\n{koyaku_line}")
     if r["rankup_to"]:
         ru_emo, ru_txt = GOD_RANKUP_EFFECTS.get(r["rankup_to"], ("📈", "RANK UP"))
         ydisp, yemo = r["rankup_yaku"]
         desc += f"\n{yemo} {ydisp}！\n📈 **{ru_emo} {ru_txt}！！**"
     e = discord.Embed(title=f"{info['emoji']} {info['name']}", description=desc,
-                      color=discord.Color.from_rgb(150, 60, 220))
+                      color=rank_color(info['key']))
     e.add_field(name="今回", value=f"+{r['payout']:,}", inline=True)
     e.add_field(name="セット", value=f"{cur_set}", inline=True)
     e.add_field(name="累計", value=f"{god['total']:,} ナトコイン", inline=True)
@@ -661,7 +727,8 @@ async def _reveal_aim(interaction, uid):
             title, sub = cut[2], cut[3]
             color = discord.Color.from_rgb(255, 0, 90) if kind == "rainbow" else discord.Color.gold()
         e = discord.Embed(title=title,
-                          description=f"```\n{get_reel(info['key'])}\n```" + (f"\n{sub}" if sub else "")
+                          description=f"{rank_ladder(info['key'])}\n"
+                                      + f"```\n{get_reel(info['key'])}\n```" + (f"\n{sub}" if sub else "")
                                       + "\n🎰 回す ── 次セットへ",
                           color=color)
         e.add_field(name="ランク", value=f"{info['emoji']} **{info['name']}**", inline=True)

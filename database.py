@@ -40,6 +40,10 @@ class Database:
             user_id TEXT, guild_id TEXT, amount INTEGER,
             sent_date TEXT
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS info_dealer (
+            user_id TEXT, guild_id TEXT, dealer TEXT, used_date TEXT,
+            PRIMARY KEY (user_id, guild_id, dealer)
+        )""")
         c.execute("""CREATE TABLE IF NOT EXISTS zukan (
             user_id TEXT, area TEXT, fish_name TEXT,
             caught_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -190,6 +194,27 @@ class Database:
         total = c.fetchone()[0]
         conn.close()
         return total or 0
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 情報屋（1日1回の利用管理）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def get_info_used_date(self, user_id, guild_id, dealer):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT used_date FROM info_dealer WHERE user_id=? AND guild_id=? AND dealer=?",
+                  (user_id, guild_id, dealer))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def set_info_used_date(self, user_id, guild_id, dealer, date_str):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO info_dealer (user_id, guild_id, dealer, used_date) VALUES (?, ?, ?, ?)",
+                  (user_id, guild_id, dealer, date_str))
+        conn.commit()
+        conn.close()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 図鑑
