@@ -73,6 +73,11 @@ class Database:
             reel_inventory TEXT DEFAULT '{}',
             line_inventory TEXT DEFAULT '{}'
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS player_state (
+            user_id TEXT PRIMARY KEY,
+            treasure_maps INTEGER DEFAULT 0,
+            last_area TEXT DEFAULT 'lake'
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -218,7 +223,41 @@ class Database:
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 図鑑
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def get_treasure_maps(self, user_id):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT treasure_maps FROM player_state WHERE user_id = ?", (user_id,))
+        row = c.fetchone(); conn.close()
+        return row[0] if row else 0
+
+    def add_treasure_map(self, user_id, n=1):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("""INSERT INTO player_state (user_id, treasure_maps) VALUES (?, ?)
+                     ON CONFLICT(user_id) DO UPDATE SET treasure_maps = treasure_maps + ?""",
+                  (user_id, n, n))
+        conn.commit(); conn.close()
+
+    def use_treasure_map(self, user_id):
+        """地図を1枚消費。成功でTrue、0枚ならFalse。"""
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT treasure_maps FROM player_state WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        if not row or row[0] <= 0:
+            conn.close(); return False
+        c.execute("UPDATE player_state SET treasure_maps = treasure_maps - 1 WHERE user_id = ?", (user_id,))
+        conn.commit(); conn.close(); return True
+
+    def get_last_area(self, user_id):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT last_area FROM player_state WHERE user_id = ?", (user_id,))
+        row = c.fetchone(); conn.close()
+        return row[0] if row and row[0] else "lake"
+
+    def set_last_area(self, user_id, area):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("""INSERT INTO player_state (user_id, last_area) VALUES (?, ?)
+                     ON CONFLICT(user_id) DO UPDATE SET last_area = ?""",
+                  (user_id, area, area))
+        conn.commit(); conn.close()
 
     def add_zukan(self, user_id, area, fish_name):
         conn = self.get_conn()

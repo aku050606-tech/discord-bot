@@ -282,14 +282,15 @@ SLOT_EFFECTS = {
 # 通常時 信頼度テーブル：結果ごとに各溜めの出現率（合計1.0）
 # キー: calm / weak / hot / superhot / god_confirm
 SLOT_EFFECT_WEIGHTS = {
-    "blank":  {"calm": 0.740, "weak": 0.220, "hot": 0.035, "superhot": 0.005},
-    "replay": {"calm": 0.500, "weak": 0.420, "hot": 0.070, "superhot": 0.010},
-    "bell":   {"calm": 0.500, "weak": 0.420, "hot": 0.070, "superhot": 0.010},
-    "cherry": {"calm": 0.080, "weak": 0.520, "hot": 0.340, "superhot": 0.060},
-    "suika":  {"calm": 0.080, "weak": 0.520, "hot": 0.340, "superhot": 0.060},
-    "weak":   {"calm": 0.030, "weak": 0.150, "hot": 0.520, "superhot": 0.300},
-    "schk":   {"calm": 0.030, "weak": 0.150, "hot": 0.520, "superhot": 0.300},
-    "schy":   {"calm": 0.030, "weak": 0.150, "hot": 0.520, "superhot": 0.300},
+    # ハズレ/リプレイからは hot/superhot をほぼ出さない＝「熱い煽り＝ほぼ当たり」に
+    "blank":  {"calm": 0.880, "weak": 0.119, "hot": 0.001, "superhot": 0.000},
+    "replay": {"calm": 0.620, "weak": 0.375, "hot": 0.005, "superhot": 0.000},
+    "bell":   {"calm": 0.450, "weak": 0.460, "hot": 0.090, "superhot": 0.000},
+    "cherry": {"calm": 0.060, "weak": 0.460, "hot": 0.400, "superhot": 0.080},
+    "suika":  {"calm": 0.060, "weak": 0.460, "hot": 0.400, "superhot": 0.080},
+    "weak":   {"calm": 0.000, "weak": 0.100, "hot": 0.550, "superhot": 0.350},
+    "schk":   {"calm": 0.000, "weak": 0.050, "hot": 0.450, "superhot": 0.500},
+    "schy":   {"calm": 0.000, "weak": 0.050, "hot": 0.450, "superhot": 0.500},
     # GOD当選時：激寄り＋☯️確定が12%
     "god":    {"calm": 0.05, "weak": 0.08, "hot": 0.30, "superhot": 0.45, "god_confirm": 0.12},
 }
@@ -372,6 +373,39 @@ FISHING_AREAS = {
 
 ZUKAN_COMPLETE_BONUS = 30000
 ZUKAN_ALL_BONUS      = 90000
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 宝の地図（ごみから稀にドロップ → 使うと運で宝発見）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TREASURE_MAP_DROP_RATE = 0.05   # ごみを釣った時、5%で「宝の地図」になる
+
+# 宝の地図を使った時の抽選（rank, 確率, (最小, 最大)報酬）
+TREASURE_OUTCOMES = [
+    ("miss",    0.509, (0, 0)),
+    ("small",   0.400, (100, 300)),
+    ("big",     0.090, (1000, 3000)),
+    ("jackpot", 0.001, (10000, 10000)),
+]
+
+# エリア別・ランク別の宝（図鑑用の名前＆絵文字）。miss は宝なし。
+# 宝は「最後に釣っていたエリア」の種類から出る。
+TREASURE_BY_AREA = {
+    "lake": {
+        "small":   [{"name":"古い銅貨","emoji":"🪙"},{"name":"苔むした指輪","emoji":"💍"},{"name":"小さな鍵","emoji":"🗝️"}],
+        "big":     [{"name":"銀の燭台","emoji":"🕯️"},{"name":"沈んだ宝石","emoji":"💎"},{"name":"古代の壺","emoji":"🏺"}],
+        "jackpot": [{"name":"湖底の黄金像","emoji":"🗿"}],
+    },
+    "river": {
+        "small":   [{"name":"砂金","emoji":"✨"},{"name":"川底の古銭","emoji":"🪙"},{"name":"真鍮の懐中時計","emoji":"⏱️"}],
+        "big":     [{"name":"金塊","emoji":"🟡"},{"name":"ルビーの原石","emoji":"❤️"},{"name":"武将の刀","emoji":"⚔️"}],
+        "jackpot": [{"name":"幻の砂金脈","emoji":"🌟"}],
+    },
+    "sea": {
+        "small":   [{"name":"海賊の銀貨","emoji":"🪙"},{"name":"真珠","emoji":"⚪"},{"name":"古いコンパス","emoji":"🧭"}],
+        "big":     [{"name":"金貨の詰まった袋","emoji":"💰"},{"name":"サンゴの宝冠","emoji":"👑"},{"name":"沈没船の財宝","emoji":"⚓"}],
+        "jackpot": [{"name":"ポセイドンの黄金","emoji":"🔱"}],
+    },
+}
 
 GOLDEN_CROWN_CHANCE  = 0.05
 SHADOW_CHANCE        = 0.01   # 全竿共通1%

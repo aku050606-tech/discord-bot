@@ -367,7 +367,7 @@ class CoinflipAgainView(discord.ui.View):
 
 class FishMenuView(discord.ui.View):
     def __init__(self, user_id: str = None):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.user_id = user_id
 
     async def _check(self, interaction):
@@ -397,17 +397,16 @@ class FishMenuView(discord.ui.View):
     @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.secondary, row=1)
     async def zukan(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        from cogs.zukan import ZukanAreaView
-        uid = self.user_id
-        from config import LAKE_FISH, RIVER_FISH, SEA_FISH
-        FISH_BY_AREA = {"lake": LAKE_FISH, "river": RIVER_FISH, "sea": SEA_FISH}
-        AREA_NAMES = {"lake": "🏞️ 湖", "river": "🏔️ 川", "sea": "🌊 海"}
-        embed = discord.Embed(title="📖 釣り図鑑", description="エリアを選んで図鑑を見よう！", color=discord.Color.blue())
-        for area in ["lake", "river", "sea"]:
-            caught = db.get_zukan(uid, area)
-            fish_list = [f for f in FISH_BY_AREA[area] if f["rarity"] != "trash"]
-            embed.add_field(name=AREA_NAMES[area], value=f"{len(caught)}/{len(fish_list)} 種類", inline=True)
-        await interaction.response.edit_message(embed=embed, view=ZukanAreaView(uid))
+        from cogs.zukan import ZukanCategoryView, build_category_embed
+        await interaction.response.edit_message(
+            embed=build_category_embed(self.user_id),
+            view=ZukanCategoryView(self.user_id))
+
+    @discord.ui.button(label="🗺️ 宝の地図を使う", style=discord.ButtonStyle.primary, row=1)
+    async def treasure(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import use_treasure_map
+        await use_treasure_map(interaction, edit=True)
 
     @discord.ui.button(label="🏪 釣具屋", style=discord.ButtonStyle.success, row=1)
     async def shop(self, interaction: discord.Interaction, button: discord.ui.Button):

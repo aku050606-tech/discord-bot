@@ -39,6 +39,10 @@ def build_game_embed(game: dict, message: str = "") -> discord.Embed:
         value=f"残り回数: **{remaining}回**\n次の配当: **×{next_mult}**\n賭け: **{bet:,} ナトコイン**",
         inline=True
     )
+    hist = game.get("history", [])
+    if hist:
+        lines = "\n".join(f"{i+1}. **{n}** … {m}" for i, (n, m) in enumerate(hist))
+        embed.add_field(name="📝 これまでの入力", value=lines, inline=False)
     return embed
 
 
@@ -69,13 +73,23 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
 
         game = active_games.get(self.user_id)
         if not game:
-            await interaction.response.send_message("❌ ゲームが見つかりません", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ ゲームの有効期限が切れたか、見つかりませんでした。メニューから新しく始めてください。",
+                ephemeral=True)
             return
 
         game["tries"] += 1
         tries = game["tries"]
         answer = game["answer"]
         bet = game["bet"]
+        # 入力履歴を記録
+        if num == answer:
+            mark = "🎯 正解！"
+        elif num < answer:
+            mark = "📈 もっと大きい"
+        else:
+            mark = "📉 もっと小さい"
+        game.setdefault("history", []).append((num, mark))
 
         if num == answer:
             # 正解
@@ -122,7 +136,7 @@ class GuessModal(discord.ui.Modal, title="数字を入力してください"):
 
 class NumguessPlayView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
 
@@ -165,7 +179,7 @@ class NumguessPlayView(discord.ui.View):
 
 class NumguessResultView(discord.ui.View):
     def __init__(self, bet: int, user_id: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.bet = bet
         self.user_id = user_id
 
@@ -182,7 +196,7 @@ class NumguessResultView(discord.ui.View):
             return
         db.update_balance(uid, guild_id, -self.bet)
         answer = random.randint(1, 100)
-        active_games[uid] = {"answer": answer, "tries": 0, "bet": self.bet, "guild_id": guild_id}
+        active_games[uid] = {"answer": answer, "tries": 0, "bet": self.bet, "guild_id": guild_id, "history": []}
         game = active_games[uid]
         embed = build_game_embed(game, "1〜100の数字を当ててください！")
         await interaction.response.edit_message(embed=embed, view=NumguessPlayView(uid, guild_id))
@@ -222,7 +236,7 @@ class NumberGuess(commands.Cog):
 
         db.update_balance(uid, guild_id, -bet)
         answer = random.randint(1, 100)
-        active_games[uid] = {"answer": answer, "tries": 0, "bet": bet, "guild_id": guild_id}
+        active_games[uid] = {"answer": answer, "tries": 0, "bet": bet, "guild_id": guild_id, "history": []}
         game = active_games[uid]
 
         embed = build_game_embed(game, "1〜100の数字を当ててください！")

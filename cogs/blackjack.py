@@ -5,6 +5,7 @@ from database import Database
 import random
 
 db = Database()
+_ping = discord.AllowedMentions(users=True)
 
 SUITS = ["♠️", "♥️", "♦️", "♣️"]
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
@@ -67,96 +68,218 @@ def build_pvp_embed(room: dict, phase_ended=False) -> discord.Embed:
     return embed
 
 
-class PvPBlackjackView(discord.ui.View):
+def build_pvp_public_embed(room: dict) -> discord.Embed:
+    """対人戦の共有メッセージ（手札は伏せる）。"""
+    p1, p2 = room["p1"], room["p2"]
+    turn = room["turn"]
+    embed = discord.Embed(title="🃏 ブラックジャック 対人戦", color=discord.Color.dark_green())
+
+    def line(p, key):
+        n = len(p["hand"])
+        mark = "✅ スタンド" if p.get("stood") else ("🎮 行動中" if (key == ("p1" if turn == 1 else "p2")) else "待機")
+        return f"🂠 ×{n}（非公開）　{mark}"
+
+    embed.add_field(name=f"{p1['name']}", value=line(p1, "p1"), inline=True)
+    embed.add_field(name=f"{p2['name']}", value=line(p2, "p2"), inline=True)
+    cur = p1 if turn == 1 else p2
+    embed.add_field(name="現在の手番", value=f"🎮 **{cur['name']}**", inline=False)
+    embed.add_field(name="ポット", value=f"{room['pot']:,} ナトコイン", inline=True)
+    embed.set_footer(text="「自分の手札を見て行動する」を押すと、自分にだけ手札が表示されます")
+    return embed
+
+
+def resolve_pvp(room: dict) -> str:
+    """決着処理：残高を精算して結果テキストを返す。"""
+    p1, p2 = room["p1"], room["p2"]
+    v1, v2 = hand_value(p1["hand"]), hand_value(p2["hand"])
+    bust1, bust2 = v1 > 21, v2 > 21
+    g = room["guild_id"]
+    if bust1 and bust2:
+        result = "🤝 両者バスト！引き分け"
+        db.update_balance(p1["id"], g, room["pot"] // 2)
+        db.update_balance(p2["id"], g, room["pot"] // 2)
+    elif bust1:
+        result = f"💥 {p1['name']} バスト！{p2['name']} の勝ち！"
+        db.update_balance(p2["id"], g, room["pot"])
+    elif bust2:
+        result = f"💥 {p2['name']} バスト！{p1['name']} の勝ち！"
+        db.update_balance(p1["id"], g, room["pot"])
+    elif v1 > v2:
+        result = f"🎉 {p1['name']} の勝ち！（{v1} vs {v2}）"
+        db.update_balance(p1["id"], g, room["pot"])
+    elif v2 > v1:
+        result = f"🎉 {p2['name']} の勝ち！（{v2} vs {v1}）"
+        db.update_balance(p2["id"], g, room["pot"])
+    else:
+        result = f"🤝 引き分け！（{v1} vs {v2}）"
+        db.update_balance(p1["id"], g, room["pot"] // 2)
+        db.update_balance(p2["id"], g, room["pot"] // 2)
+    return result
+
+
+class PvPPublicView(discord.ui.View):
+    """共有メッセージに置く『手札を見て行動する』ボタン。"""
     def __init__(self, room_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.room_id = room_id
 
-    def current_player(self, interaction: discord.Interaction):
+    @discord.ui.button(label="🃏 自分の手札を見て行動する", style=discord.ButtonStyle.primary)
+    async def view_act(self, interaction: discord.Interaction, button: discord.ui.Button):
         room = pvp_rooms.get(self.room_id)
-        if not room:
-            return None, None
+        if not room or not room.get("p2"):
+            await interaction.response.send_message("この対戦は終了しています", ephemeral=True)
+            return
         uid = str(interaction.user.id)
-        turn = room["turn"]
-        current = room["p1"] if turn == 1 else room["p2"]
-        if current["id"] != uid:
-            return None, None
-        return room, current
-
-    async def finish_game(self, interaction: discord.Interaction, room: dict):
-        p1, p2 = room["p1"], room["p2"]
-        v1, v2 = hand_value(p1["hand"]), hand_value(p2["hand"])
-        bust1, bust2 = v1 > 21, v2 > 21
-
-        if bust1 and bust2:
-            result = "🤝 両者バスト！引き分け"
-            db.update_balance(p1["id"], room["guild_id"], room["pot"] // 2)
-            db.update_balance(p2["id"], room["guild_id"], room["pot"] // 2)
-        elif bust1:
-            result = f"💥 {p1['name']} バスト！{p2['name']} の勝ち！"
-            db.update_balance(p2["id"], room["guild_id"], room["pot"])
-        elif bust2:
-            result = f"💥 {p2['name']} バスト！{p1['name']} の勝ち！"
-            db.update_balance(p1["id"], room["guild_id"], room["pot"])
-        elif v1 > v2:
-            result = f"🎉 {p1['name']} の勝ち！（{v1} vs {v2}）"
-            db.update_balance(p1["id"], room["guild_id"], room["pot"])
-        elif v2 > v1:
-            result = f"🎉 {p2['name']} の勝ち！（{v2} vs {v1}）"
-            db.update_balance(p2["id"], room["guild_id"], room["pot"])
+        if uid == room["p1"]["id"]:
+            pkey = "p1"
+        elif uid == room["p2"]["id"]:
+            pkey = "p2"
         else:
-            result = f"🤝 引き分け！（{v1} vs {v2}）"
-            db.update_balance(p1["id"], room["guild_id"], room["pot"] // 2)
-            db.update_balance(p2["id"], room["guild_id"], room["pot"] // 2)
+            await interaction.response.send_message("あなたはこの対戦の参加者ではありません", ephemeral=True)
+            return
+        me = room[pkey]
+        turn_key = "p1" if room["turn"] == 1 else "p2"
+        val = hand_value(me["hand"])
+        my_turn = (pkey == turn_key) and (not me.get("stood")) and (val < 21)
+        e = discord.Embed(
+            title="🃏 あなたの手札",
+            description=f"{hand_str(me['hand'])}\n**合計 {val}**",
+            color=discord.Color.blurple(),
+        )
+        e.set_footer(text="この表示はあなたにだけ見えています")
+        if my_turn:
+            await interaction.response.send_message(
+                embed=e, view=PvPPrivateActView(self.room_id, pkey), ephemeral=True)
+        else:
+            note = "いまは相手の番です。待っててね。" if pkey != turn_key else "あなたの番は終了しています。"
+            e.description += f"\n\n{note}"
+            await interaction.response.send_message(embed=e, ephemeral=True)
 
-        embed = build_pvp_embed(room, phase_ended=True)
-        embed.add_field(name="🏆 結果", value=result, inline=False)
-        pvp_rooms.pop(self.room_id, None)
-        self.clear_items()
-        await interaction.response.edit_message(embed=embed, view=self)
+
+class PvPPrivateActView(discord.ui.View):
+    """本人だけに見えるヒット/スタンド/ダブルダウン。"""
+    def __init__(self, room_id: str, pkey: str):
+        super().__init__(timeout=900)
+        self.room_id = room_id
+        self.pkey = pkey
+        # ダブルダウンは「初手（2枚）かつ追加ベット分の残高がある」ときだけ表示
+        room = pvp_rooms.get(room_id)
+        allow_dd = False
+        if room and room.get(pkey):
+            me = room[pkey]
+            if len(me["hand"]) == 2 and db.get_balance(me["id"], room["guild_id"]) >= room["bet"]:
+                allow_dd = True
+        if not allow_dd:
+            for item in list(self.children):
+                if getattr(item, "custom_id", None) == "bj_dd":
+                    self.remove_item(item)
+
+    def _guard(self, interaction):
+        room = pvp_rooms.get(self.room_id)
+        if not room or not room.get("p2"):
+            return None
+        me = room[self.pkey]
+        if str(interaction.user.id) != me["id"]:
+            return None
+        turn_key = "p1" if room["turn"] == 1 else "p2"
+        if self.pkey != turn_key or me.get("stood"):
+            return None
+        return room
+
+    async def _refresh_public(self, room):
+        msg = room.get("message")
+        if msg:
+            try:
+                await msg.edit(embed=build_pvp_public_embed(room), view=PvPPublicView(self.room_id))
+            except Exception:
+                pass
+
+    async def _end_my_turn(self, interaction, room):
+        """自分の番を終える：相手が未行動ならターン交代、両者済みなら決着。"""
+        other = "p2" if self.pkey == "p1" else "p1"
+        if not room[other].get("stood") and hand_value(room[other]["hand"]) <= 21:
+            room["turn"] = 1 if other == "p1" else 2
+            e = discord.Embed(title="🃏 あなたの番は終了",
+                              description="相手の番に移ります。結果をお待ちください。",
+                              color=discord.Color.greyple())
+            await interaction.response.edit_message(embed=e, view=None)
+            msg = room.get("message")
+            if msg:
+                try:
+                    mention = f"<@{room[other]['id']}>"
+                    await msg.edit(content=f"{mention} の番です！", embed=build_pvp_public_embed(room),
+                                   view=PvPPublicView(self.room_id), allowed_mentions=_ping)
+                except Exception:
+                    pass
+        else:
+            result = resolve_pvp(room)
+            e = discord.Embed(title="🃏 決着しました",
+                              description="共有メッセージで結果を確認してください。",
+                              color=discord.Color.greyple())
+            await interaction.response.edit_message(embed=e, view=None)
+            reveal = build_pvp_embed(room, phase_ended=True)
+            reveal.add_field(name="🏆 結果", value=result, inline=False)
+            msg = room.get("message")
+            if msg:
+                try:
+                    await msg.edit(content="", embed=reveal, view=None)
+                except Exception:
+                    pass
+            pvp_rooms.pop(self.room_id, None)
 
     @discord.ui.button(label="ヒット", style=discord.ButtonStyle.primary, emoji="👆")
     async def hit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        room, current = self.current_player(interaction)
+        room = self._guard(interaction)
         if not room:
-            await interaction.response.send_message("あなたの番ではありません", ephemeral=True)
+            await interaction.response.send_message("いまは行動できません", ephemeral=True)
             return
-        current["hand"].append(room["deck"].pop())
-        if hand_value(current["hand"]) >= 21:
-            # 自動でターン終了
-            if room["turn"] == 1 and not room["p2"]["stood"]:
-                room["turn"] = 2
-                embed = build_pvp_embed(room)
-                embed.set_footer(text=f"{room['p2']['name']} の番！ヒット or スタンドを選んでね")
-                await interaction.response.edit_message(embed=embed, view=self)
-            else:
-                await self.finish_game(interaction, room)
+        me = room[self.pkey]
+        me["hand"].append(room["deck"].pop())
+        val = hand_value(me["hand"])
+        if val >= 21:
+            await self._end_my_turn(interaction, room)
         else:
-            embed = build_pvp_embed(room)
-            await interaction.response.edit_message(embed=embed, view=self)
+            e = discord.Embed(title="🃏 あなたの手札",
+                              description=f"{hand_str(me['hand'])}\n**合計 {val}**",
+                              color=discord.Color.blurple())
+            e.set_footer(text="この表示はあなたにだけ見えています")
+            await interaction.response.edit_message(embed=e, view=self)
+            await self._refresh_public(room)
 
     @discord.ui.button(label="スタンド", style=discord.ButtonStyle.secondary, emoji="✋")
     async def stand(self, interaction: discord.Interaction, button: discord.ui.Button):
-        room, current = self.current_player(interaction)
+        room = self._guard(interaction)
         if not room:
-            await interaction.response.send_message("あなたの番ではありません", ephemeral=True)
+            await interaction.response.send_message("いまは行動できません", ephemeral=True)
             return
-        current["stood"] = True
-        if room["turn"] == 1:
-            room["turn"] = 2
-            embed = build_pvp_embed(room)
-            embed.set_footer(text=f"{room['p2']['name']} の番！ヒット or スタンドを選んでね")
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            await self.finish_game(interaction, room)
+        room[self.pkey]["stood"] = True
+        await self._end_my_turn(interaction, room)
 
-    async def on_timeout(self):
-        pvp_rooms.pop(self.room_id, None)
+    @discord.ui.button(label="ダブルダウン", style=discord.ButtonStyle.danger, emoji="⚡", custom_id="bj_dd")
+    async def double_down(self, interaction: discord.Interaction, button: discord.ui.Button):
+        room = self._guard(interaction)
+        if not room:
+            await interaction.response.send_message("いまは行動できません", ephemeral=True)
+            return
+        me = room[self.pkey]
+        if len(me["hand"]) != 2:
+            await interaction.response.send_message("ダブルダウンは最初の2枚のときだけです", ephemeral=True)
+            return
+        bal = db.get_balance(me["id"], room["guild_id"])
+        if bal < room["bet"]:
+            await interaction.response.send_message("ダブルダウンに必要なナトコインが足りません", ephemeral=True)
+            return
+        # 追加ベットをポットへ → 1枚だけ引いて自動スタンド
+        db.update_balance(me["id"], room["guild_id"], -room["bet"])
+        room["pot"] += room["bet"]
+        me["hand"].append(room["deck"].pop())
+        me["stood"] = True
+        await self._end_my_turn(interaction, room)
 
 
 class PvPWaitView(discord.ui.View):
     def __init__(self, room_id: str, host_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.room_id = room_id
         self.host_id = host_id
 
@@ -191,10 +314,12 @@ class PvPWaitView(discord.ui.View):
         }
         room["turn"] = 1
 
-        embed = build_pvp_embed(room)
-        embed.set_footer(text=f"{room['p1']['name']} の番！ヒット or スタンドを選んでね")
-        view = PvPBlackjackView(self.room_id)
-        await interaction.response.edit_message(embed=embed, view=view)
+        embed = build_pvp_public_embed(room)
+        view = PvPPublicView(self.room_id)
+        mention = f"<@{room['p1']['id']}>"
+        await interaction.response.edit_message(content=f"{mention} の番です！", embed=embed,
+                                                view=view, allowed_mentions=_ping)
+        room["message"] = interaction.message
 
     async def on_timeout(self):
         pvp_rooms.pop(self.room_id, None)
@@ -206,7 +331,7 @@ class PvPWaitView(discord.ui.View):
 
 class BlackjackAIView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
 
@@ -374,7 +499,7 @@ def _bj_post_view(uid, guild_id, bet, net):
 
 class BlackjackModeView(discord.ui.View):
     def __init__(self, bet: int):
-        super().__init__(timeout=30)
+        super().__init__(timeout=900)
         self.bet = bet
 
     @discord.ui.button(label="🤖 AIと対戦", style=discord.ButtonStyle.primary)

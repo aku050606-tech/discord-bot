@@ -46,7 +46,7 @@ def dice_str(dice: list) -> str:
 # AI対戦
 class ChinchiroAIView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str, bet: int):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
         self.bet = bet
@@ -131,7 +131,7 @@ class ChinchiroAIView(discord.ui.View):
 
 class ChinchiroAgainView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str, bet: int):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
         self.bet = bet
@@ -156,7 +156,7 @@ pvp_rooms: dict[str, dict] = {}
 
 class ChinchiroPvPView(discord.ui.View):
     def __init__(self, room_id: str):
-        super().__init__(timeout=300)
+        super().__init__(timeout=900)
         self.room_id = room_id
 
     @discord.ui.button(label="参加する", style=discord.ButtonStyle.success, emoji="✋")
@@ -193,7 +193,7 @@ class ChinchiroPvPView(discord.ui.View):
 
 class ChinchiroPvPGameView(discord.ui.View):
     def __init__(self, room_id: str):
-        super().__init__(timeout=300)
+        super().__init__(timeout=900)
         self.room_id = room_id
 
     @discord.ui.button(label="サイコロを振る！", style=discord.ButtonStyle.primary, emoji="🎲")
@@ -256,7 +256,7 @@ class ChinchiroPvPGameView(discord.ui.View):
 
 class ChinchiroPvPContinueView(discord.ui.View):
     def __init__(self, room_id: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=900)
         self.room_id = room_id
 
     @discord.ui.button(label="続ける", style=discord.ButtonStyle.primary, emoji="🎲")
@@ -299,7 +299,7 @@ class ChinchiroPvPContinueView(discord.ui.View):
 # モード選択
 class ChinchiroModeView(discord.ui.View):
     def __init__(self, bet: int):
-        super().__init__(timeout=30)
+        super().__init__(timeout=900)
         self.bet = bet
 
     @discord.ui.button(label="🤖 AIと対戦", style=discord.ButtonStyle.primary)

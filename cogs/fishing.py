@@ -149,11 +149,24 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     if value > 0:
         db.update_balance(uid, guild_id, value)
 
-    # 図鑑登録
-    is_new = db.add_zukan(uid, area, fish["name"])
+    # 最後に釣ったエリアを記録（宝の地図の宝はこのエリアから出る）
+    db.set_last_area(uid, area)
+
+    # ── ごみ：5%で「宝の地図」、それ以外はごみ図鑑（エリア別）に登録 ──
+    got_map = False
+    is_new = False
     new_crown = False
-    if is_golden:
-        new_crown = db.add_crown(uid, area, fish["name"])
+    if rarity == "trash":
+        if random.random() < TREASURE_MAP_DROP_RATE:
+            db.add_treasure_map(uid, 1)
+            got_map = True
+        else:
+            is_new = db.add_zukan(uid, area + "_trash", fish["name"])
+    else:
+        # 魚図鑑登録
+        is_new = db.add_zukan(uid, area, fish["name"])
+        if is_golden:
+            new_crown = db.add_crown(uid, area, fish["name"])
 
     new_bal = db.get_balance(uid, guild_id)
 
@@ -212,8 +225,17 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     embed3 = discord.Embed(color=color)
     desc = ""
     if rarity == "trash":
-        embed3.title = f"{fish['emoji']} {fish['name']}"
-        desc = f"ゴミだった...\n換金額: **0ナトコイン**"
+        if got_map:
+            embed3.color = 0xf1c40f
+            embed3.title = "🗺️ 宝の地図を発見！"
+            desc = ("ごみの中に、古びた地図が紛れていた…！\n"
+                    "釣りメニューの「🗺️ 宝の地図を使う」で運試し！\n"
+                    f"所持枚数: **{db.get_treasure_maps(uid)}枚**")
+        else:
+            embed3.title = f"{fish['emoji']} {fish['name']}"
+            desc = f"ゴミだった...\n換金額: **0ナトコイン**"
+            if is_new:
+                desc += "\n🗑️ **ごみ図鑑に新しく登録されました！**"
     else:
         embed3.title = f"{display_emoji} {display_name} を釣り上げた！"
         desc = f"レアリティ: **{rarity_label}**\n換金額: **{value:,} ナトコイン**"
@@ -350,6 +372,79 @@ class BackToFishView(discord.ui.View):
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+
+
+async def use_treasure_map(interaction: discord.Interaction, edit: bool = True):
+    """宝の地図を1枚使い、最後に釣ったエリアの宝を運で発見する。"""
+    uid = str(interaction.user.id)
+    guild_id = str(interaction.guild.id)
+    maps = db.get_treasure_maps(uid)
+    if maps <= 0:
+        await interaction.response.send_message(
+            "🗺️ 宝の地図を持っていません。ごみを釣ると稀に手に入ります。", ephemeral=True)
+        return
+    db.use_treasure_map(uid)
+
+    # 抽選
+    r = random.random()
+    cum = 0.0
+    rank, lo, hi = "miss", 0, 0
+    for rk, prob, (a, b) in TREASURE_OUTCOMES:
+        cum += prob
+        if r < cum:
+            rank, lo, hi = rk, a, b
+            break
+    area = db.get_last_area(uid)
+    area_name = FISHING_AREAS.get(area, {"name": area})["name"]
+    remaining = db.get_treasure_maps(uid)
+
+    if rank == "miss":
+        embed = discord.Embed(
+            title="🗺️ 宝の地図 — 結果",
+            description=(f"{area_name}を探したが…\nただの古い地図だった。何も無し。\n\n"
+                        f"残りの地図: **{remaining}枚**"),
+            color=0x95a5a6)
+    else:
+        reward = random.randint(lo, hi)
+        db.update_balance(uid, guild_id, reward)
+        treasure = random.choice(TREASURE_BY_AREA[area][rank])
+        is_new = db.add_zukan(uid, area + "_treasure", treasure["name"])
+        new_bal = db.get_balance(uid, guild_id)
+        head = {"small": "💰 宝発見！", "big": "💎 大発見！！", "jackpot": "🌟 一攫千金！！！"}[rank]
+        color = {"small": 0x2ecc71, "big": 0x9b59b6, "jackpot": 0xf1c40f}[rank]
+        desc = (f"{area_name}で **{treasure['emoji']} {treasure['name']}** を発見！\n"
+                f"+{reward:,} ナトコイン！")
+        if is_new:
+            desc += "\n💎 **宝図鑑に新しく登録されました！**"
+        desc += f"\n\n残高: **{new_bal:,} ナトコイン**\n残りの地図: **{remaining}枚**"
+        embed = discord.Embed(title=head, description=desc, color=color)
+
+    view = TreasureResultView(remaining)
+    if edit:
+        await interaction.response.edit_message(embed=embed, view=view)
+    else:
+        await interaction.response.send_message(embed=embed, view=view)
+
+
+class TreasureResultView(discord.ui.View):
+    def __init__(self, remaining: int):
+        super().__init__(timeout=900)
+        self.remaining = remaining
+        if remaining <= 0:
+            for item in list(self.children):
+                if getattr(item, "label", "") == "🗺️ もう一枚使う":
+                    self.remove_item(item)
+
+    @discord.ui.button(label="🗺️ もう一枚使う", style=discord.ButtonStyle.primary)
+    async def again(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await use_treasure_map(interaction, edit=True)
+
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.menu import MainMenuView, build_menu_embed
+        await interaction.response.edit_message(
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)),
+            view=MainMenuView())
 
 
 class Fishing(commands.Cog):

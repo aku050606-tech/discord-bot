@@ -65,25 +65,67 @@ def ai_hand_strength(hand: list, community: list) -> int:
         return 0
     return best_hand(all_cards)[0]
 
-def ai_action(strength: int, to_call: int) -> str:
-    """AIの行動を決める。
-    to_call: AIがコールするために必要な追加額（0以下ならタダでチェックできる）。
-    タダでチェックできる場面では絶対に降りない（即フォールド対策）。"""
+def ai_equity(hand, community_shown, iters=320):
+    """モンテカルロで勝率(エクイティ)を推定。残りコミュニティと相手2枚をランダムに配って比較。"""
+    known = hand + community_shown
+    rem = [c for c in make_deck()
+           if not any(c["suit"] == k["suit"] and c["rank"] == k["rank"] for k in known)]
+    need = 5 - len(community_shown)
+    wins = 0.0
+    for _ in range(iters):
+        sample = random.sample(rem, need + 2)
+        comm = community_shown + sample[:need]
+        my = best_hand(hand + comm)
+        op = best_hand(sample[need:need + 2] + comm)
+        if my > op:
+            wins += 1.0
+        elif my == op:
+            wins += 0.5
+    return wins / iters
+
+
+def ai_decide(equity, to_call, pot, ante):
+    """エクイティ＋ポットオッズで意思決定。強い手は積極レイズ、適度にブラフ。"""
+    r = random.random()
     if to_call <= 0:
-        # チェック可能 → フォールドしない。強ければたまにレイズ
+        # チェック可能：価値ベット中心＋たまにブラフ
+        if equity >= 0.78:
+            return "raise" if r < 0.85 else "call"
+        if equity >= 0.62:
+            return "raise" if r < 0.60 else "call"
+        if equity >= 0.50:
+            return "raise" if r < 0.30 else "call"
+        return "raise" if r < 0.08 else "call"   # 8% ブラフベット
+    # ベットに直面：ポットオッズで判断
+    pot_odds = to_call / (pot + to_call)
+    if equity >= 0.80 and r < 0.65:
+        return "raise"                            # モンスター → バリューレイズ
+    if equity >= 0.66 and r < 0.30:
+        return "raise"
+    if equity >= pot_odds - 0.03:
+        return "call"                             # 適正価格ならコール
+    if r < 0.05:
+        return "raise"                            # 5% セミブラフ
+    return "fold"
+
+
+def ai_action(strength: int, to_call: int) -> str:
+    """（旧・役カテゴリ判断：互換のため残置。現在は ai_decide を使用）"""
+    if to_call <= 0:
         if strength >= 4:
-            return "raise" if random.random() < 0.6 else "call"
+            return "raise" if random.random() < 0.70 else "call"
         if strength >= 2:
-            return "raise" if random.random() < 0.25 else "call"
-        return "call"  # ここでの "call" は実質チェック（差額0）
-    # ベットに直面している場合のみ降りる可能性あり（降り過ぎないよう緩めに）
-    if strength >= 4:      # ストレート以上
-        return "raise" if random.random() < 0.5 else "call"
-    if strength >= 2:      # ツーペア以上
-        return "call" if random.random() < 0.85 else "fold"
-    if strength == 1:      # ワンペア／好スタート
-        return "call" if random.random() < 0.6 else "fold"
-    return "call" if random.random() < 0.35 else "fold"
+            return "raise" if random.random() < 0.40 else "call"
+        if strength == 1:
+            return "raise" if random.random() < 0.15 else "call"
+        return "call"
+    if strength >= 4:
+        return "raise" if random.random() < 0.55 else "call"
+    if strength >= 2:
+        return "raise" if random.random() < 0.25 else "call"
+    if strength == 1:
+        return "fold" if random.random() < 0.12 else "call"
+    return "fold" if random.random() < 0.45 else "call"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 対人戦ポーカー
@@ -91,94 +133,313 @@ def ai_action(strength: int, to_call: int) -> str:
 
 poker_rooms: dict[str, dict] = {}
 
-class PokerView(discord.ui.View):
-    def __init__(self, room_id: str):
-        super().__init__(timeout=300)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 対人ポーカー：2人ヘッズアップ・テキサスホールデム（本格ベット制）
+# 手札は伏せ、手番が来たらメンションで通知。ボタン一発でエフェメラルのアクション画面。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAX_RAISES_PER_ROUND = 3
+STAGE_NAME = {"preflop": "プリフロップ", "flop": "フロップ", "turn": "ターン", "river": "リバー"}
+STAGE_ORDER = ["preflop", "flop", "turn", "river"]
+BOARD_SHOWN = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
+_ping = discord.AllowedMentions(users=True)
+
+
+def hu_start(room):
+    deck = make_deck()
+    random.shuffle(deck)
+    room["deck"] = deck
+    for p in room["players"]:
+        p["hand"] = [deck.pop(), deck.pop()]
+        p["rbet"] = 0
+        p["folded"] = False
+    room["community"] = [deck.pop() for _ in range(5)]
+    room["stage"] = "preflop"
+    room["current_bet"] = 0
+    room["raises"] = 0
+    room["acted"] = [False, False]
+    room["to_act"] = 0
+    room["phase"] = "betting"
+
+
+def hu_to_call(room, i):
+    return room["current_bet"] - room["players"][i]["rbet"]
+
+
+def hu_legal(room, i):
+    tc = hu_to_call(room, i)
+    if tc <= 0:
+        acts = ["check"]
+        if room["raises"] < MAX_RAISES_PER_ROUND:
+            acts.append("bet")
+        acts.append("fold")
+    else:
+        acts = ["call"]
+        if room["raises"] < MAX_RAISES_PER_ROUND:
+            acts.append("raise")
+        acts.append("fold")
+    return acts
+
+
+def hu_apply(room, i, action):
+    """アクションを適用し、{type: continue|advance|fold|showdown, ...} を返す。"""
+    g = room["guild_id"]
+    ante = room["ante"]
+    p = room["players"][i]
+    opp = room["players"][1 - i]
+
+    if action == "fold":
+        p["folded"] = True
+        db.update_balance(opp["id"], g, room["pot"])
+        return {"type": "fold", "winner": 1 - i}
+
+    if action == "check":
+        pass
+    elif action == "bet":
+        amt = min(ante, db.get_balance(p["id"], g))
+        db.update_balance(p["id"], g, -amt)
+        p["rbet"] += amt
+        room["pot"] += amt
+        room["current_bet"] = p["rbet"]
+        room["raises"] += 1
+        room["acted"] = [False, False]
+    elif action == "call":
+        diff = hu_to_call(room, i)
+        amt = min(diff, db.get_balance(p["id"], g))
+        db.update_balance(p["id"], g, -amt)
+        p["rbet"] += amt
+        room["pot"] += amt
+        if p["rbet"] < room["current_bet"]:  # ショートオールイン → 余剰を相手に返却
+            uncalled = room["current_bet"] - p["rbet"]
+            db.update_balance(opp["id"], g, uncalled)
+            room["pot"] -= uncalled
+            opp["rbet"] -= uncalled
+            room["current_bet"] = p["rbet"]
+    elif action == "raise":
+        target = room["current_bet"] + ante
+        amt = target - p["rbet"]
+        bal = db.get_balance(p["id"], g)
+        if bal < amt:
+            amt = bal
+        db.update_balance(p["id"], g, -amt)
+        p["rbet"] += amt
+        room["pot"] += amt
+        room["current_bet"] = max(room["current_bet"], p["rbet"])
+        room["raises"] += 1
+        room["acted"] = [False, False]
+
+    room["acted"][i] = True
+    if all(room["acted"]) and room["players"][0]["rbet"] == room["players"][1]["rbet"]:
+        return hu_end_round(room)
+    room["to_act"] = 1 - i
+    return {"type": "continue"}
+
+
+def hu_end_round(room):
+    if room["stage"] == "river":
+        return hu_showdown(room)
+    nxt = STAGE_ORDER[STAGE_ORDER.index(room["stage"]) + 1]
+    room["stage"] = nxt
+    for p in room["players"]:
+        p["rbet"] = 0
+    room["current_bet"] = 0
+    room["raises"] = 0
+    room["acted"] = [False, False]
+    room["to_act"] = 0
+    return {"type": "advance", "stage": nxt}
+
+
+def hu_showdown(room):
+    g = room["guild_id"]
+    p0, p1 = room["players"]
+    s0 = best_hand(p0["hand"] + room["community"])
+    s1 = best_hand(p1["hand"] + room["community"])
+    if s0 > s1:
+        db.update_balance(p0["id"], g, room["pot"])
+        win = 0
+    elif s1 > s0:
+        db.update_balance(p1["id"], g, room["pot"])
+        win = 1
+    else:
+        half = room["pot"] // 2
+        db.update_balance(p0["id"], g, half)
+        db.update_balance(p1["id"], g, room["pot"] - half)
+        win = None
+    return {"type": "showdown", "winner": win, "s0": s0, "s1": s1}
+
+
+def _board_str(room):
+    shown = BOARD_SHOWN[room["stage"]]
+    cards = [card_str(c) for c in room["community"][:shown]]
+    cards += ["🂠"] * (5 - shown)
+    return " ".join(cards)
+
+
+def build_hu_public_embed(room):
+    p0, p1 = room["players"]
+    e = discord.Embed(title="🃏 ポーカー 対人戦（ヘッズアップ）", color=discord.Color.dark_green())
+    e.add_field(name="ステージ", value=STAGE_NAME[room["stage"]], inline=True)
+    e.add_field(name="ポット", value=f"{room['pot']:,} ナトコイン", inline=True)
+    e.add_field(name="コミュニティ", value=_board_str(room), inline=False)
+    for idx, p in enumerate(room["players"]):
+        turn = "🎮 行動中" if (idx == room["to_act"]) else ""
+        bet = f"ベット{p['rbet']:,}" if p["rbet"] else "—"
+        e.add_field(name=f"{p['name']} {turn}", value=f"🂠🂠（非公開）／ {bet}", inline=True)
+    cur = room["players"][room["to_act"]]
+    e.set_footer(text=f"{cur['name']} の番｜「自分の番（アクション）」を押してね")
+    return e
+
+
+def build_hu_reveal_embed(room, ev):
+    p0, p1 = room["players"]
+    e = discord.Embed(title="🃏 ポーカー 対人戦 — 結果", color=discord.Color.gold())
+    e.add_field(name="コミュニティ", value=" ".join(card_str(c) for c in room["community"]), inline=False)
+    if ev["type"] == "fold":
+        w = room["players"][ev["winner"]]
+        e.add_field(name="結果", value=f"🏳️ {room['players'][1 - ev['winner']]['name']} がフォールド\n👑 **{w['name']}** が {room['pot']:,} ナトコイン獲得！", inline=False)
+        return e
+    n0 = HAND_NAMES[ev["s0"][0]]
+    n1 = HAND_NAMES[ev["s1"][0]]
+    e.add_field(name=f"{p0['name']} → {n0}", value=hand_str(p0["hand"]), inline=True)
+    e.add_field(name=f"{p1['name']} → {n1}", value=hand_str(p1["hand"]), inline=True)
+    if ev["winner"] is None:
+        e.add_field(name="結果", value=f"🤝 引き分け！ ポット折半", inline=False)
+    else:
+        w = room["players"][ev["winner"]]
+        e.add_field(name="結果", value=f"👑 **{w['name']}** の勝ち！ +{room['pot']:,} ナトコイン", inline=False)
+    return e
+
+
+class HUWaitView(discord.ui.View):
+    def __init__(self, room_id):
+        super().__init__(timeout=900)
         self.room_id = room_id
 
-    @discord.ui.button(label="参加する", style=discord.ButtonStyle.success, emoji="✋")
-    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="⚔️ 参加して対戦！", style=discord.ButtonStyle.success)
+    async def join(self, interaction, button):
         room = poker_rooms.get(self.room_id)
         if not room or room["phase"] != "waiting":
             await interaction.response.send_message("参加できません", ephemeral=True)
             return
         uid = str(interaction.user.id)
-        if uid in [p["id"] for p in room["players"]]:
-            await interaction.response.send_message("すでに参加中です", ephemeral=True)
+        if uid == room["players"][0]["id"]:
+            await interaction.response.send_message("自分自身とは対戦できません", ephemeral=True)
             return
-        if len(room["players"]) >= 6:
-            await interaction.response.send_message("満員です", ephemeral=True)
+        g = room["guild_id"]
+        if db.get_balance(uid, g) < room["ante"]:
+            await interaction.response.send_message("❌ ナトコインが足りません", ephemeral=True)
             return
-        bal = db.get_balance(uid, room["guild_id"])
-        if bal < room["ante"]:
-            await interaction.response.send_message(f"ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
-            return
-        db.update_balance(uid, room["guild_id"], -room["ante"])
+        db.update_balance(uid, g, -room["ante"])
         room["players"].append({"id": uid, "name": interaction.user.display_name, "hand": []})
         room["pot"] += room["ante"]
-        names = "\n".join(f"{i+1}. {p['name']}" for i, p in enumerate(room["players"]))
-        embed = discord.Embed(
-            title="⚔️ ポーカー 対人戦 — 参加者募集中",
-            description=f"参加費: **{room['ante']:,} ナトコイン** | ポット: **{room['pot']:,} ナトコイン**\n\n{names}",
-            color=discord.Color.dark_green()
-        )
-        await interaction.response.edit_message(embed=embed, view=self)
+        hu_start(room)
+        embed = build_hu_public_embed(room)
+        mention = f"<@{room['players'][room['to_act']]['id']}>"
+        await interaction.response.edit_message(content=f"{mention} の番です！", embed=embed,
+                                                view=HUPublicView(self.room_id), allowed_mentions=_ping)
+        room["message"] = interaction.message
 
-    @discord.ui.button(label="ゲーム開始", style=discord.ButtonStyle.primary, emoji="▶️")
-    async def start(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+class HUPublicView(discord.ui.View):
+    def __init__(self, room_id):
+        super().__init__(timeout=900)
+        self.room_id = room_id
+
+    @discord.ui.button(label="🎴 自分の番（アクション）", style=discord.ButtonStyle.primary)
+    async def act(self, interaction, button):
         room = poker_rooms.get(self.room_id)
-        if not room:
+        if not room or room.get("phase") != "betting":
+            await interaction.response.send_message("いまは行動できません", ephemeral=True)
             return
-        if str(interaction.user.id) != room["host"]:
-            await interaction.response.send_message("ホストだけが開始できます", ephemeral=True)
+        uid = str(interaction.user.id)
+        idx = next((k for k, p in enumerate(room["players"]) if p["id"] == uid), None)
+        if idx is None:
+            await interaction.response.send_message("あなたはこの対戦の参加者ではありません", ephemeral=True)
             return
-        if len(room["players"]) < 2:
-            await interaction.response.send_message("2人以上必要です", ephemeral=True)
+        me = room["players"][idx]
+        e = discord.Embed(title="🃏 あなたの手札",
+                          description=f"{hand_str(me['hand'])}\nコミュニティ: {_board_str(room)}\nポット: {room['pot']:,}",
+                          color=discord.Color.blurple())
+        e.set_footer(text="この表示はあなたにだけ見えています")
+        if idx != room["to_act"]:
+            e.description += "\n\nいまは相手の番です。待っててね。"
+            await interaction.response.send_message(embed=e, ephemeral=True)
+            return
+        tc = hu_to_call(room, idx)
+        if tc > 0:
+            e.description += f"\n\nコールに必要: **{tc:,} ナトコイン**"
+        await interaction.response.send_message(embed=e, view=HUActionView(self.room_id, idx), ephemeral=True)
+
+
+class HUActionButton(discord.ui.Button):
+    LABELS = {"check": "✓ チェック", "fold": "🏳️ フォールド"}
+    STYLES = {"fold": discord.ButtonStyle.secondary, "check": discord.ButtonStyle.secondary,
+              "call": discord.ButtonStyle.success, "bet": discord.ButtonStyle.primary,
+              "raise": discord.ButtonStyle.danger}
+
+    def __init__(self, action, room, idx):
+        ante = room["ante"]
+        if action == "call":
+            label = f"✅ コール({hu_to_call(room, idx):,})"
+        elif action == "bet":
+            label = f"💰 ベット({ante:,})"
+        elif action == "raise":
+            label = f"🔺 レイズ(+{ante:,})"
+        else:
+            label = self.LABELS[action]
+        super().__init__(label=label, style=self.STYLES[action])
+        self.action = action
+
+    async def callback(self, interaction):
+        await self.view.do_action(interaction, self.action)
+
+
+class HUActionView(discord.ui.View):
+    def __init__(self, room_id, idx):
+        super().__init__(timeout=900)
+        self.room_id = room_id
+        self.idx = idx
+        room = poker_rooms.get(room_id)
+        if room:
+            for a in hu_legal(room, idx):
+                self.add_item(HUActionButton(a, room, idx))
+
+    async def do_action(self, interaction, action):
+        room = poker_rooms.get(self.room_id)
+        if not room or room.get("phase") != "betting":
+            await interaction.response.send_message("いまは行動できません", ephemeral=True)
+            return
+        if str(interaction.user.id) != room["players"][self.idx]["id"] or self.idx != room["to_act"]:
+            await interaction.response.send_message("いまはあなたの番ではありません", ephemeral=True)
+            return
+        if action not in hu_legal(room, self.idx):
+            await interaction.response.send_message("その行動は今できません", ephemeral=True)
             return
 
-        deck = make_deck()
-        random.shuffle(deck)
-        community = [deck.pop() for _ in range(5)]
-        for p in room["players"]:
-            p["hand"] = [deck.pop(), deck.pop()]
-        room["community"] = community
-        room["phase"] = "showdown"
+        ev = hu_apply(room, self.idx, action)
 
-        results = []
-        for p in room["players"]:
-            score = best_hand(p["hand"] + community)
-            results.append((score, p, HAND_NAMES[score[0]]))
-        results.sort(key=lambda x: x[0], reverse=True)
-        winner = results[0][1]
+        # 自分のエフェメラルを「完了」に更新
+        done = discord.Embed(title="🃏 行動しました",
+                             description=f"あなたの行動：**{action}**", color=discord.Color.greyple())
+        await interaction.response.edit_message(embed=done, view=None)
 
-        db.update_balance(winner["id"], room["guild_id"], room["pot"])
+        msg = room.get("message")
+        if ev["type"] in ("fold", "showdown"):
+            room["phase"] = "ended"
+            if msg:
+                try:
+                    await msg.edit(content="", embed=build_hu_reveal_embed(room, ev), view=None, allowed_mentions=_ping)
+                except Exception:
+                    pass
+            poker_rooms.pop(self.room_id, None)
+        else:
+            if msg:
+                mention = f"<@{room['players'][room['to_act']]['id']}>"
+                try:
+                    await msg.edit(content=f"{mention} の番です！", embed=build_hu_public_embed(room),
+                                   view=HUPublicView(self.room_id), allowed_mentions=_ping)
+                except Exception:
+                    pass
 
-        embed = discord.Embed(title="🃏 ポーカー 対人戦 — 結果発表", color=discord.Color.gold())
-        embed.add_field(name="コミュニティカード", value=hand_str(community), inline=False)
-        for score, p, hname in results:
-            crown = "👑 " if p["id"] == winner["id"] else ""
-            embed.add_field(
-                name=f"{crown}{p['name']}",
-                value=f"{hand_str(p['hand'])} → **{hname}**",
-                inline=False
-            )
-        embed.add_field(
-            name="🏆 勝者",
-            value=f"**{winner['name']}** が {room['pot']:,} ナトコイン獲得！",
-            inline=False
-        )
-        poker_rooms.pop(self.room_id, None)
-        self.clear_items()
-        await interaction.response.edit_message(embed=embed, view=self)
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AI戦ポーカー（フロップ→ターン→リバー形式）
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ai_games: dict[str, dict] = {}
-
-STAGES = ["preflop", "flop", "turn", "river", "showdown"]
 
 def build_ai_embed(game: dict, action_log: str = "") -> discord.Embed:
     stage_label = {"preflop": "プリフロップ", "flop": "フロップ", "turn": "ターン", "river": "リバー", "showdown": "ショーダウン"}
@@ -205,7 +466,7 @@ def build_ai_embed(game: dict, action_log: str = "") -> discord.Embed:
 
 class PokerAIView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str):
-        super().__init__(timeout=120)
+        super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
 
@@ -228,15 +489,15 @@ class PokerAIView(discord.ui.View):
             game["stage"] = "showdown"
 
     async def do_ai_action(self, game: dict) -> str:
-        strength = ai_hand_strength(game["ai_hand"], game["community_shown"])
+        equity = ai_equity(game["ai_hand"], game["community_shown"])
         to_call = game["player_bet"] - game["ai_bet"]  # AIが追いつくのに必要な額
-        action = ai_action(strength, to_call)
+        action = ai_decide(equity, to_call, game["pot"], game["ante"])
         ante = game["ante"]
 
         if action == "fold":
             return "fold"
         elif action == "raise":
-            raise_amount = ante * 2
+            raise_amount = min(ante * 2, 2000)
             game["ai_bet"] += raise_amount
             game["pot"] += raise_amount
             return f"🔺 レイズ！ +{raise_amount:,} ナトコイン"
@@ -367,7 +628,7 @@ class PokerAIView(discord.ui.View):
             return
         await self.handle_player_action(interaction, "check")
 
-    @discord.ui.button(label="レイズ（2倍）", style=discord.ButtonStyle.danger, emoji="🔺", row=0)
+    @discord.ui.button(label="レイズ", style=discord.ButtonStyle.danger, emoji="🔺", row=0)
     async def raise_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
@@ -375,7 +636,8 @@ class PokerAIView(discord.ui.View):
         game = self.get_game()
         if not game:
             return
-        await self.handle_player_action(interaction, "raise", raise_amount=game["ante"] * 2)
+        amount = min(game["ante"] * 2, 2000)   # レイズは最大2,000ナトコインまで
+        await self.handle_player_action(interaction, "raise", raise_amount=amount)
 
     @discord.ui.button(label="フォールド", style=discord.ButtonStyle.secondary, emoji="🏳️", row=1)
     async def fold(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -442,7 +704,7 @@ class PokerBackButton(discord.ui.Button):
 
 class PokerModeView(discord.ui.View):
     def __init__(self, ante: int):
-        super().__init__(timeout=30)
+        super().__init__(timeout=900)
         self.ante = ante
 
     @discord.ui.button(label="🤖 AIと対戦", style=discord.ButtonStyle.primary)
@@ -514,16 +776,16 @@ class PokerModeView(discord.ui.View):
         }
 
         embed = discord.Embed(
-            title="⚔️ ポーカー 対人戦 — 参加者募集中",
+            title="⚔️ ポーカー 対人戦（ヘッズアップ／1対1）",
             description=(
                 f"参加費（アンティ）: **{ante:,} ナトコイン**\n"
-                f"最大6人まで参加可能\n\n"
-                f"「参加する」を押して参加してね！全員揃ったらホストが開始！"
+                f"テキサスホールデム・固定刻みベット\n\n"
+                f"**{interaction.user.display_name}** が対戦相手を募集中！\n"
+                f"「⚔️ 参加して対戦！」を押すと開始！"
             ),
             color=discord.Color.dark_green()
         )
-        embed.add_field(name="参加者", value=f"1. {interaction.user.display_name}（ホスト）", inline=False)
-        view = PokerView(room_id)
+        view = HUWaitView(room_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
 
