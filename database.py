@@ -115,6 +115,10 @@ class Database:
             guild_id TEXT, from_id TEXT, to_id TEXT,
             body TEXT, ts TEXT, is_read INTEGER DEFAULT 0
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS menu_visit (
+            user_id TEXT, guild_id TEXT, last_open TEXT,
+            PRIMARY KEY (user_id, guild_id)
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -769,5 +773,27 @@ class Database:
         c.execute("""UPDATE line_messages SET is_read=1
                 WHERE guild_id=? AND to_id=? AND is_read=0""",
             (str(guild_id), str(to_id)))
+        conn.commit()
+        conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # メニュー来訪（今日初めて開いたか判定用）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def get_menu_seen(self, user_id, guild_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT last_open FROM menu_visit WHERE user_id=? AND guild_id=?",
+                  (str(user_id), str(guild_id)))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def set_menu_seen(self, user_id, guild_id, day):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO menu_visit (user_id, guild_id, last_open)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, guild_id) DO UPDATE SET last_open=?""",
+            (str(user_id), str(guild_id), day, day))
         conn.commit()
         conn.close()

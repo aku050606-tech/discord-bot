@@ -31,17 +31,39 @@ def build_phone_embed(user, guild) -> discord.Embed:
     bal = db.get_balance(str(user.id), gid)
     unread = db.line_unread_count(gid, str(user.id))
     daily_done = db.get_last_daily(str(user.id), gid) == str(date.today())
-    e = discord.Embed(
-        title="📱 スマホ",
-        description="アプリを選んでください。",
-        color=0x111827,
+    now = datetime.now(JST)
+    clock = now.strftime("%H:%M")
+    batt = 70 + (now.minute % 30)  # 70〜99%で変化（演出）
+    h = now.hour
+    name = f"{user.display_name}さん"
+    if h >= 23 or h < 4:
+        greet = f"{name}、夜分遅くに"
+    elif 4 <= h < 7:
+        greet = f"{name}、お早うございます"
+    elif 7 <= h < 11:
+        greet = f"{name}、おはようございます"
+    elif 11 <= h < 16:
+        greet = f"{name}、ごきげんよう"
+    elif 16 <= h < 19:
+        greet = f"{name}、お疲れ様でございます"
+    else:
+        greet = f"{name}、こんばんは"
+
+    status = (
+        "```\n"
+        f" {clock}              📶  🔋 {batt}% \n"
+        "─────────────────────────\n"
+        f" {greet} 📱\n"
+        "```"
     )
-    e.add_field(name="🏦 銀行口座", value=f"残高 **{bal:,}**", inline=True)
+    e = discord.Embed(title="📱 ＮＡＴＯ Ｐｈｏｎｅ", description=status, color=0x111827)
+    e.add_field(name="🏦 銀行口座", value=f"残高 {bal:,}", inline=True)
     e.add_field(name="🏆 ランキング", value="順位を見る", inline=True)
     e.add_field(name="🎁 デイリー", value=("受取済み" if daily_done else "🔴 受取可能"), inline=True)
     e.add_field(name="📜 クエスト", value="日替わり任務", inline=True)
-    e.add_field(name="💬 LINE", value=(f"📩 未読 **{unread}**" if unread else "新着なし"), inline=True)
+    e.add_field(name="💬 LINE", value=(f"📩 {unread}" if unread else "新着なし"), inline=True)
     e.add_field(name="🐦 ツイッター", value="つぶやく", inline=True)
+    e.set_footer(text="タップでアプリを起動")
     return e
 
 
@@ -93,21 +115,8 @@ class PhoneHomeView(discord.ui.View):
     @discord.ui.button(label="🏆 ランキング", style=discord.ButtonStyle.secondary, row=0)
     async def ranking(self, interaction, button):
         if not await self._check(interaction): return
-        gid = str(interaction.guild.id)
-        rows = db.get_ranking(gid, 10)
-        medals = ["🥇", "🥈", "🥉"]
-        embed = discord.Embed(title="🏆 ナトコインランキング", color=discord.Color.gold())
-        if not rows:
-            embed.description = "まだデータがありません"
-        else:
-            lines = []
-            for i, (uid, bal) in enumerate(rows):
-                mk = medals[i] if i < 3 else f"{i+1}."
-                m = interaction.guild.get_member(int(uid))
-                name = m.display_name if m else f"ID:{uid}"
-                lines.append(f"{mk} **{name}** — {bal:,} ナトコイン")
-            embed.description = "\n".join(lines)
-        await interaction.response.edit_message(embed=embed, view=PhoneBackView(self.user_id))
+        from cogs.activitystats import open_stats
+        await open_stats(interaction, self.user_id)
 
     @discord.ui.button(label="🎁 デイリー", style=discord.ButtonStyle.primary, row=0)
     async def daily(self, interaction, button):

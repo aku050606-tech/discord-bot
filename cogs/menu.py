@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 import random
 from config import DAILY_AMOUNT, DAILY_SEND_LIMIT
 from quest_tracker import record as quest_record
@@ -25,6 +25,215 @@ def _daily_claimable(user_id: str, guild_id: str) -> bool:
     return db.get_last_daily(user_id, guild_id) != str(date.today())
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ホームのひとこと（時間帯 × 初回/再訪・丁寧な執事口調・お名前呼び）
+#   {name} に「表示名さん」が入る。「おかえり」一辺倒にならないよう散らす。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_JST = timezone(timedelta(hours=9))
+
+# 今日はじめて開いたとき（お出迎え）
+WELCOME = {
+    "earlymorning": [
+        "{name}、おはようございます。ずいぶんとお早いのですね。",
+        "{name}、まだ夜も明けきらぬうちに……ようこそお越しを。",
+        "おはようございます、{name}。静かな早朝のお供をいたします。",
+        "{name}、お早いお目覚めで。本日も良き一日になりますよう。",
+        "{name}、夜明け前のひととき、ごゆるりとお過ごしを。",
+        "ようこそ、{name}。朝靄の中、お待ち申し上げておりました。",
+        "{name}、おはようございます。一番乗りでございますね。",
+        "{name}、早起きは三文の徳と申します。よきことがありますよう。",
+        "おはようございます、{name}。お茶でもご用意いたしましょうか。",
+        "{name}、まだ街も眠っております。どうぞお静かに、お楽しみを。",
+        "{name}、清々しい早朝でございます。お会いできて光栄です。",
+        "{name}、お早うございます。本日も誠心誠意お供いたします。",
+    ],
+    "morning": [
+        "{name}、おはようございます。本日も良き一日になりますよう。",
+        "おはようございます、{name}。お会いできて光栄でございます。",
+        "{name}、お目覚めですね。お越しをお待ちしておりました。",
+        "{name}、よい朝でございます。本日もどうぞお楽しみを。",
+        "{name}、おはようございます。今日も張り切ってまいりましょう。",
+        "ようこそ、{name}。爽やかな朝のお供をいたします。",
+        "{name}、おはようございます。朝食はお済みでしょうか。",
+        "{name}、良き目覚めを。本日のご武運をお祈りいたします。",
+        "おはようございます、{name}。今日はどんな一日になりましょうか。",
+        "{name}、朝の光がよくお似合いです。ようこそお越しを。",
+        "{name}、おはようございます。今日も一日、お供いたします。",
+        "ごきげんよう、{name}。素晴らしい朝でございますね。",
+    ],
+    "noon": [
+        "{name}、ようこそお越しくださいました。",
+        "いらっしゃいませ、{name}。お昼のひととき、ごゆるりと。",
+        "{name}、お待ち申し上げておりました。",
+        "ごきげんよう、{name}。本日もお供いたします。",
+        "{name}、お昼はお済みでしょうか。ごゆっくりどうぞ。",
+        "ようこそ、{name}。日中のひととき、お楽しみを。",
+        "{name}、いらっしゃいませ。よい午後になりますよう。",
+        "{name}、お忙しい中、よくぞお越しを。",
+        "いらっしゃいませ、{name}。少しの息抜きにどうぞ。",
+        "{name}、お会いできて光栄です。本日もご一緒に。",
+        "{name}、陽の高いうちのお越し、歓迎いたします。",
+        "ごきげんよう、{name}。さあ、何から始めましょうか。",
+    ],
+    "evening": [
+        "{name}、本日もお疲れ様でございます。",
+        "いらっしゃいませ、{name}。夕暮れのひととき、おくつろぎを。",
+        "{name}、お越しいただき光栄でございます。",
+        "ごきげんよう、{name}。よい夕べになりますよう。",
+        "{name}、一日のお勤め、お疲れ様でございました。",
+        "ようこそ、{name}。茜色の空が美しゅうございます。",
+        "{name}、夕刻のひととき、ゆるりとお過ごしを。",
+        "いらっしゃいませ、{name}。日暮れと共にお迎えを。",
+        "{name}、お疲れのところ、ようこそお越しを。",
+        "{name}、夕陽に照らされて、ようこそ。お供いたします。",
+        "ごきげんよう、{name}。ひと息つかれてはいかがです。",
+        "{name}、本日もよくぞ。夕べのひととき、ご一緒に。",
+    ],
+    "night": [
+        "{name}、こんばんは。よい夜をお過ごしくださいませ。",
+        "いらっしゃいませ、{name}。夜のひととき、お供いたします。",
+        "{name}、本日も一日お疲れ様でございました。",
+        "ごきげんよう、{name}。静かな夜にようこそ。",
+        "{name}、こんばんは。今宵はどう楽しまれますか。",
+        "ようこそ、{name}。夜の帳が下りてまいりました。",
+        "{name}、よい夜分でございます。ごゆるりとどうぞ。",
+        "いらっしゃいませ、{name}。灯りを灯してお待ちを。",
+        "{name}、こんばんは。本日の締めくくりにどうぞ。",
+        "{name}、夜のしじまにようこそ。お供いたします。",
+        "ごきげんよう、{name}。今宵のご武運をお祈りして。",
+        "{name}、こんばんは。月も美しい夜でございます。",
+    ],
+    "midnight": [
+        "{name}、こんな夜更けに……ようこそお越しを。",
+        "{name}、夜分遅くにお目覚めですか。お供いたします。",
+        "いらっしゃいませ、{name}。深夜のひととき、おしのびで。",
+        "{name}、お夜食でもご用意いたしましょうか。",
+        "{name}、丑三つ時のお越し、お待ちしておりました。",
+        "ようこそ、{name}。静寂の中、そっとお迎えを。",
+        "{name}、夜更かしのお供、喜んでいたします。",
+        "{name}、こんばんは。くれぐれもお体にはお気をつけて。",
+        "{name}、月明かりだけのお出迎えで失礼を。ようこそ。",
+        "{name}、眠れぬ夜でございますか。私がお供を。",
+        "{name}、深夜にようこそ。どうか、ほどほどに。",
+        "{name}、静かな夜更けでございます。ごゆるりと。",
+    ],
+}
+
+# 同じ日にまた戻ってきたとき（お戻り・表現を散らす）
+RETURN = {
+    "earlymorning": [
+        "{name}、お戻りでしたか。まだ朝も早うございます。",
+        "おや、{name}。早々にお戻りとは。お待ちしておりました。",
+        "{name}、またお越しで。早朝のひととき、続けてまいりましょう。",
+        "お戻りですね、{name}。ご無理は……と申し上げたいところですが。",
+        "{name}、お早いお戻りで。何かお忘れ物でも？",
+        "{name}、まだ夜明け前。お付き合いいたしますとも。",
+        "ふふ、{name}。よほど待ちきれなかったのですね。",
+        "{name}、お戻りをお待ちしておりました。さあ、続きを。",
+        "{name}、朝の空気は格別でございましょう。お帰りなさいませ。",
+        "お戻りで、{name}。一番星もまだ瞬いております。",
+        "{name}、またお会いできて。早朝も悪くないものでしょう。",
+        "{name}、ご機嫌うるわしゅう。今しばらくお供いたします。",
+    ],
+    "morning": [
+        "{name}、おかえりなさいませ。",
+        "お戻りでしたか、{name}。お待ちしておりました。",
+        "{name}、またお会いできて嬉しゅうございます。",
+        "{name}、ご機嫌うるわしゅう。続けてまいりましょう。",
+        "お戻りですね、{name}。次は何をなさいますか。",
+        "{name}、朝のうちにもうひと勝負で。頼もしい限りです。",
+        "{name}がお戻りになると、朝も華やぎます。",
+        "{name}、お帰りで。コーヒーのおかわりはいかがです。",
+        "お戻りを、{name}。まだ午前は始まったばかり。",
+        "{name}、またのお越し、心より歓迎いたします。",
+        "ふふ、{name}。お好きですねえ。さあ、参りましょう。",
+        "{name}、お戻りでございますね。本日もご一緒に。",
+    ],
+    "noon": [
+        "{name}、おかえりなさいませ。ご機嫌いかがですか。",
+        "お戻りですね、{name}。次は何をなさいますか。",
+        "{name}、お待ち申し上げておりました。",
+        "{name}がいらっしゃると、華やぎますね。",
+        "お戻りで、{name}。お昼休みでございますか。",
+        "{name}、またのお越し、嬉しゅうございます。",
+        "ふふ、{name}。離れがたいご様子で。",
+        "{name}、お帰りなさいませ。続きをご一緒に。",
+        "お戻りですね、{name}。午後も頼りにしております。",
+        "{name}、よくお戻りで。さあ、参りましょう。",
+        "{name}、ちょうどお待ちしていたところでございます。",
+        "{name}、おかえりなさいませ。お茶を淹れ直しましょうか。",
+    ],
+    "evening": [
+        "{name}、おかえりなさいませ。",
+        "お戻りでしたか、{name}。ちょうどお噂をしておりました。",
+        "{name}、よくお戻りで。引き続きお供いたします。",
+        "ごきげんよう、{name}。今宵も楽しんでまいりましょう。",
+        "お戻りですね、{name}。夕餉の前にもうひと遊び。",
+        "{name}、お帰りなさいませ。茜空がお待ちかねです。",
+        "ふふ、{name}。まだまだ宵の口でございますよ。",
+        "{name}、またお会いできて。夕暮れも華やぎます。",
+        "お戻りで、{name}。今日もよくお励みで。",
+        "{name}、おかえりなさいませ。続きをご一緒に。",
+        "{name}、よくぞお戻りを。さあ、参りましょう。",
+        "{name}、お戻りでございますね。日が沈むまでお供を。",
+    ],
+    "night": [
+        "{name}、おかえりなさいませ。",
+        "お戻りでしたか、{name}。今宵もご一緒に。",
+        "{name}、またお会いできて光栄でございます。",
+        "{name}、よい夜を。最後までお供いたします。",
+        "お戻りですね、{name}。夜はこれからでございます。",
+        "{name}、お帰りなさいませ。灯りを灯してお待ちを。",
+        "ふふ、{name}。夜更けのお戻り、嬉しゅうございます。",
+        "{name}、よくお戻りで。今宵も心ゆくまで。",
+        "お戻りで、{name}。月も見守っております。",
+        "{name}、おかえりなさいませ。続きをまいりましょう。",
+        "{name}、またのお越し。夜の静けさもご一緒に。",
+        "{name}、お戻りでございますね。よい夜をご一緒に。",
+    ],
+    "midnight": [
+        "{name}、おかえりなさいませ。夜更かしもほどほどに。",
+        "お戻りですね、{name}。ご無理はなさいませんよう。",
+        "{name}、またお会いできて光栄でございます。",
+        "{name}、こんな時間に……お戻り、お待ちしておりました。",
+        "ふふ、{name}。眠れぬご様子で。お供いたします。",
+        "{name}、お帰りなさいませ。そろそろお休みも。",
+        "お戻りで、{name}。夜はもうこんなに更けて。",
+        "{name}、よくお戻りを。最後の一勝負でございますか。",
+        "{name}、深夜のお戻り、嬉しくも心配でございます。",
+        "{name}、おかえりなさいませ。お体だけはご大切に。",
+        "{name}、また月の下でお会いするとは。お供を。",
+        "{name}、お戻りでございますね。どうか、お早めにお休みを。",
+    ],
+}
+
+
+def _time_band(hour: int) -> str:
+    if hour >= 23 or hour < 4:
+        return "midnight"      # 23〜3時
+    if 4 <= hour < 7:
+        return "earlymorning"  # 4〜6時（早朝）
+    if 7 <= hour < 11:
+        return "morning"       # 7〜10時（朝）
+    if 11 <= hour < 16:
+        return "noon"          # 11〜15時（昼）
+    if 16 <= hour < 19:
+        return "evening"       # 16〜18時（夕方）
+    return "night"             # 19〜22時（夜）
+
+
+def _pick_footer(user, guild_id: str) -> str:
+    now = datetime.now(_JST)
+    today = str(now.date())
+    uid = str(user.id)
+    first_today = db.get_menu_seen(uid, guild_id) != today
+    db.set_menu_seen(uid, guild_id, today)
+    band = _time_band(now.hour)
+    pool = WELCOME[band] if first_today else RETURN[band]
+    name = f"{user.display_name}さん"
+    return random.choice(pool).format(name=name)
+
+
 async def go_home(interaction: discord.Interaction, user_id: str = None):
     """どこからでもホームへ戻る共通処理（残高付きで描画）"""
     uid = user_id or str(interaction.user.id)
@@ -40,7 +249,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
     """ホームのembed。user と guild_id があれば残高・デイリー・クエスト状況を表示する。"""
     E = "\u001b"  # ANSIエスケープ
     embed = discord.Embed(
-        title="✦　Ｎ Ａ Ｔ Ｏ　Ｃ Ａ Ｓ Ｉ Ｎ Ｏ　✦",
+        title="✦　Ｎ Ａ Ｔ Ｏ　Ｗ Ｏ Ｒ Ｌ Ｄ　✦",
         color=0xC8A24B,  # 上質なゴールド
     )
 
@@ -78,17 +287,17 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
     embed.add_field(
         name="〔　Ｍ Ｅ Ｎ Ｕ　〕",
         value=(
-            "🎰　**スロット**　── EVENT HORIZON を目指せ\n"
-            "🎣　**釣り**　　　── 湖・川・海／図鑑／釣具屋\n"
-            "🃏　**カジノ**　　── BJ・ポーカー・チンチロ 他\n"
+            "🎰　**スロット**　── GRAVITAS GAME を目指せ\n"
+            "🎣　**釣り**　　　── 湖から大海原まで大物を狙え！\n"
+            "🃏　**カジノ**　　── 一攫千金を目指せ\n"
             "📜　**クエスト**　── 今日の任務をこなして稼ぐ\n"
-            "📱　**スマホ**── 銀行（残高/送金）・LINE・ツイッター\n"
+            "📱　**スマホ**　　── デイリー・便利機能\n"
             "🎮　**募集**　　　── VALO・LoL 等の募集を立てる"
         ),
         inline=False,
     )
     if user is not None and guild_id is not None:
-        embed.set_footer(text="GRAVITAS ENTERTAINMENT · 今日も良い夜を")
+        embed.set_footer(text=_pick_footer(user, guild_id))
     return embed
 
 
@@ -144,12 +353,6 @@ class MainMenuView(discord.ui.View):
         await open_phone(interaction, str(interaction.user.id))
 
     # ── 3段目：スマホ ──
-    @discord.ui.button(label="📊 アクティビティ", style=discord.ButtonStyle.secondary, row=1)
-    async def activity(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.activitystats import open_stats
-        await open_stats(interaction, str(interaction.user.id))
-
     @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=1)
     async def lfg(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
