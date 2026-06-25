@@ -7,11 +7,120 @@ import random
 import asyncio
 from datetime import datetime, timezone, timedelta
 from cogs.embed_utils import pad_embed
+import weather as W
 
 db = Database()
 JST = timezone(timedelta(hours=9))
 
 FISH_BY_AREA = {"lake": LAKE_FISH, "river": RIVER_FISH, "sea": SEA_FISH}
+
+def build_fish_menu_embed():
+    """エリア選択。海/川/湖を選ぶ（時間帯は各エリアの①②③で異なるためここでは出さない）。"""
+    embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
+    embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
+    embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
+    embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
+    embed.set_footer(text="行き先を選ぶと3つの釣り場が現れる。天候は行くか、釣り人に聞けば…")
+    return embed
+
+def build_spot_menu_embed(area):
+    """釣り場サブメニュー。①②③に時間帯＋天候を表示。"""
+    name = {"lake":"🏞️ 湖", "river":"🏔️ 川", "sea":"🌊 海"}[area]
+    embed = discord.Embed(title=f"{name} — 釣り場を選ぶ", color=discord.Color.blue())
+    for s in (1, 2, 3):
+        tp = W.get_time_period(area, s)
+        wx = W.get_weather(area, s)
+        badge = "\n★限定魚出現中" if wx.get("limited") else ""
+        embed.add_field(
+            name=f"{name}{s}",
+            value=f"{tp['emoji']}{tp['name']}\n{wx['emoji']}{wx['name']}{badge}",
+            inline=True,
+        )
+    embed.set_footer(text="場所ごとに時間帯と天候が違う。狙い目を選べ。")
+    return embed
+
+# ───────────── NPC: 天気予報士（嵐・霧のみ予報。12h先まで）─────────────
+def _fc_time_phrase(m):
+    if m <= 0: return "今ちょうど"
+    h, mm = m // 60, m % 60
+    if h == 0: return f"あと{mm}分ほどで"
+    return f"約{h}時間後ごろ" if mm == 0 else f"約{h}時間{mm}分後ごろ"
+
+_FORECAST_CHAT = [
+    "今日はおだやかなもんだ。晴れか曇り、まあ釣り日和ってやつさ。",
+    "特に荒れる気配はないね。こういう日はのんびり糸を垂らすのが一番だ。",
+    "見たところ、しばらくは平穏だ。…そういや湖がよく釣れるって噂を聞いたよ。",
+    "嵐も霧も来そうにないな。たまにはこういう退屈な日もいいもんさ。",
+    "空は機嫌がいい。こういう日に大物が来たら儲けものだがね、ハハ。",
+]
+
+def forecaster_embed():
+    fc = W.scan_forecast(weathers=("storm", "fog"), hours=12)
+    embed = discord.Embed(title="🌤️ 天気予報士", color=0x5dade2)
+    if fc:
+        lines = []
+        for f in fc:  # エリアごとに最大1件
+            area = W.AREA_NAMES[f["area"]]; when = _fc_time_phrase(f["minutes_ahead"])
+            if f["weather"] == "storm":
+                lines.append(f"・{area}の方で{when}、風がとんでもなく強くなりそうだ…")
+            else:
+                lines.append(f"・{area}のあたりで{when}、ずいぶん見通しが悪くなるみたいだね…")
+        embed.description = "ふむ、空を読んでみよう…\n\n" + "\n".join(lines)
+    else:
+        embed.description = random.choice(_FORECAST_CHAT)
+    return embed
+
+# ───────────── NPC: 怪しい釣り人（赤月の予告）─────────────
+_ANGLER_HINT = {"lake":"山あいの静かな水面のあたり",
+                "river":"流れの早い、岩を噛む水のあたり",
+                "sea":"潮の香りがする場所"}
+def _bm_phrase(m):
+    if m <= 60:  return "近いうちに、赤い月が昇る…"
+    if m <= 180: return "もうそろそろ、あの夜が来る…"
+    if m <= 300: return "赤い月の気配が近づいている…"
+    if m <= 420: return "遠からず、月が赤く染まるだろう…"
+    if m <= 540: return "いずれ、赤い月の夜が来る…"
+    return "まだ先だが、赤い月は必ず来る…"
+_ANGLER_NOW = [
+    "き、来た来た来たァ！赤い月だ…！見ろよあの色、最高だろう！？ヒャハハハ！",
+    "今夜なんだよ…っ、赤い月が昇ってる！震えが止まらねえ…ヒヒ、ヒヒヒ…！",
+    "見えるか…？あの紅い月が…！今すぐ糸を垂らせ、"
+    "とんでもないヤツが顔を出してるぞォ…ククク！",
+]
+_ANGLER_FLAVOR = [
+    "赤い月の日があるらしくてな…特別なものや、とんでもないヤツが顔をのぞかせるのさ。ククク…",
+    "…月が赤く染まる夜を待っているのさ。何が釣れるか、お前にも見せてやりたいねえ。ククク…",
+    "今は何もないさ。だが赤い月の夜は別だ…せいぜい、震えて待つんだな。ククク…",
+]
+
+def angler_embed():
+    embed = discord.Embed(title="🎣 怪しい釣り人", color=0x8e44ad)
+    if W.blood_moon_now():
+        embed.description = random.choice(_ANGLER_NOW)
+    else:
+        bm = W.next_blood_moon(hours=12)
+        if bm:
+            embed.description = f"{_bm_phrase(bm['minutes_ahead'])}\n…{_ANGLER_HINT[bm['area']]}でな。"
+        else:
+            embed.description = random.choice(_ANGLER_FLAVOR)
+    return embed
+
+class NPCView(discord.ui.View):
+    def __init__(self, which, uid=None):
+        super().__init__(timeout=900)
+        self.which = which
+        self.uid = uid
+
+    @discord.ui.button(label="もう一回聞く", style=discord.ButtonStyle.primary, emoji="🔄", row=0)
+    async def again(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = forecaster_embed() if self.which == "forecaster" else angler_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🎣 釣りメニューへ", style=discord.ButtonStyle.secondary, row=0)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from cogs.menu import FishMenuView
+        await interaction.response.edit_message(embed=build_fish_menu_embed(), view=FishMenuView(self.uid))
+
 
 def pick_effect_by_rarity(rarity: str) -> str:
     """結果のレアリティに応じて演出テキストを抽選（FISHING_EFFECT_POOL）。
@@ -37,15 +146,23 @@ def pick_rarity_direct(rod_id: str) -> str:
             return rarity
     return "common"
 
-def pick_fish(area: str, rarity: str) -> dict:
+def pick_fish(area: str, rarity: str, weather_key: str = None):
+    """通常プールから1匹。限定天候なら同レアを限定魚にスワップ。
+    返り値: (fish_dict, is_limited)"""
+    if weather_key:
+        lim = LIMITED_FISH.get(area, {}).get(weather_key)
+        if lim:
+            cand = [f for f in lim if f["rarity"] == rarity]
+            if cand:
+                return random.choice(cand), True
     candidates = [f for f in FISH_BY_AREA[area] if f["rarity"] == rarity]
     if not candidates:
         candidates = [f for f in FISH_BY_AREA[area] if f["rarity"] == "common"]
-    return random.choice(candidates)
+    return random.choice(candidates), False
 
 active_fishing: set = set()  # 釣り中のユーザーID
 
-async def do_fish(interaction: discord.Interaction, area: str, edit: bool = False):
+async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, edit: bool = False):
     uid = str(interaction.user.id)
     guild_id = str(interaction.guild.id)
 
@@ -125,6 +242,11 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     # レアリティは竿別の直接テーブルで決定
     rarity = pick_rarity_direct(gear["rod_id"])
 
+    # このキャストの天候を確定（1回だけ取得して使い回す＝30分境界でもブレない）
+    wx = W.get_weather(area, spot)
+    weather_key = wx["key"]
+    weather_limited = wx.get("limited", False)
+
     # 結果のレアリティに応じて演出テキストを選択（見せ方のみ。フェイント/確定込み）
     effect_text = pick_effect_by_rarity(rarity)
 
@@ -136,7 +258,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
         if random.random() < appear_chance:
             show_shadow = True
 
-    fish = pick_fish(area, rarity)
+    fish, is_limited = pick_fish(area, rarity, weather_key if weather_limited else None)
 
     # ── レアなゴミ：ごみを引いたとき低確率で「売値1000」のレアごみに昇格 ──
     got_rare_trash = False
@@ -173,8 +295,11 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
         else:
             is_new = db.add_zukan(uid, area + "_trash", fish["name"])
     else:
-        # 魚図鑑登録
-        is_new = db.add_zukan(uid, area, fish["name"])
+        # 魚図鑑登録（限定魚は別キーに＝通常コンプに影響させない）
+        if is_limited:
+            is_new = db.add_zukan(uid, area + "_limited", fish["name"])
+        else:
+            is_new = db.add_zukan(uid, area, fish["name"])
         if is_golden:
             new_crown = db.add_crown(uid, area, fish["name"])
 
@@ -205,6 +330,25 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
             db.update_balance(uid, guild_id, ZUKAN_ALL_BONUS)
             new_bal = db.get_balance(uid, guild_id)
             bonus_msg += f"\n🌟 **全図鑑コンプリート！** +{ZUKAN_ALL_BONUS:,} ナトコイン！！"
+
+    # ── 嵐の宝箱（結果descに合流。新規interaction応答は作らない）──
+    chest_msg = ""
+    if weather_key == "storm" and random.random() < STORM_CHEST_RATE:
+        total_w = sum(t["weight"] for t in STORM_TREASURES)
+        rr = random.random() * total_w
+        acc = 0; chosen = STORM_TREASURES[-1]
+        for t in STORM_TREASURES:
+            acc += t["weight"]
+            if rr < acc:
+                chosen = t; break
+        chest_reward = random.randint(chosen["min"], chosen["max"])
+        db.update_balance(uid, guild_id, chest_reward)
+        chest_new = db.add_zukan(uid, "storm_treasure", chosen["name"])
+        new_bal = db.get_balance(uid, guild_id)
+        chest_msg = (f"\n\n⛈️📦 **嵐の宝箱！** {chosen['emoji']} {chosen['name']} を発見！"
+                     f"\n+{chest_reward:,} ナトコイン！")
+        if chest_new:
+            chest_msg += "\n🏆 **お宝図鑑に新しく登録！**"
 
     # ウェイト時間（レア度に応じて：SR以上は長めの溜め）
     wait_time = FISHING_WAIT_SUPER if rarity in ("super_rare", "legend") else FISHING_WAIT_NORMAL
@@ -265,6 +409,8 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
 
     if bonus_msg:
         desc += bonus_msg
+    if chest_msg:
+        desc += chest_msg
 
     # 装備残り回数表示
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
@@ -273,7 +419,7 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
     embed3.set_footer(text=f"残高: {new_bal:,} ナトコイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
     pad_embed(embed3, target_fields=4)
 
-    view = FishResultView(area, show_shadow, uid, guild_id)
+    view = FishResultView(area, show_shadow, uid, guild_id, weather_key, spot)
     await interaction.edit_original_response(embed=embed3, view=view)
     active_fishing.discard(uid)
 
@@ -288,25 +434,24 @@ async def do_fish(interaction: discord.Interaction, area: str, edit: bool = Fals
 
 
 class FishResultView(discord.ui.View):
-    def __init__(self, area, show_shadow, uid, guild_id):
+    def __init__(self, area, show_shadow, uid, guild_id, weather_key=None, spot=1):
         super().__init__(timeout=900)
         self.area = area
         self.uid = uid
         self.guild_id = guild_id
+        self.weather_key = weather_key
+        self.spot = spot
         if show_shadow:
-            self.add_item(ShadowButton(area, uid, guild_id))
+            self.add_item(ShadowButton(area, uid, guild_id, weather_key, spot))
 
     @discord.ui.button(label="もう一回！", style=discord.ButtonStyle.primary, emoji="🎣", row=1)
     async def again(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await do_fish(interaction, self.area, edit=True)
+        await do_fish(interaction, self.area, self.spot, edit=True)
 
     @discord.ui.button(label="エリア選択へ", style=discord.ButtonStyle.secondary, emoji="🔙", row=1)
     async def back_area(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import FishMenuView
-        embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
-        embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
-        embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
+        embed = build_fish_menu_embed()
         await interaction.response.edit_message(embed=embed, view=FishMenuView())
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
@@ -316,11 +461,13 @@ class FishResultView(discord.ui.View):
 
 
 class ShadowButton(discord.ui.Button):
-    def __init__(self, area, uid, guild_id):
+    def __init__(self, area, uid, guild_id, weather_key=None, spot=1):
         super().__init__(label="⚠️ 不穏な影が見える...垂らし続けますか？", style=discord.ButtonStyle.danger, row=0)
         self.area = area
         self.uid = uid
         self.guild_id = guild_id
+        self.weather_key = weather_key
+        self.spot = spot
 
     async def callback(self, interaction: discord.Interaction):
         if str(interaction.user.id) != self.uid:
@@ -331,15 +478,17 @@ class ShadowButton(discord.ui.Button):
             description="何か不穏な影が見える...\nこのまま釣竿を垂らしておきますか？",
             color=discord.Color.dark_red()
         )
-        await interaction.response.edit_message(embed=embed, view=ShadowChoiceView(self.area, self.uid, self.guild_id))
+        await interaction.response.edit_message(embed=embed, view=ShadowChoiceView(self.area, self.uid, self.guild_id, self.weather_key, self.spot))
 
 
 class ShadowChoiceView(discord.ui.View):
-    def __init__(self, area, uid, guild_id):
+    def __init__(self, area, uid, guild_id, weather_key=None, spot=1):
         super().__init__(timeout=900)
         self.area = area
         self.uid = uid
         self.guild_id = guild_id
+        self.weather_key = weather_key
+        self.spot = spot
 
     @discord.ui.button(label="垂らし続ける", style=discord.ButtonStyle.danger, emoji="🎣")
     async def keep(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -347,21 +496,33 @@ class ShadowChoiceView(discord.ui.View):
             await interaction.response.send_message("❌ これはあなたの釣りではありません", ephemeral=True)
             return
         await interaction.response.defer()
-        boss = AREA_BOSS[self.area]
 
-        # ライン装備で成功率UP
+        # 赤い月なら各エリアの主を赤月主にスワップ
+        if self.weather_key == "blood_moon" and self.area in BLOOD_MOON_BOSS:
+            bdata = BLOOD_MOON_BOSS[self.area]
+            boss = {"name": bdata["name"], "emoji": bdata["emoji"]}
+            reward = bdata["value"]
+            succ_mult = bdata.get("success_mult", 1.0)
+            zukan_key = self.area + "_bloodmoon"
+        else:
+            boss = AREA_BOSS[self.area]
+            reward = BOSS_REWARD
+            succ_mult = 1.0
+            zukan_key = self.area
+
+        # ライン装備で成功率UP（赤月主は succ_mult で難度補正）
         gear = db.get_gear(self.uid)
         line = FISHING_LINES[gear["line_id"]]
         base_success = SHADOW_SUCCESS_RATES.get(gear["rod_id"], 0.01)
-        success_rate = base_success + line["boss_success_bonus"]
+        success_rate = (base_success + line["boss_success_bonus"]) * succ_mult
 
         if random.random() < success_rate:
-            db.update_balance(self.uid, self.guild_id, BOSS_REWARD)
-            db.add_zukan(self.uid, self.area, boss["name"])
+            db.update_balance(self.uid, self.guild_id, reward)
+            db.add_zukan(self.uid, zukan_key, boss["name"])
             new_bal = db.get_balance(self.uid, self.guild_id)
             embed = discord.Embed(
                 title=f"💥 {boss['emoji']} {boss['name']} を釣り上げた！！！",
-                description=f"伝説の生物が釣れた！！！\n換金額: **{BOSS_REWARD:,} ナトコイン**\n残高: **{new_bal:,} ナトコイン**",
+                description=f"伝説の生物が釣れた！！！\n換金額: **{reward:,} ナトコイン**\n残高: **{new_bal:,} ナトコイン**",
                 color=discord.Color.red()
             )
             boss_caught = True
@@ -372,13 +533,13 @@ class ShadowChoiceView(discord.ui.View):
                 color=discord.Color.dark_blue()
             )
             boss_caught = False
-        await interaction.followup.edit_message(interaction.message.id, embed=embed, view=BackToFishView(self.area))
+        await interaction.followup.edit_message(interaction.message.id, embed=embed, view=BackToFishView(self.area, self.spot))
 
         # ボス捕獲は超大物 → BOT告知（魚名はネタバレなので出さない）
         if boss_caught:
             from cogs.bigwin import announce_big_win
             await announce_big_win(interaction, interaction.user, "釣り（ヌシ）",
-                                   BOSS_REWARD, balance=new_bal)
+                                   reward, balance=new_bal)
 
     @discord.ui.button(label="安全に引き上げる", style=discord.ButtonStyle.secondary, emoji="✋")
     async def pull(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -390,17 +551,18 @@ class ShadowChoiceView(discord.ui.View):
             description="影は消えていった...\n次は挑戦してみよう！",
             color=discord.Color.blue()
         )
-        await interaction.response.edit_message(embed=embed, view=BackToFishView(self.area))
+        await interaction.response.edit_message(embed=embed, view=BackToFishView(self.area, self.spot))
 
 
 class BackToFishView(discord.ui.View):
-    def __init__(self, area):
+    def __init__(self, area, spot=1):
         super().__init__(timeout=900)
         self.area = area
+        self.spot = spot
 
     @discord.ui.button(label="もう一回釣る！", style=discord.ButtonStyle.primary, emoji="🎣")
     async def again(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await do_fish(interaction, self.area, edit=True)
+        await do_fish(interaction, self.area, self.spot, edit=True)
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -494,10 +656,7 @@ class Fishing(commands.Cog):
     @app_commands.command(name="fish", description="釣りをする！")
     async def fish(self, interaction: discord.Interaction):
         from cogs.menu import FishMenuView
-        embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
-        embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
-        embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
+        embed = build_fish_menu_embed()
         await interaction.response.send_message(embed=embed, view=FishMenuView())
 
 async def setup(bot):

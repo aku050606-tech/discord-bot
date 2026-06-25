@@ -98,10 +98,8 @@ class MainMenuView(discord.ui.View):
     async def fishing(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
-        embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-        embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
-        embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
-        embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
+        from cogs.fishing import build_fish_menu_embed
+        embed = build_fish_menu_embed()
         await interaction.response.edit_message(embed=embed, view=FishMenuView(uid))
 
     # ── 2段目：その他ゲーム & ウォレット ──
@@ -433,10 +431,70 @@ class FishMenuView(discord.ui.View):
         embed = discord.Embed(title="🏪 釣具屋", description="カテゴリを選んでください！", color=discord.Color.green())
         await interaction.response.edit_message(embed=embed, view=ShopView())
 
-    @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="🌤️ 天気予報士", style=discord.ButtonStyle.secondary, row=2)
+    async def forecaster(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import forecaster_embed, NPCView
+        await interaction.response.edit_message(embed=forecaster_embed(), view=NPCView("forecaster", self.user_id))
+
+    @discord.ui.button(label="🎣 怪しい釣り人", style=discord.ButtonStyle.secondary, row=2)
+    async def angler(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import angler_embed, NPCView
+        await interaction.response.edit_message(embed=angler_embed(), view=NPCView("angler", self.user_id))
+
+    @discord.ui.button(label="⚓ 危険海域", style=discord.ButtonStyle.danger, row=2)
+    async def danger_zone(self, interaction: discord.Interaction, button: discord.ui.Button):
+        import random as _r
+        lines = [
+            "船がないとここには行けないぞ…どこまで泳ぐつもりだ？",
+            "ここから先は船がなけりゃ話にならん。波に呑まれて魚の餌になりたいのか？",
+            "危険海域…？　まだお前にゃ早い。第一、船はどうした。泳いで渡る気か？",
+            "船も無しに来る奴があるか。命がいくつあっても足りんぞ、ここはな。",
+        ]
+        await interaction.response.send_message(_r.choice(lines), ephemeral=True)
+
+    @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary, row=3)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         await go_home(interaction, self.user_id)
+
+
+class SpotMenuView(discord.ui.View):
+    """エリア内の3つの釣り場(①②③)。中身は同じ・時間帯と天候だけ異なる。"""
+    def __init__(self, area, user_id: str = None):
+        super().__init__(timeout=900)
+        self.area = area
+        self.user_id = user_id
+
+    async def _check(self, interaction):
+        if self.user_id is None:
+            self.user_id = str(interaction.user.id)
+            return True
+        return await check_user(interaction, self.user_id)
+
+    async def _go(self, interaction, spot):
+        if not await self._check(interaction): return
+        from cogs.fishing import do_fish
+        await do_fish(interaction, self.area, spot, edit=True)
+
+    @discord.ui.button(label="①", style=discord.ButtonStyle.success, row=0)
+    async def s1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._go(interaction, 1)
+
+    @discord.ui.button(label="②", style=discord.ButtonStyle.primary, row=0)
+    async def s2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._go(interaction, 2)
+
+    @discord.ui.button(label="③", style=discord.ButtonStyle.danger, row=0)
+    async def s3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._go(interaction, 3)
+
+    @discord.ui.button(label="◀️ エリア選択へ", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import build_fish_menu_embed
+        await interaction.response.edit_message(embed=build_fish_menu_embed(), view=FishMenuView(self.user_id))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
