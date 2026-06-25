@@ -350,18 +350,17 @@ class MainMenuView(discord.ui.View):
     async def casino(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
-        embed = discord.Embed(
-            title="🃏 カジノ",
-            description="遊ぶゲームを選んでください\nベット **100〜2,000** ナトコイン",
-            color=discord.Color.dark_purple(),
-        )
-        await interaction.response.edit_message(embed=embed, view=CasinoMenuView(uid))
+        await interaction.response.edit_message(embed=build_casino_embed(), view=CasinoMenuView(uid))
 
     @discord.ui.button(label="📱 スマホ", style=discord.ButtonStyle.secondary, row=2)
     async def wallet(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        from cogs.phone import open_phone
-        await open_phone(interaction, str(interaction.user.id))
+        uid = str(interaction.user.id)
+        from cogs.phone import build_phone_embed, PhoneHomeView
+        # スマホ操作は本人だけに見えるよう、別のephemeralで開く（公開メニューはそのまま）
+        await interaction.response.send_message(
+            embed=build_phone_embed(interaction.user, interaction.guild),
+            view=PhoneHomeView(uid), ephemeral=True)
 
     # ── 3段目：スマホ ──
     @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=1)
@@ -377,15 +376,88 @@ class MainMenuView(discord.ui.View):
 # カジノメニュー（スロット以外のゲーム）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+_GAME_ENTRY = {
+    "blackjack": ("♠️　Ｂ Ｌ Ａ Ｃ Ｋ Ｊ Ａ Ｃ Ｋ", "21 を超えず、ディーラーを上回れ", "賭け金"),
+    "poker":     ("♠️　Ｐ Ｏ Ｋ Ｅ Ｒ", "役で魅せる心理戦。最後に笑うのは誰か", "アンティ"),
+    "chinchiro": ("🎲　Ｃ Ｈ Ｉ Ｎ Ｃ Ｈ Ｉ Ｒ Ｏ", "天運のサイコロ、振るは己の度胸", "賭け金"),
+    "numguess":  ("🎯　Ｎ Ｕ Ｍ Ｂ Ｅ Ｒ", "一点を読み切る、その美学", "賭け金"),
+    "coinflip":  ("🪙　Ｃ Ｏ Ｉ Ｎ　Ｆ Ｌ Ｉ Ｐ", "表か、裏か。運命は一瞬で決まる", "賭け金"),
+}
+
+
+def build_game_entry_embed(game: str) -> discord.Embed:
+    title, catch, betword = _GAME_ENTRY[game]
+    E = "\u001b"
+    G = f"{E}[1;33m"; R = f"{E}[1;31m"; W = f"{E}[1;37m"; K = f"{E}[1;30m"; g = f"{E}[0;33m"; X = f"{E}[0m"
+    desc = (
+        "```ansi\n"
+        f"{R}╔══════════════════════════════╗{X}\n"
+        f"{W}   {catch}{X}\n"
+        f"{R}╚══════════════════════════════╝{X}\n"
+        "\n"
+        f"{R}━━━━━━━━━━━━━━━━━━━━━━━━━━━━{X}\n"
+        f"{g}   {betword}　{W}100 〜 2,000{g} ナトコイン{X}\n"
+        f"{K}   下の「✏️ 入力」からどうぞ{X}\n"
+        "```"
+    )
+    return discord.Embed(title=title, description=desc, color=0xA31621)
+
+
+def build_mode_select_embed(game: str, bet: int) -> discord.Embed:
+    title, _catch, betword = _GAME_ENTRY[game]
+    E = "\u001b"
+    G = f"{E}[1;33m"; R = f"{E}[1;31m"; W = f"{E}[1;37m"; K = f"{E}[1;30m"; g = f"{E}[0;33m"; X = f"{E}[0m"
+    desc = (
+        "```ansi\n"
+        f"{R}╔══════════════════════════════╗{X}\n"
+        f"{g}   {betword}　{W}{bet:,}{g} ナトコイン{X}\n"
+        f"{R}╚══════════════════════════════╝{X}\n"
+        "\n"
+        f"{K}   遊ぶモードをお選びください{X}\n"
+        "```"
+    )
+    return discord.Embed(title=title, description=desc, color=0xA31621)
+
+
+def build_casino_embed() -> discord.Embed:
+    """深紅×ゴールドの高級カジノ風メニュー。"""
+    E = "\u001b"
+    G = f"{E}[1;33m"   # ゴールド（太字黄）
+    g = f"{E}[0;33m"   # 淡ゴールド
+    R = f"{E}[1;31m"   # 深紅
+    W = f"{E}[1;37m"   # 白
+    K = f"{E}[1;30m"   # グレー
+    X = f"{E}[0m"
+    desc = (
+        "```ansi\n"
+        f"{R}╔══════════════════════════════╗{X}\n"
+        f"{G}     ✦  Ｇ Ｒ Ａ Ｎ Ｄ  Ｃ Ａ Ｓ Ｉ Ｎ Ｏ  ✦{X}\n"
+        f"{K}        ようこそ、今宵のテーブルへ{X}\n"
+        f"{R}╚══════════════════════════════╝{X}\n"
+        "\n"
+        f"{G}🃏 ブラックジャック {K}…… {W}ディーラーとの一騎打ち{X}\n"
+        f"{G}♠️ ポーカー        {K}…… {W}役で魅せる心理戦{X}\n"
+        f"{G}🎲 チンチロ        {K}…… {W}運命のサイコロ勝負{X}\n"
+        f"{G}🎯 数字当て        {K}…… {W}一点読みの美学{X}\n"
+        f"{G}🪙 コインフリップ  {K}…… {W}表か、裏か{X}\n"
+        "\n"
+        f"{R}━━━━━━━━━━━━━━━━━━━━━━━━━━━━{X}\n"
+        f"{g}   ベット {W}100 〜 2,000{g} ナトコイン{X}\n"
+        "```"
+    )
+    embed = discord.Embed(
+        title="♠️ ♥️　Ｃ Ａ Ｓ Ｉ Ｎ Ｏ　♦️ ♣️",
+        description=desc,
+        color=0xA31621,  # 深紅
+    )
+    embed.set_footer(text="♣ ♦ ♥ ♠　ごゆるりとお楽しみを")
+    return embed
+
+
 async def open_casino_menu(interaction, user_id=None):
     """カジノメニューを開く（各ゲームの『戻る』から共通で使う）。"""
     uid = user_id or str(interaction.user.id)
-    embed = discord.Embed(
-        title="🃏 カジノ",
-        description="遊ぶゲームを選んでください\nベット **100〜2,000** ナトコイン",
-        color=discord.Color.dark_purple(),
-    )
-    await interaction.response.edit_message(embed=embed, view=CasinoMenuView(uid))
+    await interaction.response.edit_message(embed=build_casino_embed(), view=CasinoMenuView(uid))
 
 class CasinoMenuView(discord.ui.View):
     def __init__(self, user_id: str):
@@ -398,31 +470,31 @@ class CasinoMenuView(discord.ui.View):
     @discord.ui.button(label="🃏 ブラックジャック", style=discord.ButtonStyle.primary, row=0)
     async def blackjack(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🃏 ブラックジャック", description="賭け金を入力してください！\n**100〜2,000ナトコイン**", color=discord.Color.dark_green())
+        embed = build_game_entry_embed("blackjack")
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "blackjack", "ブラックジャック — 賭け金入力"))
 
     @discord.ui.button(label="♠️ ポーカー", style=discord.ButtonStyle.primary, row=0)
     async def poker(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="♠️ ポーカー", description="アンティ（参加費）を入力してください！\n**100〜2,000ナトコイン**", color=discord.Color.dark_green())
+        embed = build_game_entry_embed("poker")
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "poker", "ポーカー — アンティ入力"))
 
     @discord.ui.button(label="🎲 チンチロ", style=discord.ButtonStyle.primary, row=0)
     async def chinchiro(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🎲 チンチロ", description="賭け金を入力してください！\n**100〜2,000ナトコイン**", color=discord.Color.blue())
+        embed = build_game_entry_embed("chinchiro")
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "chinchiro", "チンチロ — 賭け金入力"))
 
     @discord.ui.button(label="🎯 数字当て", style=discord.ButtonStyle.primary, row=1)
     async def numguess(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🎯 数字当てゲーム", description="賭け金を入力してください！\n**100〜2,000ナトコイン**", color=discord.Color.blurple())
+        embed = build_game_entry_embed("numguess")
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "numguess", "数字当て — 賭け金入力"))
 
     @discord.ui.button(label="🪙 コインフリップ", style=discord.ButtonStyle.primary, row=1)
     async def coinflip(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        embed = discord.Embed(title="🪙 コインフリップ", description="賭け金を入力してください！\n**100〜2,000ナトコイン**", color=discord.Color.gold())
+        embed = build_game_entry_embed("coinflip")
         await interaction.response.edit_message(embed=embed, view=make_bet_view(self.user_id, str(interaction.guild.id), "coinflip", "コインフリップ — 賭け金入力"))
 
     @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary, row=2)
@@ -476,17 +548,17 @@ class BetModal(discord.ui.Modal):
 
         if self.game_type == "blackjack":
             from cogs.blackjack import BlackjackModeView
-            embed = discord.Embed(title="🃏 ブラックジャック", description=f"賭け金: **{bet:,} ナトコイン**\nモードを選んでください！", color=discord.Color.dark_green())
+            embed = build_mode_select_embed("blackjack", bet)
             await interaction.response.edit_message(embed=embed, view=BlackjackModeView(bet))
 
         elif self.game_type == "poker":
             from cogs.poker import PokerModeView
-            embed = discord.Embed(title="♠️ ポーカー", description=f"アンティ: **{bet:,} ナトコイン**\nモードを選んでください！", color=discord.Color.dark_green())
+            embed = build_mode_select_embed("poker", bet)
             await interaction.response.edit_message(embed=embed, view=PokerModeView(bet))
 
         elif self.game_type == "chinchiro":
             from cogs.chinchiro import ChinchiroModeView
-            embed = discord.Embed(title="🎲 チンチロ", description=f"賭け金: **{bet:,} ナトコイン**\nモードを選んでください！", color=discord.Color.blue())
+            embed = build_mode_select_embed("chinchiro", bet)
             await interaction.response.edit_message(embed=embed, view=ChinchiroModeView(bet))
 
         elif self.game_type == "numguess":

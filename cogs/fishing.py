@@ -16,12 +16,38 @@ JST = timezone(timedelta(hours=9))
 FISH_BY_AREA = {"lake": LAKE_FISH, "river": RIVER_FISH, "sea": SEA_FISH}
 
 def build_fish_menu_embed():
-    """エリア選択。海/川/湖を選ぶ（時間帯は各エリアの①②③で異なるためここでは出さない）。"""
-    embed = discord.Embed(title="🎣 釣りメニュー", color=discord.Color.blue())
-    embed.add_field(name="🏞️ 湖", value="10ナトコイン\n竹竿でOK", inline=True)
-    embed.add_field(name="🏔️ 川", value="50ナトコイン\nグラス竿以上", inline=True)
-    embed.add_field(name="🌊 海", value="100ナトコイン\nカーボン竿以上", inline=True)
-    embed.set_footer(text="行き先を選ぶと3つの釣り場が現れる。天候は行くか、釣り人に聞けば…")
+    """エリア選択。深い藍×水色×ゴールドの高級海風。"""
+    E = "\u001b"
+    G = f"{E}[1;33m"   # ゴールド
+    C = f"{E}[1;36m"   # 水色（シアン）
+    B = f"{E}[1;34m"   # 藍
+    W = f"{E}[1;37m"   # 白
+    K = f"{E}[1;30m"   # グレー
+    X = f"{E}[0m"
+    desc = (
+        "```ansi\n"
+        f"{B}╔══════════════════════════════╗{X}\n"
+        f"{C}      ✦  本日の漁場へようこそ  ✦{X}\n"
+        f"{B}╚══════════════════════════════╝{X}\n"
+        "\n"
+        f"{G}🏞️ 湖   {K}…… {W}10 ナトコイン   {K}竹竿でOK{X}\n"
+        f"{G}🏔️ 川   {K}…… {W}50 ナトコイン   {K}グラス竿以上{X}\n"
+        f"{G}🌊 海   {K}…… {W}100 ナトコイン  {K}カーボン竿以上{X}\n"
+        f"{G}⚓ 危険海域 {K}…… {W}一獲千金、されど高リスク{X}\n"
+        "\n"
+        f"{B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━{X}\n"
+        f"{C}🌤️ 天気予報士  🎣 怪しい釣り人{X}\n"
+        f"{C}🏪 釣具屋   📖 図鑑   🗺️ 宝の地図{X}\n"
+        f"{B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━{X}\n"
+        f"{K} 行き先を選ぶと、3つの釣り場が現れる{X}\n"
+        "```"
+    )
+    embed = discord.Embed(
+        title="🎣　Ｆ Ｉ Ｓ Ｈ Ｉ Ｎ Ｇ",
+        description=desc,
+        color=0x1B3A5B,  # 深い藍
+    )
+    embed.set_footer(text="🌊 大物との出会いを")
     return embed
 
 def build_spot_menu_embed(area):

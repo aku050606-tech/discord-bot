@@ -20,6 +20,21 @@ from database import DB_PATH
 # 募集を必ず投稿するチャンネル（どこから募集しても、ここに集約される）
 TARGET_CHANNEL_ID = 1455977803320398020
 
+from database import Database as _LFGDatabase
+_lfg_db = _LFGDatabase()
+
+
+def _resolve_lfg_channel(guild_id) -> int:
+    """募集の投稿先。ログ設定の『🎮 募集の投稿先』が指定されていればそこ、
+    未設定/OFFなら従来の固定IDにフォールバック。"""
+    try:
+        cid = _lfg_db.get_log_channel_id(str(guild_id), "lfg")
+        if cid and cid != "OFF":
+            return int(cid)
+    except Exception:
+        pass
+    return TARGET_CHANNEL_ID
+
 # 同時に選べるゲーム数の上限（選択肢が VALO/LoL/その他 の3つなので3）
 MAX_GAMES = 3
 
@@ -458,12 +473,13 @@ class CreateView(discord.ui.View):
                 ephemeral=True)
 
         await interaction.response.defer()
-        target = interaction.client.get_channel(TARGET_CHANNEL_ID)
+        target_id = _resolve_lfg_channel(interaction.guild.id)
+        target = interaction.client.get_channel(target_id)
         if target is None:
             return await interaction.edit_original_response(
                 embed=discord.Embed(
                     title="❌ 募集チャンネルが見つからない",
-                    description=(f"ID `{TARGET_CHANNEL_ID}` のチャンネルが見つからないよ。\n"
+                    description=(f"ID `{target_id}` のチャンネルが見つからないよ。\n"
                                  "BOTがそのチャンネルを見える状態か確認してね。"),
                     color=discord.Color.red()),
                 view=None)

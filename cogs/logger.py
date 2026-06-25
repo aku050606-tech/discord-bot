@@ -21,6 +21,8 @@ LOG_CATEGORIES = {
     "admin":          "🛠 管理操作",
     "announce":       "📣 手動アナウンス送信先",
     "bigwin":         "🎣 釣果・大勝利アナウンス送信先",
+    "twitter":        "🐦 ツイート投稿先",
+    "lfg":            "🎮 募集の投稿先",
 }
 
 

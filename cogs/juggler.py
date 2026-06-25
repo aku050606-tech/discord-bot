@@ -141,13 +141,33 @@ def _handle_timeout_cleanup(view):
 # 機種選択（スロットのトップ）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def build_kishu_embed() -> discord.Embed:
+    E = "\u001b"
+    G = f"{E}[1;33m"   # ゴールド
+    P = f"{E}[1;35m"   # 紫（神々しさ）
+    Y = f"{E}[1;33m"   # 黄
+    W = f"{E}[1;37m"   # 白
+    K = f"{E}[1;30m"   # グレー
+    X = f"{E}[0m"
+    desc = (
+        "```ansi\n"
+        f"{G}╔══════════════════════════════╗{X}\n"
+        f"{W}        1 回　{SLOT_BET} ナトコイン{X}\n"
+        f"{G}╚══════════════════════════════╝{X}\n"
+        "\n"
+        f"{P}🌌 ＧＲＡＶＩＴＡＳ   {K}［ AT機 ］{X}\n"
+        f"{W}   GRAVITAS GAME の継続ループで一撃を狙う{X}\n"
+        "\n"
+        f"{Y}🃏 ジャグラー        {K}［ ノーマル機 ］{X}\n"
+        f"{W}   GOGOランプを光らせ、コツコツ積む{X}\n"
+        "\n"
+        f"{G}━━━━━━━━━━━━━━━━━━━━━━━━━━━━{X}\n"
+        f"{K}      さあ、今日の一台を選べ{X}\n"
+        "```"
+    )
     return discord.Embed(
-        title="🎰 スロットコーナー — 機種選択",
-        description=(f"**{SLOT_BET}ナトコイン**掛け\n\n"
-                     "🌌 **GRAVITAS** … AT機。GRAVITAS GAMEの継続ループで一撃を狙う\n"
-                     "🃏 **ジャグラー** … ノーマル機。GOGOランプを光らせてコツコツ\n\n"
-                     "好きな機種を選んでください。"),
-        color=discord.Color.dark_purple(),
+        title="🎰　Ｓ Ｌ Ｏ Ｔ　Ｃ Ｏ Ｒ Ｎ Ｅ Ｒ",
+        description=desc,
+        color=0xD4AF37,  # ゴールド
     )
 
 

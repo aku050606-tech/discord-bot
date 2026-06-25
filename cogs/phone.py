@@ -16,7 +16,7 @@ from config import DAILY_AMOUNT
 db = Database()
 JST = timezone(timedelta(hours=9))
 
-TWITTER_CHANNEL = "twitter_channel"   # log_config を流用して保存
+TWITTER_CHANNEL = "twitter"   # ログ設定の「🐦 ツイート投稿先」と共有
 _tweet_cooldown = {}                  # {user_id: last_epoch}
 TWEET_COOLDOWN_SEC = 60
 

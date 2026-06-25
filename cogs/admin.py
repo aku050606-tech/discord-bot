@@ -96,38 +96,11 @@ class AdminMenuView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="👤 残高を見る", style=discord.ButtonStyle.secondary, row=0)
-    async def view_balance(self, interaction, button):
+    @discord.ui.button(label="💰 金銭管理", style=discord.ButtonStyle.success, row=0)
+    async def money(self, interaction, button):
         if not await self._guard(interaction): return
         await interaction.response.edit_message(
-            embed=_pick_user_embed("👤 残高を見る", "確認したいメンバーを選んでください"),
-            view=AdminUserSelectView(self.admin_id, "view"))
-
-    @discord.ui.button(label="➕ 補填", style=discord.ButtonStyle.success, row=0)
-    async def add(self, interaction, button):
-        if not await self._guard(interaction): return
-        await interaction.response.edit_message(
-            embed=_pick_user_embed("➕ 補填", "加算するメンバーを選んでください"),
-            view=AdminUserSelectView(self.admin_id, "add"))
-
-    @discord.ui.button(label="➖ 没収", style=discord.ButtonStyle.danger, row=0)
-    async def sub(self, interaction, button):
-        if not await self._guard(interaction): return
-        await interaction.response.edit_message(
-            embed=_pick_user_embed("➖ 没収", "減算するメンバーを選んでください"),
-            view=AdminUserSelectView(self.admin_id, "sub"))
-
-    @discord.ui.button(label="🎯 残高を設定", style=discord.ButtonStyle.primary, row=1)
-    async def setbal(self, interaction, button):
-        if not await self._guard(interaction): return
-        await interaction.response.edit_message(
-            embed=_pick_user_embed("🎯 残高を設定", "上書きするメンバーを選んでください"),
-            view=AdminUserSelectView(self.admin_id, "set"))
-
-    @discord.ui.button(label="📢 全員に配布", style=discord.ButtonStyle.success, row=1)
-    async def distribute(self, interaction, button):
-        if not await self._guard(interaction): return
-        await interaction.response.send_modal(AdminDistributeModal(self.admin_id))
+            embed=build_money_admin_embed(), view=MoneyView(self.admin_id))
 
     @discord.ui.button(label="📋 ログ設定", style=discord.ButtonStyle.primary, row=2)
     async def log_settings(self, interaction, button):
@@ -159,13 +132,6 @@ class AdminMenuView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_vcrole_embed(interaction.guild),
             view=VCRoleConfigView(self.admin_id))
-
-    @discord.ui.button(label="🐦 ツイート投稿先", style=discord.ButtonStyle.secondary, row=3)
-    async def twitter_ch(self, interaction, button):
-        if not await self._guard(interaction): return
-        await interaction.response.edit_message(
-            embed=build_twitterch_embed(interaction.guild),
-            view=TwitterChConfigView(self.admin_id))
 
     @discord.ui.button(label="閉じる", style=discord.ButtonStyle.secondary, row=3)
     async def close(self, interaction, button):
@@ -924,57 +890,63 @@ class VCRoleConfigView(discord.ui.View):
             embed=build_admin_embed(interaction), view=AdminMenuView(self.admin_id))
 
 
-def build_twitterch_embed(guild: discord.Guild) -> discord.Embed:
-    from cogs.phone import TWITTER_CHANNEL
-    cid = db.get_log_channel_id(str(guild.id), TWITTER_CHANNEL)
-    if cid and cid != "OFF":
-        ch = guild.get_channel(int(cid))
-        state = ch.mention if ch else "⚠️ 消失"
-    else:
-        state = "🔕 未設定（OFF）"
+def build_money_admin_embed() -> discord.Embed:
     return discord.Embed(
-        title="🐦 ツイート投稿先",
-        description=(f"現在： {state}\n\n"
-                     "スマホ→ツイッターでみんなが投稿できるchを指定します。\n"
-                     "「🔕 OFF」で投稿を停止できます。"),
-        color=0x1DA1F2,
+        title="💰 金銭管理",
+        description=("ナトコインの管理メニューです。\n\n"
+                    "👤 残高を見る ／ ➕ 補填 ／ ➖ 没収\n"
+                    "🎯 残高を設定 ／ 📢 全員に配布"),
+        color=discord.Color.gold(),
     )
 
 
-class _TwitterChSelect(discord.ui.ChannelSelect):
-    def __init__(self, admin_id):
+class MoneyView(discord.ui.View):
+    def __init__(self, admin_id: str):
+        super().__init__(timeout=900)
         self.admin_id = admin_id
-        super().__init__(placeholder="投稿先chを選択…",
-                         channel_types=[discord.ChannelType.text], row=0)
 
-    async def callback(self, interaction):
+    async def _guard(self, interaction) -> bool:
         if not is_admin(interaction.user):
-            await deny(interaction); return
-        from cogs.phone import TWITTER_CHANNEL
-        db.set_log_channel(str(interaction.guild.id), TWITTER_CHANNEL, str(self.values[0].id))
+            await deny(interaction)
+            return False
+        return True
+
+    @discord.ui.button(label="👤 残高を見る", style=discord.ButtonStyle.secondary, row=0)
+    async def view_balance(self, interaction, button):
+        if not await self._guard(interaction): return
         await interaction.response.edit_message(
-            embed=build_twitterch_embed(interaction.guild), view=TwitterChConfigView(self.admin_id))
+            embed=_pick_user_embed("👤 残高を見る", "確認したいメンバーを選んでください"),
+            view=AdminUserSelectView(self.admin_id, "view"))
 
-
-class TwitterChConfigView(discord.ui.View):
-    def __init__(self, admin_id):
-        super().__init__(timeout=600)
-        self.admin_id = admin_id
-        self.add_item(_TwitterChSelect(admin_id))
-
-    @discord.ui.button(label="🔕 OFF", style=discord.ButtonStyle.danger, row=1)
-    async def off(self, interaction, button):
-        if not is_admin(interaction.user):
-            await deny(interaction); return
-        from cogs.phone import TWITTER_CHANNEL
-        db.set_log_channel(str(interaction.guild.id), TWITTER_CHANNEL, "OFF")
+    @discord.ui.button(label="➕ 補填", style=discord.ButtonStyle.success, row=0)
+    async def add(self, interaction, button):
+        if not await self._guard(interaction): return
         await interaction.response.edit_message(
-            embed=build_twitterch_embed(interaction.guild), view=self)
+            embed=_pick_user_embed("➕ 補填", "加算するメンバーを選んでください"),
+            view=AdminUserSelectView(self.admin_id, "add"))
 
-    @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="➖ 没収", style=discord.ButtonStyle.danger, row=0)
+    async def sub(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=_pick_user_embed("➖ 没収", "減算するメンバーを選んでください"),
+            view=AdminUserSelectView(self.admin_id, "sub"))
+
+    @discord.ui.button(label="🎯 残高を設定", style=discord.ButtonStyle.primary, row=1)
+    async def setbal(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=_pick_user_embed("🎯 残高を設定", "上書きするメンバーを選んでください"),
+            view=AdminUserSelectView(self.admin_id, "set"))
+
+    @discord.ui.button(label="📢 全員に配布", style=discord.ButtonStyle.success, row=1)
+    async def distribute(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.send_modal(AdminDistributeModal(self.admin_id))
+
+    @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=2)
     async def back(self, interaction, button):
-        if not is_admin(interaction.user):
-            await deny(interaction); return
+        if not await self._guard(interaction): return
         await interaction.response.edit_message(
             embed=build_admin_embed(interaction), view=AdminMenuView(self.admin_id))
 
