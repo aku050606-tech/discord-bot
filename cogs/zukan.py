@@ -3,7 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from config import (LAKE_FISH, RIVER_FISH, SEA_FISH, RARITY_COLORS, AREA_BOSS,
-                    TREASURE_BY_AREA, RARE_TRASH_BY_AREA)
+                    TREASURE_BY_AREA, RARE_TRASH_BY_AREA,
+                    LIMITED_FISH, STORM_TREASURES, BLOOD_MOON_BOSS)
 
 db = Database()
 
@@ -17,6 +18,9 @@ RARITY_LABELS = {
 }
 TREASURE_RANK_LABELS = {"small": "小さな宝", "big": "大きな宝", "jackpot": "伝説の宝"}
 CATEGORY_LABELS = {"fish": "🐟 魚", "trash": "🗑️ ごみ", "treasure": "💎 宝"}
+WEATHER_LABELS = {"rain": "🌧️雨", "fog": "🌫️霧", "glow": "🌅朝焼け/夕焼け",
+                  "storm": "⛈️嵐", "blood_moon": "🩸赤い月"}
+WEATHER_ORDER = ["rain", "fog", "glow", "storm", "blood_moon"]
 
 
 # ── 各カテゴリ・エリアの「全アイテム名」と「図鑑キー」 ──
@@ -36,6 +40,13 @@ def treasure_items(area):
     for rank in ("small", "big", "jackpot"):
         for t in TREASURE_BY_AREA[area].get(rank, []):
             out.append({"name": t["name"], "emoji": t["emoji"], "rank": rank})
+    return out
+
+def limited_items(area):
+    out = []
+    for w in WEATHER_ORDER:
+        for f in LIMITED_FISH.get(area, {}).get(w, []):
+            out.append({**f, "weather": w})
     return out
 
 def zukan_key(category, area):
@@ -66,6 +77,10 @@ def build_category_embed(uid):
     )
     for cat in ("fish", "trash", "treasure"):
         c, t = category_counts(uid, cat)
+        if cat == "treasure":
+            sc = set(db.get_zukan(uid, "storm_treasure"))
+            c += len([x for x in STORM_TREASURES if x["name"] in sc])
+            t += len(STORM_TREASURES)
         pct = c / t * 100 if t else 0
         embed.add_field(name=CATEGORY_LABELS[cat], value=f"{c}/{t} 種（{pct:.0f}%）", inline=True)
     return embed
@@ -96,7 +111,11 @@ class ZukanCategoryView(discord.ui.View):
 
     @discord.ui.button(label="💎 宝図鑑", style=discord.ButtonStyle.success, row=0)
     async def treasure(self, interaction, button):
-        await self._open(interaction, "treasure")
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
+            return
+        view = ZukanTreasureView(self.user_id)
+        await interaction.response.edit_message(embed=view.build_embed(), view=view)
 
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction, button):
@@ -196,8 +215,126 @@ class ZukanAreaView(discord.ui.View):
     async def sea(self, interaction, button):
         await self.show_area(interaction, "sea")
 
+    @discord.ui.button(label="🌦️ 限定", style=discord.ButtonStyle.primary, row=0)
+    async def limited(self, interaction, button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
+            return
+        if self.category != "fish":
+            # 限定は魚図鑑からのみ。他カテゴリでは無視
+            await interaction.response.send_message("限定図鑑は魚図鑑から見てね", ephemeral=True)
+            return
+        view = ZukanLimitedView(self.user_id)
+        await interaction.response.edit_message(embed=view.area_embed("lake"), view=view)
+
     @discord.ui.button(label="◀️ 図鑑選択へ", style=discord.ButtonStyle.secondary, row=1)
     async def to_category(self, interaction, button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
+            return
+        await interaction.response.edit_message(
+            embed=build_category_embed(self.user_id), view=ZukanCategoryView(self.user_id))
+
+
+class ZukanLimitedView(discord.ui.View):
+    """限定魚＋赤月主。湖/川/海で分岐。各魚は天候付き表示（未捕獲は天候だけ見せる）。"""
+    def __init__(self, user_id):
+        super().__init__(timeout=900)
+        self.user_id = user_id
+
+    def area_embed(self, area):
+        uid = self.user_id
+        caught = set(db.get_zukan(uid, f"{area}_limited"))
+        bm_caught = set(db.get_zukan(uid, f"{area}_bloodmoon"))
+        items = limited_items(area)
+        done = len([f for f in items if f["name"] in caught])
+        embed = discord.Embed(title=f"📖 🌦️ 限定 — {AREA_NAMES[area]}",
+                              color=discord.Color.purple())
+        embed.description = f"**収集 {done}/{len(items)} 種**\n特定の天候でだけ姿を見せる…"
+        for w in WEATHER_ORDER:
+            ws = [f for f in items if f["weather"] == w]
+            if not ws:
+                continue
+            wl = WEATHER_LABELS[w]
+            lines = []
+            for f in ws:
+                if f["name"] in caught:
+                    lines.append(f"✅ {f['emoji']} {f['name']}（{wl}） — {f['value']:,}")
+                else:
+                    lines.append(f"❓ ???（{wl}）")
+            got = len([f for f in ws if f["name"] in caught])
+            embed.add_field(name=f"{wl}（{got}/{len(ws)}）", value="\n".join(lines), inline=False)
+        # 赤月主（このエリア）
+        bm = BLOOD_MOON_BOSS.get(area)
+        if bm:
+            bl = (f"✅ {bm['emoji']} {bm['name']} — {bm['value']:,}"
+                  if bm["name"] in bm_caught else "🩸 ???（赤い月の主）")
+            embed.add_field(name="🩸 赤月の主（隠し）", value=bl, inline=False)
+        return embed
+
+    async def show_area(self, interaction, area):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
+            return
+        await interaction.response.edit_message(embed=self.area_embed(area), view=self)
+
+    @discord.ui.button(label="🏞️ 湖", style=discord.ButtonStyle.success, row=0)
+    async def lake(self, interaction, button):
+        await self.show_area(interaction, "lake")
+
+    @discord.ui.button(label="🏔️ 川", style=discord.ButtonStyle.primary, row=0)
+    async def river(self, interaction, button):
+        await self.show_area(interaction, "river")
+
+    @discord.ui.button(label="🌊 海", style=discord.ButtonStyle.danger, row=0)
+    async def sea(self, interaction, button):
+        await self.show_area(interaction, "sea")
+
+    @discord.ui.button(label="◀️ 魚図鑑へ", style=discord.ButtonStyle.secondary, row=1)
+    async def back_fish(self, interaction, button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
+            return
+        view = ZukanAreaView(self.user_id, "fish")
+        await interaction.response.edit_message(embed=view.area_embed("lake"), view=view)
+
+
+class ZukanTreasureView(discord.ui.View):
+    """宝図鑑：宝の地図の宝（全エリア）＋嵐のお宝を1ページに集約。"""
+    def __init__(self, user_id):
+        super().__init__(timeout=900)
+        self.user_id = user_id
+
+    def build_embed(self):
+        uid = self.user_id
+        embed = discord.Embed(title="📖 💎 宝図鑑", color=discord.Color.gold())
+        total = done = 0
+        for area in AREAS:
+            items = treasure_items(area)
+            if not items:
+                continue
+            caught = set(db.get_zukan(uid, f"{area}_treasure"))
+            lines = []
+            for rank in ("small", "big", "jackpot"):
+                for t in [x for x in items if x["rank"] == rank]:
+                    hit = t["name"] in caught
+                    total += 1
+                    done += 1 if hit else 0
+                    lines.append(f"✅ {t['emoji']} {t['name']}" if hit else "❓ ???")
+            embed.add_field(name=f"{AREA_NAMES[area]} の宝", value="\n".join(lines) or "—", inline=True)
+        sc = set(db.get_zukan(uid, "storm_treasure"))
+        slines = []
+        for t in STORM_TREASURES:
+            hit = t["name"] in sc
+            total += 1
+            done += 1 if hit else 0
+            slines.append(f"✅ {t['emoji']} {t['name']} — {t['min']:,}〜{t['max']:,}" if hit else "❓ ???")
+        embed.add_field(name="⛈️ 嵐のお宝（全エリア共通）", value="\n".join(slines), inline=False)
+        embed.description = f"**発見 {done}/{total} 種**\n宝の地図と、嵐の宝箱から見つかる！"
+        return embed
+
+    @discord.ui.button(label="◀️ 図鑑選択へ", style=discord.ButtonStyle.secondary, row=0)
+    async def back(self, interaction, button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
             return
