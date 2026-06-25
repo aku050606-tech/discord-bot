@@ -26,9 +26,6 @@ def _alive(uid: str, sid: str):
 # 抽選ロジック（純粋関数・MC検証済み）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def get_machine_setting(machine_no: int):
-    # 🧪 テスト台だけ擬似設定 "T" を返す（SLOT_TEST_ENABLED=False で通常に戻る）
-    if SLOT_TEST_ENABLED and machine_no == SLOT_TEST_MACHINE:
-        return "T"
     return get_daily_machines()[machine_no - 1]
 
 
@@ -81,23 +78,6 @@ def _weighted_choice(weights: dict):
 def roll_normal_spin(setting) -> dict:
     """通常1回転：聖域GOD / レア役GOD / 小役 / ハズレ"""
     cfg = SLOT_SETTINGS[setting]
-    # 🧪 テスト台：聖域/通常GODをすぐ引けるよう確率を底上げ（残りは通常抽選へフォールスルー）
-    if cfg.get("test"):
-        r = random.random()
-        if r < SLOT_TEST_PREMIUM_RATE:
-            return {"type": "god", "premium": True, "yaku": None, "payout": 0}
-        if r < SLOT_TEST_GOD_RATE:
-            # 🧪テスト台：必ず「レア役からの当選」になるよう契機をレア役に限定
-            #   weak=チャンス目(mid) / schk=強チャンス目(strong) / schy=強チェリー(strong)
-            #   → 当選ゲームでレア役を実払い出し付きで見せ、次ゲームで後告知される流れを試せる
-            yaku = random.choice(["weak", "schk", "schy"])
-            pay = next((p for k, p, _ in SLOT_KOYAKU if k == yaku), 60)
-            return {"type": "god", "premium": False, "yaku": yaku, "payout": pay}
-        # フォールスルーは小役/ハズレのみ（GOD抽選はしない＝GODは必ずレア役/聖域から）
-        for key, pay, prob in SLOT_KOYAKU:
-            if random.random() < prob:
-                return {"type": "koyaku", "yaku": key, "payout": int(pay * cfg["koyaku_mult"])}
-        return {"type": "blank", "yaku": None, "payout": 0}
     if random.random() < 1 / cfg["premium_per"]:
         return {"type": "god", "premium": True, "yaku": None, "payout": 0}
     for key, pay, prob in SLOT_KOYAKU:
@@ -305,10 +285,9 @@ async def _handle_timeout(view: discord.ui.View):
 # ── 台選択 ──
 class SlotMachineButton(discord.ui.Button):
     def __init__(self, machine_no: int):
-        is_test = SLOT_TEST_ENABLED and machine_no == SLOT_TEST_MACHINE
-        label = f"🧪 {machine_no}番台" if is_test else f"{machine_no}番台"
-        style = discord.ButtonStyle.success if is_test else discord.ButtonStyle.primary
-        super().__init__(label=label, style=style, row=(machine_no - 1) // 5)
+        super().__init__(label=f"{machine_no}番台",
+                         style=discord.ButtonStyle.primary,
+                         row=(machine_no - 1) // 5)
         self.machine_no = machine_no
 
     async def callback(self, interaction: discord.Interaction):
@@ -342,31 +321,6 @@ def build_select_embed() -> discord.Embed:
         description=f"**{SLOT_BET}ナトコイン**掛け\n1〜5番台から選んでください！",
         color=discord.Color.dark_purple()
     )
-
-
-async def start_test_slot(interaction):
-    """🧪 管理者専用テスト台を起動（設定T＝聖域/通常GODが即引ける）。AT演出の確認用。
-    呼び出し側で管理者チェック済みであること。"""
-    uid = str(interaction.user.id)
-    guild_id = str(interaction.guild.id)
-    if uid in active_slots:
-        await interaction.response.send_message("❌ すでにスロットをプレイ中です", ephemeral=True)
-        return
-    active_slots[uid] = {
-        "machine": "T", "setting": "T", "guild_id": guild_id,
-        "state": "normal", "god": None, "up": None,
-        "pending": None, "pending_god": None, "spinning": False, "sid": uuid.uuid4().hex,
-    }
-    bal = db.get_balance(uid, guild_id)
-    embed = discord.Embed(
-        title="🧪 GRAVITAS — テスト台（管理者専用）",
-        description=(f"**{SLOT_BET}ナトコイン**掛け\n"
-                     f"GRAVITAS GAME（聖域 / 通常）がすぐ引けます。AT演出の確認用。\n"
-                     f"☯️ **{GOD_ZONE_NAME}** を目指せ──"),
-        color=discord.Color.dark_teal(),
-    )
-    embed.add_field(name="残高", value=f"{bal:,} ナトコイン", inline=True)
-    await interaction.response.edit_message(embed=embed, view=SlotGameView(uid))
 
 
 class SlotSelectView(discord.ui.View):
