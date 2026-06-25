@@ -62,7 +62,8 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
             "🎰 **スロット** — EVENT HORIZONを目指せ\n"
             "🎣 **釣り** — 湖・川・海／図鑑／釣具屋\n"
             "🃏 **カジノ** — BJ・ポーカー・チンチロ 等\n"
-            "💰 **ウォレット** — 残高・デイリー・送金・ランキング"
+            "💰 **ウォレット** — 残高・デイリー・送金・ランキング\n"
+            "🎮 **ゲーム募集** — VALO・LoL等の募集を立てる"
         ),
         inline=False,
     )
@@ -138,6 +139,15 @@ class MainMenuView(discord.ui.View):
         db.set_last_daily(uid, guild_id, str(date.today()))
         # ホームを最新残高で再描画
         await go_home(interaction, uid)
+
+    # ── 4段目（一番下）：ゲーム募集 ──
+    @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=3)
+    async def lfg(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.lfg import CreateView
+        view = CreateView(interaction.user.id)
+        await interaction.response.send_message(embed=view.status_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
