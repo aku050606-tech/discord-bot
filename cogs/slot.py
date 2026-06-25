@@ -217,7 +217,7 @@ class _RecoverView(discord.ui.View):
         active_slots.pop(str(interaction.user.id), None)
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
-            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 async def _ensure_buttons(interaction: discord.Interaction, uid: str):
@@ -345,7 +345,7 @@ class SlotSelectView(discord.ui.View):
     @discord.ui.button(label="🏠 戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 # ── 通常/GOD進行用View（回す・やめる）──
@@ -390,7 +390,7 @@ class SlotGameView(discord.ui.View):
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True); return
         active_slots.pop(self.user_id, None)
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
     async def on_timeout(self):
         await _handle_timeout(self)

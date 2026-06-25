@@ -238,7 +238,7 @@ async def go_home(interaction: discord.Interaction, user_id: str = None):
     """どこからでもホームへ戻る共通処理（残高付きで描画）"""
     uid = user_id or str(interaction.user.id)
     embed = build_menu_embed(interaction.user, str(interaction.guild.id))
-    await interaction.response.edit_message(embed=embed, view=MainMenuView(uid))
+    await interaction.response.edit_message(embed=embed, view=MainMenuView(uid, str(interaction.guild.id)))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -302,9 +302,20 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
 
 
 class MainMenuView(discord.ui.View):
-    def __init__(self, user_id: str = None):
+    def __init__(self, user_id: str = None, guild_id: str = None):
         super().__init__(timeout=900)
         self.user_id = user_id
+        # スマホボタンにLINE未読バッジを付ける（通知設定OFFでも表示）
+        if user_id and guild_id:
+            try:
+                n = db.line_unread_count(guild_id, user_id)
+            except Exception:
+                n = 0
+            if n > 0:
+                for c in self.children:
+                    if isinstance(c, discord.ui.Button) and c.label and c.label.startswith("📱"):
+                        c.label = f"📱 スマホ 🔴{n}"
+                        break
 
     async def _check(self, interaction):
         return await check_user(interaction, self.user_id)
@@ -956,7 +967,7 @@ class Menu(commands.Cog):
     async def menu(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
         embed = build_menu_embed(interaction.user, str(interaction.guild.id))
-        await interaction.response.send_message(embed=embed, view=MainMenuView(uid))
+        await interaction.response.send_message(embed=embed, view=MainMenuView(uid, str(interaction.guild.id)))
 
 
 async def setup(bot):

@@ -166,13 +166,15 @@ class PhoneHomeView(discord.ui.View):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ LINE ━━
 def build_line_embed(user, guild) -> discord.Embed:
     unread = db.line_unread_count(str(guild.id), str(user.id))
+    dm_on = db.get_line_dm(str(user.id), str(guild.id))
     e = discord.Embed(
         title="💬 LINE",
         description=("メッセージを送ったり、受信箱で読んだりできます。\n\n"
-                     f"📩 未読：**{unread}** 件"),
+                     f"📩 未読：**{unread}** 件\n"
+                     f"🔔 DM通知：{'**ON**' if dm_on else 'OFF'}"),
         color=0x06C755,
     )
-    e.set_footer(text="「送る」で相手を選んで文章を送信／「受信箱」で受け取ったメッセージを表示")
+    e.set_footer(text="「送る」で送信／「受信箱」で表示／「通知設定」でDM通知を切替")
     return e
 
 
@@ -217,10 +219,50 @@ class LineHomeView(discord.ui.View):
         embed = discord.Embed(title="📥 受信箱", description=desc[:4000], color=0x06C755)
         await interaction.response.edit_message(embed=embed, view=self)
 
+    @discord.ui.button(label="🔔 通知設定", style=discord.ButtonStyle.secondary, row=0)
+    async def notify(self, interaction, button):
+        if not await self._check(interaction): return
+        v = LineNotifyView(self.user_id)
+        await interaction.response.send_message(
+            embed=build_notify_embed(db.get_line_dm(self.user_id, str(interaction.guild.id))),
+            view=v, ephemeral=True)
+
     @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction, button):
         if not await self._check(interaction): return
         await open_phone(interaction, self.user_id)
+
+
+# ── DM通知 ON/OFF（個人ごと・デフォルトOFF・ONは確認警告つき）──
+def build_notify_embed(enabled: bool) -> discord.Embed:
+    if enabled:
+        desc = ("現在：🔔 **ON**\n\n"
+                "LINEが届くと、あなたのDMに通知が来ます。")
+    else:
+        desc = ("現在：🔕 **OFF**（初期設定）\n\n"
+                "DM通知は届きません。受信箱には残るので、スマホ→LINEで確認できます。")
+    return discord.Embed(title="🔔 LINE通知設定", description=desc, color=0x06C755)
+
+
+class LineNotifyView(discord.ui.View):
+    def __init__(self, user_id: str):
+        super().__init__(timeout=120)
+        self.user_id = str(user_id)
+
+    @discord.ui.button(label="🔔 ON / 🔕 OFF を切替", style=discord.ButtonStyle.primary)
+    async def toggle(self, interaction, button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたの設定ではありません", ephemeral=True)
+            return
+        gid = str(interaction.guild.id)
+        new_on = not db.get_line_dm(self.user_id, gid)
+        db.set_line_dm(self.user_id, gid, new_on)
+        if new_on:
+            content = "⚠️ 通知を **ON** にしました。今後、LINEが届くとあなたのDMに通知が来ます。"
+        else:
+            content = "🔕 通知を **OFF** にしました。DM通知は届きません。"
+        await interaction.response.edit_message(
+            content=content, embed=build_notify_embed(new_on), view=self)
 
 
 class LineRecipientSelect(discord.ui.UserSelect):
@@ -250,16 +292,17 @@ class LineComposeModal(discord.ui.Modal, title="✉️ メッセージを送る"
     async def on_submit(self, interaction):
         gid = str(interaction.guild.id)
         db.add_line_message(gid, self.from_id, str(self.target.id), self.body.value, _now_jst())
-        # 相手にDMでベストエフォート通知
-        try:
-            dm = discord.Embed(
-                title="💬 LINEに新着メッセージ",
-                description=(f"**{interaction.user.display_name}** さんからメッセージが届きました。\n"
-                            f"（{interaction.guild.name}）\n\nスマホ→LINE→受信箱で確認できます。"),
-                color=0x06C755)
-            await self.target.send(embed=dm)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+        # 相手がDM通知ONにしている場合のみ、ベストエフォートでDM通知
+        if db.get_line_dm(str(self.target.id), gid):
+            try:
+                dm = discord.Embed(
+                    title="💬 LINEに新着メッセージ",
+                    description=(f"**{interaction.user.display_name}** さんからメッセージが届きました。\n"
+                                f"（{interaction.guild.name}）\n\nスマホ→LINE→受信箱で確認できます。"),
+                    color=0x06C755)
+                await self.target.send(embed=dm)
+            except (discord.Forbidden, discord.HTTPException):
+                pass
         await interaction.response.edit_message(
             content=f"✅ {self.target.display_name} に送信しました。", view=None)
 

@@ -119,6 +119,10 @@ class Database:
             user_id TEXT, guild_id TEXT, last_open TEXT,
             PRIMARY KEY (user_id, guild_id)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS line_settings (
+            user_id TEXT, guild_id TEXT, dm_notify INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, guild_id)
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -795,5 +799,27 @@ class Database:
                 VALUES (?, ?, ?)
                 ON CONFLICT(user_id, guild_id) DO UPDATE SET last_open=?""",
             (str(user_id), str(guild_id), day, day))
+        conn.commit()
+        conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # LINE DM通知設定（個人ごと・デフォルトOFF）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def get_line_dm(self, user_id, guild_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT dm_notify FROM line_settings WHERE user_id=? AND guild_id=?",
+                  (str(user_id), str(guild_id)))
+        row = c.fetchone()
+        conn.close()
+        return bool(row[0]) if row else False
+
+    def set_line_dm(self, user_id, guild_id, enabled):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO line_settings (user_id, guild_id, dm_notify)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, guild_id) DO UPDATE SET dm_notify=?""",
+            (str(user_id), str(guild_id), 1 if enabled else 0, 1 if enabled else 0))
         conn.commit()
         conn.close()

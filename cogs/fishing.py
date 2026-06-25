@@ -461,7 +461,7 @@ class FishResultView(discord.ui.View):
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back_menu(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 class ShadowButton(discord.ui.Button):
@@ -571,7 +571,7 @@ class BackToFishView(discord.ui.View):
     @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         from cogs.menu import MainMenuView, build_menu_embed
-        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+        await interaction.response.edit_message(embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 async def use_treasure_map(interaction: discord.Interaction, edit: bool = True):
@@ -650,7 +650,7 @@ class TreasureResultView(discord.ui.View):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
             embed=build_menu_embed(interaction.user, str(interaction.guild.id)),
-            view=MainMenuView())
+            view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 class Fishing(commands.Cog):

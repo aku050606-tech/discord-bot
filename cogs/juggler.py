@@ -170,7 +170,7 @@ class KishuSelectView(discord.ui.View):
     async def home(self, interaction, button):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
-            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -229,7 +229,7 @@ class JugglerSelectView(discord.ui.View):
     async def home(self, interaction, button):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
-            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -277,7 +277,7 @@ class JugglerGameView(discord.ui.View):
         active_jug.pop(self.user_id, None)
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
-            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 class _RecoverView(discord.ui.View):
@@ -293,7 +293,7 @@ class _RecoverView(discord.ui.View):
     async def home(self, interaction, button):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
-            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView())
+            embed=build_menu_embed(interaction.user, str(interaction.guild.id)), view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

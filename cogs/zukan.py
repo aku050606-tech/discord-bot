@@ -122,7 +122,7 @@ class ZukanCategoryView(discord.ui.View):
         from cogs.menu import MainMenuView, build_menu_embed
         await interaction.response.edit_message(
             embed=build_menu_embed(interaction.user, str(interaction.guild.id)),
-            view=MainMenuView())
+            view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
 
 
 class ZukanAreaView(discord.ui.View):
