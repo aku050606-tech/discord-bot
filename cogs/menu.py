@@ -395,20 +395,43 @@ class FishMenuView(discord.ui.View):
     @discord.ui.button(label="🏞️ 湖（10ナトコイン）", style=discord.ButtonStyle.success, row=0)
     async def lake(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        from cogs.fishing import do_fish
-        await do_fish(interaction, "lake", edit=True)
+        await self._enter_area(interaction, "lake")
 
     @discord.ui.button(label="🏔️ 川（50ナトコイン）", style=discord.ButtonStyle.primary, row=0)
     async def river(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        from cogs.fishing import do_fish
-        await do_fish(interaction, "river", edit=True)
+        await self._enter_area(interaction, "river")
 
     @discord.ui.button(label="🌊 海（100ナトコイン）", style=discord.ButtonStyle.danger, row=0)
     async def sea(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        from cogs.fishing import do_fish
-        await do_fish(interaction, "sea", edit=True)
+        await self._enter_area(interaction, "sea")
+
+    async def _enter_area(self, interaction: discord.Interaction, area: str):
+        """エリア選択 → (装備の相性で)警告 → 3つの釣り場(①②③)を表示。"""
+        from cogs.fishing import build_spot_menu_embed
+        from config import FISHING_RODS, rod_warns_here
+        gear = db.get_gear(self.user_id)
+        rod = FISHING_RODS[gear["rod_id"]]
+        # 行けない竿はここで弾く（do_fish前にUXよく）
+        if rod.get("sea_ban") and area == "sea":
+            await interaction.response.send_message(
+                f"❌ 今の竿「{rod['name']}」では🌊海に行けません。海にはカーボンロッド以上が必要です（/shop）。",
+                ephemeral=True)
+            return
+        if rod.get("river_ban") and area == "river":
+            await interaction.response.send_message(
+                f"❌ 今の竿「{rod['name']}」では🏔️川に行けません。川にはグラスロッド以上が必要です（/shop）。",
+                ephemeral=True)
+            return
+        # 得意エリア外なら「得しない」警告を挟む
+        if rod_warns_here(gear["rod_id"], area):
+            await interaction.response.edit_message(
+                embed=_build_warn_embed(rod, area),
+                view=AreaWarnView(area, self.user_id))
+            return
+        await interaction.response.edit_message(
+            embed=build_spot_menu_embed(area), view=SpotMenuView(area, self.user_id))
 
     @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.secondary, row=1)
     async def zukan(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -491,6 +514,51 @@ class SpotMenuView(discord.ui.View):
         await self._go(interaction, 3)
 
     @discord.ui.button(label="◀️ エリア選択へ", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import build_fish_menu_embed
+        await interaction.response.edit_message(embed=build_fish_menu_embed(), view=FishMenuView(self.user_id))
+
+
+_AREA_LABEL = {"lake": "🏞️湖", "river": "🏔️川", "sea": "🌊海"}
+
+def _build_warn_embed(rod, area):
+    """得意エリア外で釣ろうとした時の『得しない』注意。"""
+    area_lbl = _AREA_LABEL.get(area, area)
+    if rod is not None and rod.get("home") == "sea" and rod.get("name", "").startswith("伝説"):
+        body = (f"{area_lbl}は「{rod['name']}」の本領（🌊海）ではありません。\n"
+                f"ここでも**レジェンド級の魚は釣れます**が、竿の消耗が増えて**収支はトントン**（大きくは稼げません）。\n\n"
+                f"それでもこの場所で釣りますか？")
+    else:
+        home_lbl = _AREA_LABEL.get(rod.get("home"), "得意エリア") if rod else "得意エリア"
+        body = (f"{area_lbl}は「{rod['name']}」の得意な場所ではありません。\n"
+                f"釣れますが消耗が増えて**収支はトントン**（あまり得しません）。\n"
+                f"しっかり稼ぐなら **{home_lbl}** がおすすめです。\n\n"
+                f"それでもこの場所で釣りますか？")
+    return discord.Embed(title="⚠️ ここは得意エリアじゃないよ", description=body, color=0xE67E22)
+
+
+class AreaWarnView(discord.ui.View):
+    """得意エリア外の確認。続行で釣り場(①②③)へ、やめるでエリア選択へ。"""
+    def __init__(self, area, user_id: str = None):
+        super().__init__(timeout=900)
+        self.area = area
+        self.user_id = user_id
+
+    async def _check(self, interaction):
+        if self.user_id is None:
+            self.user_id = str(interaction.user.id)
+            return True
+        return await check_user(interaction, self.user_id)
+
+    @discord.ui.button(label="それでも釣る", style=discord.ButtonStyle.danger, emoji="🎣", row=0)
+    async def proceed(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import build_spot_menu_embed
+        await interaction.response.edit_message(
+            embed=build_spot_menu_embed(self.area), view=SpotMenuView(self.area, self.user_id))
+
+    @discord.ui.button(label="エリア選択へ戻る", style=discord.ButtonStyle.secondary, emoji="◀️", row=0)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         from cogs.fishing import build_fish_menu_embed

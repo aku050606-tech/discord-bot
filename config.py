@@ -18,7 +18,7 @@ PVP_FEE_RATE = 0.10
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # スロット設定  ── EVENT HORIZON 仕様（完全版）──
 #   構造: 通常時(小役で土台) → GOD抽選 → EVENT HORIZON(継続ランクループ)
-#   ランク: NOVA25% → FLARE50% → SUPERNOVA65% → PULSAR75% → SINGULARITY85%(聖域)
+#   ランク: NOVA45% → FLARE58% → SUPERNOVA70% → PULSAR80% → SINGULARITY90%(聖域)
 #
 #   ・聖域(SINGULARITY)は単独フラグでのみ当選。当選時は必ず専用7秒演出でバラす
 #   ・その他GODはレア役からの当選。強役ほど当選力＆入口ランクが高い
@@ -153,12 +153,12 @@ GOD_TRIGGER_GROUP = {
 # ── GODランク定義 ──
 GOD_ZONE_NAME = "GRAVITAS GAME"
 GOD_RANKS = [   # 子役で到達できるランク（上限PULSAR）
-    {"key": "nova",      "name": "NOVA",      "rate": 0.25, "emoji": "💫"},
-    {"key": "flare",     "name": "FLARE",     "rate": 0.50, "emoji": "🔥"},
-    {"key": "supernova", "name": "SUPERNOVA", "rate": 0.65, "emoji": "🌠"},
-    {"key": "pulsar",    "name": "PULSAR",    "rate": 0.75, "emoji": "🌀"},
+    {"key": "nova",      "name": "NOVA",      "rate": 0.45, "emoji": "💫"},
+    {"key": "flare",     "name": "FLARE",     "rate": 0.58, "emoji": "🔥"},
+    {"key": "supernova", "name": "SUPERNOVA", "rate": 0.70, "emoji": "🌠"},
+    {"key": "pulsar",    "name": "PULSAR",    "rate": 0.80, "emoji": "🌀"},
 ]
-GOD_SINGULARITY = {"key": "singularity", "name": "SINGULARITY", "rate": 0.85, "emoji": "🌌"}  # 聖域
+GOD_SINGULARITY = {"key": "singularity", "name": "SINGULARITY", "rate": 0.90, "emoji": "🌌"}  # 聖域
 
 # ── GOD中 進行：1セット=10ゲーム、1ゲームずつ抽選（自力感）──
 # 各ゲームで子役を1つ抽選 → 払い出し（基本＋ルート別上乗せ）＋（強い役なら）昇格抽選。
@@ -167,7 +167,7 @@ GOD_SINGULARITY = {"key": "singularity", "name": "SINGULARITY", "rate": 0.85, "e
 #   昇格≈0.26/セット（旧0.11の約2.4倍＝自力で上げる感）。戻り率は
 #   設定1≈100% / 設定6≈124%（全体的に渋く調整）。設定差はGOD内部には一切出さない。
 GOD_SET_GAMES = 10            # 1セットのゲーム数
-GOD_PAYOUT_SCALE = 0.88       # 戻り率の一括調整ダイヤル（全体機械割の引き下げを反映）
+GOD_PAYOUT_SCALE = 0.688      # 戻り率の一括調整ダイヤル（継続率底上げに伴い1G払い出しを再配分）
 
 # 1ゲーム子役（全設定・全ルート共通）: (キー, 出現率, 昇格率, 基本払い出し, 表示名, emoji)
 #   昇格率は「そのゲームで昇格を試みる確率」。1セット最大1回まで反映。
@@ -677,21 +677,56 @@ AREA_BOSS = {
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FISHING_RODS = {
-    # "uses" = 竿の耐久性（耐久ポイント）。消費はエリアで変わる（ROD_DURABILITY_COST）。
+    # "uses" = 竿の耐久性（耐久ポイント）。消費は竿×エリアで変わる（ROD_AREA_DURABILITY）。
+    # "home"  = その竿が得意なエリア（消耗が軽く、しっかり稼げる）。それ以外は消耗が増えて収支トントン。
     "bamboo":   {"name":"竹竿",          "price":0,       "uses":999999, "emoji":"🎋",
-                 "sea_ban":True, "river_ban":True},
-    "glass":    {"name":"グラスロッド",   "price":2000,    "uses":400,    "emoji":"🎣",
-                 "sea_ban":True},
-    "carbon":   {"name":"カーボンロッド", "price":8000,    "uses":200,    "emoji":"🎣",
-                 "sea_ban":False},
-    "titanium": {"name":"チタンロッド",   "price":30000,   "uses":400,    "emoji":"🎣",
-                 "sea_ban":False},
-    "legend":   {"name":"伝説の釣り竿",   "price":100000,  "uses":500,    "emoji":"🎣",
-                 "sea_ban":False},
+                 "home":"lake",  "sea_ban":True, "river_ban":True},
+    "glass":    {"name":"グラスロッド",   "price":2000,    "uses":550,    "emoji":"🎣",
+                 "home":"river", "sea_ban":True},
+    "carbon":   {"name":"カーボンロッド", "price":8000,    "uses":250,    "emoji":"🎣",
+                 "home":"river", "sea_ban":False},
+    "titanium": {"name":"チタンロッド",   "price":30000,   "uses":350,    "emoji":"🎣",
+                 "home":"sea",   "sea_ban":False},
+    "legend":   {"name":"伝説の釣り竿",   "price":100000,  "uses":380,    "emoji":"🎣",
+                 "home":"sea",   "sea_ban":False},
 }
 
-# 竿の耐久消費量（エリア別）：海ほど早く消耗する
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 竿の耐久消費量（竿 × エリア）── 実質ROI（竿の消耗込み）の制御ダイヤル ──
+#   得意エリア(home)は消耗が軽く稼げる／それ以外は消耗が増えて収支トントン(~100%)。
+#   換金額もレア出率も触らず、消耗だけで実質ROIを作る。小数可（耐久プールから小数で引く）。
+#   モンテカルロ検算済みの本領ROI: 竹湖209 / グラス川118 / カーボン川113 / チタン海113 / 伝説海109。
+#   伝説は完全に海用。湖・川でもレジェンド魚は釣れるが収支はトントン(=得しない)。
+ROD_AREA_DURABILITY = {
+    "bamboo":   {"lake": 1.0},
+    "glass":    {"lake": 0.8, "river": 0.1},
+    "carbon":   {"lake": 1.4, "river": 2.2, "sea": 5.0},
+    "titanium": {"lake": 0.9, "river": 1.9, "sea": 3.3},
+    "legend":   {"lake": 0.5, "river": 1.1, "sea": 2.1},
+}
+# 旧キー互換（未定義の竿/エリアのフォールバック）
 ROD_DURABILITY_COST = {"lake": 1, "river": 2, "sea": 3}
+
+def get_rod_dura_cost(rod_id, area):
+    """竿×エリアの耐久消費量を返す（未定義はエリア基準にフォールバック）。"""
+    return ROD_AREA_DURABILITY.get(rod_id, {}).get(area, ROD_DURABILITY_COST.get(area, 1))
+
+# 各竿が「しっかり稼げる」エリア（収支110%前後以上）。ここ以外は収支トントンで警告を出す。
+# グラスは安くて丈夫なので湖・川どちらも得意。海3竿は本領エリアのみ。
+ROD_GOOD_AREAS = {
+    "bamboo":   {"lake"},
+    "glass":    {"lake", "river"},
+    "carbon":   {"river"},
+    "titanium": {"sea"},
+    "legend":   {"sea"},
+}
+
+def rod_warns_here(rod_id, area):
+    """その竿でそのエリアに行くと『得しない（収支トントン）』なら True。"""
+    good = ROD_GOOD_AREAS.get(rod_id)
+    if good is None:
+        return False
+    return area not in good
 
 FISHING_REELS = {
     # 案A: リールは「主の出現率UP」と「金冠UP」を担当（シンプル）
@@ -933,6 +968,10 @@ SUSPENSE_COLOR = 0x2B2D31
 # 既存の釣り出率は不変。限定魚は通常プールにスワップ注入される。
 # ============================================================
 WEATHER_FISH_MULT = {"rain":1.2, "fog":1.1, "glow":1.1, "storm":1.5, "blood_moon":1.5}
+
+# 限定天候中、1キャストが「限定魚」になる確率。残りは通常魚（＝通常魚も出つつ限定魚も混ざる）。
+# 0.0で限定魚なし／1.0で従来挙動(限定魚で上書き)。
+LIMITED_FISH_RATE = 0.30
 
 LIMITED_FISH = {
   "lake": {

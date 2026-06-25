@@ -50,14 +50,15 @@ async def show_rod_shop(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="🎋 釣り竿ショップ",
-        description="竿は「耐久性」で消耗。消費量 → 🏞️湖 1 ／ 🏔️川 2 ／ 🌊海 3（海ほど早く減る）",
+        description="竿には【得意な場所】があります。得意エリアなら消耗が軽くしっかり稼げる。\nそれ以外でも釣れるが、消耗が増えて収支はトントン（得しにくい）。",
         color=discord.Color.green()
     )
-    embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在の装備: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）")
+    embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在の装備: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {int(gear['rod_uses']) if gear['rod_uses'] < 999999 else '∞'}）")
 
+    AREA_LABEL = {"lake": "🏞️湖", "river": "🏔️川", "sea": "🌊海"}
     for rod_id, rod in FISHING_RODS.items():
         inv_uses = gear["rod_inventory"].get(rod_id, 0)
-        status = f"所持中（耐久 {inv_uses}）" if inv_uses > 0 else "未所持"
+        status = f"所持中（耐久 {int(inv_uses)}）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["rod_id"] == rod_id else ""
         price_str = "無料" if rod["price"] == 0 else f"{rod['price']:,}ナトコイン"
         if rod.get("river_ban"):
@@ -66,9 +67,16 @@ async def show_rod_shop(interaction: discord.Interaction):
             area_str = "行ける場所: 🏞️湖・🏔️川"
         else:
             area_str = "行ける場所: 🏞️湖・🏔️川・🌊海（全エリア）"
+        home_lbl = AREA_LABEL.get(rod.get("home"), "")
+        if rod_id == "legend":
+            home_str = "⭐ 得意な場所: 🌊海（完全に海用。湖・川でも伝説級は釣れるが収支はトントン）"
+        elif home_lbl:
+            home_str = f"⭐ 得意な場所: {home_lbl}（ここなら消耗が軽くしっかり稼げる）"
+        else:
+            home_str = ""
         embed.add_field(
             name=f"{rod['emoji']} {rod['name']} {equipped}",
-            value=f"価格: {price_str}\n{area_str}\n{status}",
+            value=f"価格: {price_str}\n{area_str}\n{home_str}\n{status}",
             inline=False
         )
 
@@ -146,7 +154,7 @@ async def show_equip(interaction: discord.Interaction):
     embed = discord.Embed(title="⚙️ 装備変更", color=discord.Color.gold())
     embed.add_field(
         name="現在の装備",
-        value=f"竿: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）\n"
+        value=f"竿: {FISHING_RODS[gear['rod_id']]['name']}（耐久 {int(gear['rod_uses']) if gear['rod_uses'] < 999999 else '∞'}）\n"
               f"リール: {FISHING_REELS[gear['reel_id']]['name']}（残り{gear['reel_uses'] if gear['reel_uses'] < 999999 else '∞'}回）\n"
               f"ライン: {FISHING_LINES[gear['line_id']]['name']}（残り{gear['line_uses'] if gear['line_uses'] < 999999 else '∞'}回）",
         inline=False
@@ -155,7 +163,7 @@ async def show_equip(interaction: discord.Interaction):
     # 所持品一覧
     rod_inv = []
     for rod_id, uses in gear["rod_inventory"].items():
-        rod_inv.append(f"{FISHING_RODS[rod_id]['name']}（耐久 {uses}）{'✅' if gear['rod_id'] == rod_id else ''}")
+        rod_inv.append(f"{FISHING_RODS[rod_id]['name']}（耐久 {int(uses)}）{'✅' if gear['rod_id'] == rod_id else ''}")
 
     reel_inv = []
     for reel_id, uses in gear["reel_inventory"].items():
@@ -222,7 +230,7 @@ class BuyRodButton(discord.ui.Button):
         if self.rod_id in inv:
             # 既に所持→耐久を加算
             inv[self.rod_id] += self.rod["uses"]
-            msg = f"✅ {self.rod['name']}を購入！\n耐久 {inv[self.rod_id]} になりました！"
+            msg = f"✅ {self.rod['name']}を購入！\n耐久 {int(inv[self.rod_id])} になりました！"
         else:
             inv[self.rod_id] = self.rod["uses"]
             msg = f"✅ {self.rod['name']}を購入！\nインベントリに追加されました（耐久 {self.rod['uses']}）"
@@ -402,7 +410,7 @@ class EquipRodButton(discord.ui.Button):
         db.save_gear(self.uid, gear)
 
         rod_name = FISHING_RODS[self.rod_id]["name"]
-        await interaction.response.send_message(f"✅ {rod_name}に変更しました！（耐久 {gear['rod_uses'] if gear['rod_uses'] < 999999 else '∞'}）", ephemeral=True)
+        await interaction.response.send_message(f"✅ {rod_name}に変更しました！（耐久 {int(gear['rod_uses']) if gear['rod_uses'] < 999999 else '∞'}）", ephemeral=True)
 
 
 class EquipReelView(discord.ui.View):

@@ -147,9 +147,10 @@ def pick_rarity_direct(rod_id: str) -> str:
     return "common"
 
 def pick_fish(area: str, rarity: str, weather_key: str = None):
-    """通常プールから1匹。限定天候なら同レアを限定魚にスワップ。
+    """通常プールから1匹。限定天候なら一定確率(LIMITED_FISH_RATE)で限定魚、
+    それ以外は通常魚（＝通常魚も出つつ限定魚も混ざる）。
     返り値: (fish_dict, is_limited)"""
-    if weather_key:
+    if weather_key and random.random() < LIMITED_FISH_RATE:
         lim = LIMITED_FISH.get(area, {}).get(weather_key)
         if lim:
             cand = [f for f in lim if f["rarity"] == rarity]
@@ -206,8 +207,8 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     if cost > 0:
         db.update_balance(uid, guild_id, -cost)
 
-    # 装備使用回数を減らす（竿は耐久制：海3・川2・湖1）
-    dura_cost = ROD_DURABILITY_COST.get(area, 1)
+    # 装備使用回数を減らす（竿は耐久制：竿×エリアで消費が変わる）
+    dura_cost = get_rod_dura_cost(gear["rod_id"], area)
     if gear["rod_uses"] < 999999:
         gear["rod_uses"] -= dura_cost
         if gear["rod_uses"] <= 0:
@@ -414,7 +415,7 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
 
     # 装備残り回数表示
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
-    rod_uses = gear["rod_uses"] if gear["rod_uses"] < 999999 else "∞"
+    rod_uses = int(gear["rod_uses"]) if gear["rod_uses"] < 999999 else "∞"
     embed3.description = desc
     embed3.set_footer(text=f"残高: {new_bal:,} ナトコイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
     pad_embed(embed3, target_fields=4)
