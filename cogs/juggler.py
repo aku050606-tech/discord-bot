@@ -12,6 +12,7 @@ from config import (
     SLOT_BET,
 )
 from cogs.embed_utils import pad_embed
+from quest_tracker import record as quest_record
 
 db = Database()
 
@@ -307,6 +308,7 @@ async def _play_spin(interaction, uid):
 
     # ベット消費 → 抽選 → 払い出しは先に確定（途中で落ちても保全）
     db.update_balance(uid, guild_id, -JUGGLER_BET)
+    quest_record(uid, guild_id, "slot")   # スロットクエスト（GRAVITASと共通カウント）
     res = roll_juggler(g["setting"])
     if res["payout"]:
         db.update_balance(uid, guild_id, res["payout"])

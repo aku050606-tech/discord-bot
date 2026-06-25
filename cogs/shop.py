@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from config import FISHING_RODS, FISHING_REELS, FISHING_LINES
+from quest_tracker import record as quest_record
 
 db = Database()
 
@@ -237,6 +238,7 @@ class BuyRodButton(discord.ui.Button):
 
         db.update_balance(self.uid, self.guild_id, -self.rod["price"])
         db.save_gear(self.uid, gear)
+        quest_record(self.uid, self.guild_id, "shop")   # 釣具屋購入クエスト
         await interaction.response.send_message(msg, ephemeral=True)
 
 
@@ -286,6 +288,7 @@ class BuyReelButton(discord.ui.Button):
 
         db.update_balance(self.uid, self.guild_id, -self.reel["price"])
         db.save_gear(self.uid, gear)
+        quest_record(self.uid, self.guild_id, "shop")   # 釣具屋購入クエスト
         await interaction.response.send_message(msg, ephemeral=True)
 
 
@@ -335,6 +338,7 @@ class BuyLineButton(discord.ui.Button):
 
         db.update_balance(self.uid, self.guild_id, -self.line["price"])
         db.save_gear(self.uid, gear)
+        quest_record(self.uid, self.guild_id, "shop")   # 釣具屋購入クエスト
         await interaction.response.send_message(msg, ephemeral=True)
 
 

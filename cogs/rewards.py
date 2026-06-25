@@ -4,6 +4,7 @@ from database import Database
 from config import VC_REWARD_COINS, VC_REWARD_INTERVAL, CHAT_REWARD_COINS
 from datetime import datetime, timezone, timedelta
 import asyncio
+from quest_tracker import record as quest_record
 
 db = Database()
 JST = timezone(timedelta(hours=9))
@@ -42,6 +43,7 @@ class Rewards(commands.Cog):
                     gid = str(guild.id)
                     if db.get_vc_join(uid, gid):
                         db.update_balance(uid, gid, VC_REWARD_COINS)
+                        quest_record(uid, gid, "vc")   # VC5分参加クエスト
 
     @vc_reward_loop.before_loop
     async def before_vc_loop(self):
@@ -57,6 +59,7 @@ class Rewards(commands.Cog):
         uid = str(message.author.id)
         gid = str(message.guild.id)
         db.update_balance(uid, gid, CHAT_REWARD_COINS)
+        quest_record(uid, gid, "chat")   # チャットクエスト
 
 async def setup(bot):
     await bot.add_cog(Rewards(bot))

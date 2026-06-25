@@ -4,11 +4,10 @@ from discord import app_commands
 from database import Database
 from datetime import date
 import random
+from config import DAILY_AMOUNT, DAILY_SEND_LIMIT
+from quest_tracker import record as quest_record
 
 db = Database()
-
-DAILY_AMOUNT = 500          # デイリーボーナス額
-DAILY_SEND_LIMIT = 3000     # 1日の送金上限（ナトコイン）
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 共通ヘルパー
@@ -140,6 +139,12 @@ class MainMenuView(discord.ui.View):
         # ホームを最新残高で再描画
         await go_home(interaction, uid)
 
+    @discord.ui.button(label="📜 デイリークエスト", style=discord.ButtonStyle.primary, row=2)
+    async def quests(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.quests import open_quests
+        await open_quests(interaction, str(interaction.user.id))
+
     # ── 4段目（一番下）：ゲーム募集 ──
     @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=3)
     async def lfg(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -245,6 +250,11 @@ class BetModal(discord.ui.Modal):
         if bal < bet:
             await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
+
+        # デイリークエスト: カジノを1プレイ（チンチロは専用クエストも加算）
+        quest_record(self.user_id, guild_id, "casino")
+        if self.game_type == "chinchiro":
+            quest_record(self.user_id, guild_id, "chinchiro")
 
         if self.game_type == "blackjack":
             from cogs.blackjack import BlackjackModeView
@@ -698,6 +708,7 @@ class SendAmountModal(discord.ui.Modal, title="💸 送金額を入力"):
         db.update_balance(self.sender_id, self.guild_id, -amount)
         db.update_balance(self.target_id, self.guild_id, amount)
         db.add_send_log(self.sender_id, self.guild_id, amount)
+        quest_record(self.sender_id, self.guild_id, "send")   # 送金クエスト
 
         new_bal = db.get_balance(self.sender_id, self.guild_id)
         today_sent = db.get_today_sent(self.sender_id, self.guild_id)

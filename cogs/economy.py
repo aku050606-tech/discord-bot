@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from datetime import date
+from config import DAILY_AMOUNT
+from quest_tracker import record as quest_record
 
 db = Database()
 
@@ -20,7 +22,7 @@ class Economy(commands.Cog):
         embed.add_field(name=interaction.user.display_name, value=f"**{bal:,} ナトコイン**", inline=False)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="daily", description="毎日のボーナスナトコインをもらう（500ナトコイン）")
+    @app_commands.command(name="daily", description=f"毎日のボーナスナトコインをもらう（{DAILY_AMOUNT}ナトコイン）")
     async def daily(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
@@ -34,13 +36,13 @@ class Economy(commands.Cog):
             )
             return
 
-        db.update_balance(user_id, guild_id, 500)
+        db.update_balance(user_id, guild_id, DAILY_AMOUNT)
         db.set_last_daily(user_id, guild_id, today)
         bal = db.get_balance(user_id, guild_id)
 
         embed = discord.Embed(
             title="🎁 デイリーボーナス！",
-            description=f"**+500 ナトコイン** をゲット！\n現在の残高: **{bal:,} ナトコイン**",
+            description=f"**+{DAILY_AMOUNT} ナトコイン** をゲット！\n現在の残高: **{bal:,} ナトコイン**",
             color=discord.Color.green()
         )
         await interaction.response.send_message(embed=embed)
@@ -71,6 +73,7 @@ class Economy(commands.Cog):
 
         db.update_balance(user_id, guild_id, -amount)
         db.update_balance(target_id, guild_id, amount)
+        quest_record(user_id, guild_id, "send")   # 送金クエスト
 
         embed = discord.Embed(
             title="💸 送金完了",

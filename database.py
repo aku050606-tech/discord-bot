@@ -82,6 +82,11 @@ class Database:
             user_id TEXT, guild_id TEXT, ban_date TEXT,
             PRIMARY KEY (user_id, guild_id)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS quest_progress (
+            user_id TEXT, guild_id TEXT, quest_date TEXT, quest_key TEXT,
+            progress INTEGER DEFAULT 0, claimed INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, guild_id, quest_date, quest_key)
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -450,5 +455,45 @@ class Database:
              json.dumps(gear["rod_inventory"]),
              json.dumps(gear["reel_inventory"]),
              json.dumps(gear["line_inventory"])))
+        conn.commit()
+        conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # デイリークエスト進捗（quest_date は JST の日付。0時リセット）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def add_quest_progress(self, user_id, guild_id, quest_date, quest_key, n, target):
+        """進捗を n 加算（target で頭打ち）。無ければ作成。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO quest_progress
+                (user_id, guild_id, quest_date, quest_key, progress)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, guild_id, quest_date, quest_key)
+                DO UPDATE SET progress = MIN(progress + ?, ?)""",
+            (user_id, guild_id, quest_date, quest_key, min(n, target), n, target))
+        conn.commit()
+        conn.close()
+
+    def get_quest_progress(self, user_id, guild_id, quest_date):
+        """{quest_key: (progress, claimed)} を返す。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""SELECT quest_key, progress, claimed FROM quest_progress
+                     WHERE user_id=? AND guild_id=? AND quest_date=?""",
+                  (user_id, guild_id, quest_date))
+        rows = c.fetchall()
+        conn.close()
+        return {k: (p, cl) for k, p, cl in rows}
+
+    def set_quest_claimed(self, user_id, guild_id, quest_date, quest_key):
+        """受取済みフラグを立てる（無ければ作成）。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO quest_progress
+                (user_id, guild_id, quest_date, quest_key, progress, claimed)
+                VALUES (?, ?, ?, ?, 0, 1)
+                ON CONFLICT(user_id, guild_id, quest_date, quest_key)
+                DO UPDATE SET claimed = 1""",
+            (user_id, guild_id, quest_date, quest_key))
         conn.commit()
         conn.close()

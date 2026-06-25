@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from cogs.embed_utils import pad_embed
 import weather as W
+from quest_tracker import record as quest_record
 
 db = Database()
 JST = timezone(timedelta(hours=9))
@@ -206,6 +207,8 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
 
     if cost > 0:
         db.update_balance(uid, guild_id, -cost)
+
+    quest_record(uid, guild_id, "fish")   # 釣りクエスト（1キャスト=1）
 
     # 装備使用回数を減らす（竿は耐久制：竿×エリアで消費が変わる）
     dura_cost = get_rod_dura_cost(gear["rod_id"], area)

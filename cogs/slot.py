@@ -8,6 +8,7 @@ import asyncio
 import uuid
 from datetime import datetime, timezone, timedelta
 from cogs.embed_utils import pad_embed
+from quest_tracker import record as quest_record
 
 db = Database()
 JST = timezone(timedelta(hours=9))
@@ -524,6 +525,7 @@ async def _normal_spin(interaction, uid):
     if bal < SLOT_BET:
         await interaction.followup.send("❌ ナトコインが足りません", ephemeral=True); return
     db.update_balance(uid, guild_id, -SLOT_BET)
+    quest_record(uid, guild_id, "slot")   # スロットクエスト
     res = roll_normal_spin(g["setting"])
     # 払い出しは演出前に確定（途中で落ちてもナトコイン保全）
     if res.get("payout"):

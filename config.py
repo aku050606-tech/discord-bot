@@ -14,6 +14,10 @@ VC_REWARD_COINS = 100
 VC_REWARD_INTERVAL = 300
 CHAT_REWARD_COINS = 1
 
+# ── デイリーボーナス・送金（menu.py / economy.py 共通の単一ソース）──
+DAILY_AMOUNT = 2000        # デイリーボーナス額（ナトコイン）
+DAILY_SEND_LIMIT = 3000    # 1日の送金上限（ナトコイン）
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # スロット設定  ── EVENT HORIZON 仕様（完全版）──
 #   構造: 通常時(小役で土台) → GOD抽選 → EVENT HORIZON(継続ランクループ)
