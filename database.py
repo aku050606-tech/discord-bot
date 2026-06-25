@@ -87,6 +87,15 @@ class Database:
             progress INTEGER DEFAULT 0, claimed INTEGER DEFAULT 0,
             PRIMARY KEY (user_id, guild_id, quest_date, quest_key)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS log_config (
+            guild_id TEXT, category TEXT, channel_id TEXT,
+            PRIMARY KEY (guild_id, category)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS reaction_roles (
+            guild_id TEXT, message_id TEXT, emoji_key TEXT,
+            role_id TEXT, emoji_display TEXT,
+            PRIMARY KEY (message_id, emoji_key)
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -497,3 +506,60 @@ class Database:
             (user_id, guild_id, quest_date, quest_key))
         conn.commit()
         conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ログ設定（カテゴリ別の送信先チャンネル。channel_id='OFF'で送らない）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def set_log_channel(self, guild_id, category, channel_id):
+        """カテゴリの送信先を保存。channel_id にはチャンネルID文字列か 'OFF'。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO log_config (guild_id, category, channel_id)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, category)
+                DO UPDATE SET channel_id = ?""",
+            (str(guild_id), category, str(channel_id), str(channel_id)))
+        conn.commit()
+        conn.close()
+
+    def get_log_channel_id(self, guild_id, category):
+        """設定された channel_id（'OFF' 含む）を返す。未設定なら None。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT channel_id FROM log_config WHERE guild_id=? AND category=?",
+                  (str(guild_id), category))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def get_all_log_config(self, guild_id):
+        """{category: channel_id} を返す。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT category, channel_id FROM log_config WHERE guild_id=?",
+                  (str(guild_id),))
+        rows = c.fetchall()
+        conn.close()
+        return {cat: cid for cat, cid in rows}
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # リアクションロール（メッセージ×絵文字 → 役職）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def add_reaction_role(self, guild_id, message_id, emoji_key, role_id, emoji_display):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT OR REPLACE INTO reaction_roles
+                (guild_id, message_id, emoji_key, role_id, emoji_display)
+                VALUES (?, ?, ?, ?, ?)""",
+            (str(guild_id), str(message_id), str(emoji_key), str(role_id), str(emoji_display)))
+        conn.commit()
+        conn.close()
+
+    def get_reaction_role_id(self, message_id, emoji_key):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT role_id FROM reaction_roles WHERE message_id=? AND emoji_key=?",
+                  (str(message_id), str(emoji_key)))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None

@@ -18,23 +18,53 @@ try:
 except Exception:
     BIG_WIN_ANNOUNCE_CHANNEL_ID = 0
 
+try:
+    from database import Database
+    _db = Database()
+except Exception:
+    _db = None
+
 
 def _resolve_channel(interaction):
-    """告知先チャンネルを決める。固定IDが設定されていればそこ、無ければ
-    ゲームを遊んだチャンネルにフォールバックする。"""
+    """告知先チャンネルを決める。優先順位：
+    ① ログ設定の『🎣 釣果・大勝利アナウンス』(bigwin) で指定したch
+    ② bigwin が 'OFF' なら告知しない（None）
+    ③ 未設定なら config.BIG_WIN_ANNOUNCE_CHANNEL_ID（従来の固定ID）
+    ④ それも無ければ、遊んだチャンネルにフォールバック
+    """
     play_channel = getattr(interaction, "channel", None)
-    if not BIG_WIN_ANNOUNCE_CHANNEL_ID:
-        return play_channel
-    ch = None
+    guild = getattr(interaction, "guild", None)
     client = getattr(interaction, "client", None)
-    if client is not None:
-        ch = client.get_channel(BIG_WIN_ANNOUNCE_CHANNEL_ID)
-    if ch is None:
-        guild = getattr(interaction, "guild", None)
-        if guild is not None:
-            ch = guild.get_channel(BIG_WIN_ANNOUNCE_CHANNEL_ID)
-    # 固定チャンネルが見つからなければ、遊んだチャンネルに出す
-    return ch or play_channel
+
+    def _get(cid):
+        ch = None
+        if client is not None:
+            ch = client.get_channel(cid)
+        if ch is None and guild is not None:
+            ch = guild.get_channel(cid)
+        return ch
+
+    # ① / ② ログ設定（DB）
+    if _db is not None and guild is not None:
+        try:
+            cid = _db.get_log_channel_id(str(guild.id), "bigwin")
+        except Exception:
+            cid = None
+        if cid == "OFF":
+            return None
+        if cid:
+            ch = _get(int(cid))
+            if ch is not None:
+                return ch
+
+    # ③ 従来の固定ID
+    if BIG_WIN_ANNOUNCE_CHANNEL_ID:
+        ch = _get(BIG_WIN_ANNOUNCE_CHANNEL_ID)
+        if ch is not None:
+            return ch
+
+    # ④ 遊んだチャンネル
+    return play_channel
 
 
 async def announce_big_win(interaction, member, game: str, amount: int,

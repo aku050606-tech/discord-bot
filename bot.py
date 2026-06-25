@@ -41,6 +41,7 @@ async def load_extensions():
     await bot.load_extension("cogs.menu")
     await bot.load_extension("cogs.admin")
     await bot.load_extension("cogs.quests")
+    await bot.load_extension("cogs.reactionroles")
 
 @bot.event
 async def on_ready():

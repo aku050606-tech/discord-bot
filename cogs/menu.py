@@ -6,6 +6,7 @@ from datetime import date
 import random
 from config import DAILY_AMOUNT, DAILY_SEND_LIMIT
 from quest_tracker import record as quest_record
+import quest_tracker as QT
 
 db = Database()
 
@@ -36,36 +37,58 @@ async def go_home(interaction: discord.Interaction, user_id: str = None):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
-    """ホームのembed。user と guild_id があれば残高・デイリー状況を表示する。"""
+    """ホームのembed。user と guild_id があれば残高・デイリー・クエスト状況を表示する。"""
+    E = "\u001b"  # ANSIエスケープ
     embed = discord.Embed(
-        title="🎮 BOTメニュー",
-        description="使いたいメニューを選んでください",
-        color=discord.Color.blurple(),
+        title="✦　Ｎ Ａ Ｔ Ｏ　Ｃ Ａ Ｓ Ｉ Ｎ Ｏ　✦",
+        color=0xC8A24B,  # 上質なゴールド
     )
 
     if user is not None and guild_id is not None:
         uid = str(user.id)
         bal = db.get_balance(uid, guild_id)
-        claimable = _daily_claimable(uid, guild_id)
-        embed.add_field(name="💰 残高", value=f"**{bal:,}** ナトコイン", inline=True)
-        embed.add_field(
-            name="🎁 本日のデイリー",
-            value="受け取り可能！" if claimable else "受け取り済み",
-            inline=True,
+        claimable_daily = _daily_claimable(uid, guild_id)
+        try:
+            qs = QT.get_status(uid, guild_id)
+            q_done = sum(1 for s in qs if s["completed"])
+            q_total = len(qs)
+            q_claim = sum(1 for s in qs if s["completed"] and not s["claimed"])
+        except Exception:
+            q_done = q_total = q_claim = 0
+
+        daily_txt = (f"{E}[1;32m受取可能 ●{E}[0m" if claimable_daily
+                     else f"{E}[1;30m受取済み{E}[0m")
+        quest_txt = f"{E}[1;36m{q_done} / {q_total} 達成{E}[0m"
+        if q_claim:
+            quest_txt += f"  {E}[1;33m🎁 受取可能{E}[0m"
+
+        embed.description = (
+            "```ansi\n"
+            f"{E}[1;30m──────────  WALLET  ──────────{E}[0m\n"
+            f"{E}[0;33m💰 残高　　{E}[1;37m {bal:,} ナトコイン{E}[0m\n"
+            f"{E}[0;33m🎁 デイリー{E}[0m {daily_txt}\n"
+            f"{E}[0;33m📜 クエスト{E}[0m {quest_txt}\n"
+            f"{E}[1;30m──────────────────────────────{E}[0m\n"
+            "```"
         )
         embed.set_author(name=user.display_name, icon_url=user.display_avatar.url)
+    else:
+        embed.description = "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n下のボタンから選んでね"
 
     embed.add_field(
-        name="メニュー一覧",
+        name="〔　Ｍ Ｅ Ｎ Ｕ　〕",
         value=(
-            "🎰 **スロット** — EVENT HORIZONを目指せ\n"
-            "🎣 **釣り** — 湖・川・海／図鑑／釣具屋\n"
-            "🃏 **カジノ** — BJ・ポーカー・チンチロ 等\n"
-            "💰 **ウォレット** — 残高・デイリー・送金・ランキング\n"
-            "🎮 **ゲーム募集** — VALO・LoL等の募集を立てる"
+            "🎰　**スロット**　── EVENT HORIZON を目指せ\n"
+            "🎣　**釣り**　　　── 湖・川・海／図鑑／釣具屋\n"
+            "🃏　**カジノ**　　── BJ・ポーカー・チンチロ 他\n"
+            "📜　**クエスト**　── 今日の任務をこなして稼ぐ\n"
+            "💰　**ウォレット**── 残高・送金・ランキング\n"
+            "🎮　**募集**　　　── VALO・LoL 等の募集を立てる"
         ),
         inline=False,
     )
+    if user is not None and guild_id is not None:
+        embed.set_footer(text="GRAVITAS ENTERTAINMENT · 今日も良い夜を")
     return embed
 
 
@@ -94,7 +117,7 @@ class MainMenuView(discord.ui.View):
         active_jug.pop(uid, None)
         await interaction.response.edit_message(embed=build_kishu_embed(), view=KishuSelectView())
 
-    @discord.ui.button(label="🎣 釣り", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(label="🎣 釣り", style=discord.ButtonStyle.primary, row=0)
     async def fishing(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
@@ -102,8 +125,8 @@ class MainMenuView(discord.ui.View):
         embed = build_fish_menu_embed()
         await interaction.response.edit_message(embed=embed, view=FishMenuView(uid))
 
-    # ── 2段目：その他ゲーム & ウォレット ──
-    @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.primary, row=1)
+    # ── 2段目：その他アクティビティ（灰で統一）──
+    @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.secondary, row=1)
     async def casino(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
@@ -114,7 +137,7 @@ class MainMenuView(discord.ui.View):
         )
         await interaction.response.edit_message(embed=embed, view=CasinoMenuView(uid))
 
-    @discord.ui.button(label="💰 ウォレット", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="💰 ウォレット", style=discord.ButtonStyle.secondary, row=2)
     async def wallet(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
@@ -124,7 +147,7 @@ class MainMenuView(discord.ui.View):
         embed.add_field(name="現在の残高", value=f"**{bal:,}** ナトコイン", inline=False)
         await interaction.response.edit_message(embed=embed, view=WalletMenuView(uid))
 
-    # ── 3段目：ワンタップ・デイリー受取 ──
+    # ── 3段目：もらう系（緑で統一）＋ウォレット ──
     @discord.ui.button(label="🎁 デイリー受取", style=discord.ButtonStyle.success, row=2)
     async def daily(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
@@ -139,14 +162,13 @@ class MainMenuView(discord.ui.View):
         # ホームを最新残高で再描画
         await go_home(interaction, uid)
 
-    @discord.ui.button(label="📜 デイリークエスト", style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label="📜 デイリークエスト", style=discord.ButtonStyle.success, row=2)
     async def quests(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         from cogs.quests import open_quests
         await open_quests(interaction, str(interaction.user.id))
 
-    # ── 4段目（一番下）：ゲーム募集 ──
-    @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=1)
     async def lfg(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         from cogs.lfg import CreateView
