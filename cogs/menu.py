@@ -433,40 +433,7 @@ class FishMenuView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_spot_menu_embed(area), view=SpotMenuView(area, self.user_id))
 
-    @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.secondary, row=1)
-    async def zukan(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.zukan import ZukanCategoryView, build_category_embed
-        await interaction.response.edit_message(
-            embed=build_category_embed(self.user_id),
-            view=ZukanCategoryView(self.user_id))
-
-    @discord.ui.button(label="🗺️ 宝の地図を使う", style=discord.ButtonStyle.primary, row=1)
-    async def treasure(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.fishing import use_treasure_map
-        await use_treasure_map(interaction, edit=True)
-
-    @discord.ui.button(label="🏪 釣具屋", style=discord.ButtonStyle.success, row=1)
-    async def shop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.shop import ShopView
-        embed = discord.Embed(title="🏪 釣具屋", description="カテゴリを選んでください！", color=discord.Color.green())
-        await interaction.response.edit_message(embed=embed, view=ShopView())
-
-    @discord.ui.button(label="🌤️ 天気予報士", style=discord.ButtonStyle.secondary, row=2)
-    async def forecaster(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.fishing import forecaster_embed, NPCView
-        await interaction.response.edit_message(embed=forecaster_embed(), view=NPCView("forecaster", self.user_id))
-
-    @discord.ui.button(label="🎣 怪しい釣り人", style=discord.ButtonStyle.secondary, row=2)
-    async def angler(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.fishing import angler_embed, NPCView
-        await interaction.response.edit_message(embed=angler_embed(), view=NPCView("angler", self.user_id))
-
-    @discord.ui.button(label="⚓ 危険海域", style=discord.ButtonStyle.danger, row=2)
+    @discord.ui.button(label="⚓ 危険海域", style=discord.ButtonStyle.danger, row=0)
     async def danger_zone(self, interaction: discord.Interaction, button: discord.ui.Button):
         import random as _r
         lines = [
@@ -476,6 +443,39 @@ class FishMenuView(discord.ui.View):
             "船も無しに来る奴があるか。命がいくつあっても足りんぞ、ここはな。",
         ]
         await interaction.response.send_message(_r.choice(lines), ephemeral=True)
+
+    @discord.ui.button(label="🌤️ 天気予報士", style=discord.ButtonStyle.secondary, row=1)
+    async def forecaster(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import forecaster_embed, NPCView
+        await interaction.response.edit_message(embed=forecaster_embed(), view=NPCView("forecaster", self.user_id))
+
+    @discord.ui.button(label="🎣 怪しい釣り人", style=discord.ButtonStyle.secondary, row=1)
+    async def angler(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import angler_embed, NPCView
+        await interaction.response.edit_message(embed=angler_embed(), view=NPCView("angler", self.user_id))
+
+    @discord.ui.button(label="🏪 釣具屋", style=discord.ButtonStyle.success, row=2)
+    async def shop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.shop import ShopView
+        embed = discord.Embed(title="🏪 釣具屋", description="カテゴリを選んでください！", color=discord.Color.green())
+        await interaction.response.edit_message(embed=embed, view=ShopView())
+
+    @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.secondary, row=2)
+    async def zukan(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.zukan import ZukanCategoryView, build_category_embed
+        await interaction.response.edit_message(
+            embed=build_category_embed(self.user_id),
+            view=ZukanCategoryView(self.user_id))
+
+    @discord.ui.button(label="🗺️ 宝の地図を使う", style=discord.ButtonStyle.primary, row=2)
+    async def treasure(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fishing import use_treasure_map
+        await use_treasure_map(interaction, edit=True)
 
     @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary, row=3)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
