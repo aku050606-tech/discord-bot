@@ -143,27 +143,7 @@ class MainMenuView(discord.ui.View):
         from cogs.phone import open_phone
         await open_phone(interaction, str(interaction.user.id))
 
-    # ── 3段目：もらう系（緑で統一）＋ウォレット ──
-    @discord.ui.button(label="🎁 デイリー受取", style=discord.ButtonStyle.success, row=2)
-    async def daily(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        uid = str(interaction.user.id)
-        guild_id = str(interaction.guild.id)
-        if not _daily_claimable(uid, guild_id):
-            await interaction.response.send_message(
-                "⏰ 今日はすでにデイリーボーナスを受け取っています！", ephemeral=True)
-            return
-        db.update_balance(uid, guild_id, DAILY_AMOUNT)
-        db.set_last_daily(uid, guild_id, str(date.today()))
-        # ホームを最新残高で再描画
-        await go_home(interaction, uid)
-
-    @discord.ui.button(label="📜 デイリークエスト", style=discord.ButtonStyle.success, row=2)
-    async def quests(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.quests import open_quests
-        await open_quests(interaction, str(interaction.user.id))
-
+    # ── 3段目：スマホ ──
     @discord.ui.button(label="📊 アクティビティ", style=discord.ButtonStyle.secondary, row=1)
     async def activity(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
@@ -629,40 +609,6 @@ class WalletMenuView(discord.ui.View):
         bal = db.get_balance(uid, guild_id)
         embed = discord.Embed(title="💰 残高確認", color=discord.Color.gold())
         embed.add_field(name=interaction.user.display_name, value=f"**{bal:,} ナトコイン**")
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="🎁 デイリーボーナス", style=discord.ButtonStyle.success, row=0)
-    async def daily(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        uid = self.user_id
-        guild_id = str(interaction.guild.id)
-        today = str(date.today())
-        if db.get_last_daily(uid, guild_id) == today:
-            await interaction.response.send_message("⏰ 今日はすでにデイリーボーナスを受け取っています！", ephemeral=True)
-            return
-        db.update_balance(uid, guild_id, DAILY_AMOUNT)
-        db.set_last_daily(uid, guild_id, today)
-        bal = db.get_balance(uid, guild_id)
-        embed = discord.Embed(title="🎁 デイリーボーナス！", description=f"**+{DAILY_AMOUNT} ナトコイン** ゲット！\n残高: **{bal:,} ナトコイン**", color=discord.Color.green())
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="🏆 ランキング", style=discord.ButtonStyle.secondary, row=0)
-    async def ranking(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        guild_id = str(interaction.guild.id)
-        rows = db.get_ranking(guild_id, 10)
-        medals = ["🥇", "🥈", "🥉"]
-        embed = discord.Embed(title="🏆 ナトコインランキング", color=discord.Color.gold())
-        if not rows:
-            embed.description = "まだデータがありません"
-        else:
-            lines = []
-            for i, (uid, bal) in enumerate(rows):
-                m = medals[i] if i < 3 else f"{i+1}."
-                member = interaction.guild.get_member(int(uid))
-                name = member.display_name if member else f"ID:{uid}"
-                lines.append(f"{m} **{name}** — {bal:,} ナトコイン")
-            embed.description = "\n".join(lines)
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="💸 送金", style=discord.ButtonStyle.primary, row=0)

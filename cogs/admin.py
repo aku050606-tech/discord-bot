@@ -510,6 +510,7 @@ class AnnounceBuilderView(discord.ui.View):
         self.title_text = title
         self.body_text = body
         self.pairs = []  # [{key, role_id, raw}]
+        self.line_all = False
         self.add_item(AnnounceRoleSelect(self))
 
     def _rr_lines(self):
@@ -526,6 +527,9 @@ class AnnounceBuilderView(discord.ui.View):
             e.add_field(name="🎭 リアクションロール",
                         value="（なし）役職を選び絵文字を割り当てると追加されます。無しでも投稿OK。",
                         inline=False)
+        e.add_field(name="📩 全員のLINEにも送る",
+                    value="✅ ON（全メンバーの受信箱に届く）" if self.line_all else "OFF",
+                    inline=False)
         ch = guild.get_channel(int(self.channel_id))
         e.set_footer(text=f"送信先: #{ch.name if ch else '不明'} ／ 「投稿する」で確定")
         return e
@@ -564,8 +568,36 @@ class AnnounceBuilderView(discord.ui.View):
             except Exception:
                 pass
         note = f"（リアクションロール {ok} 件設定）" if self.pairs else ""
+        # 全員のLINEへ配信
+        if self.line_all:
+            from datetime import datetime, timezone, timedelta
+            jst = timezone(timedelta(hours=9))
+            ts = datetime.now(jst).strftime("%m/%d %H:%M")
+            line_body = (f"{self.title_text}\n\n{self.body_text}"
+                         if self.title_text else self.body_text)
+            sent = 0
+            for m in interaction.guild.members:
+                if m.bot:
+                    continue
+                try:
+                    db.add_line_message(str(interaction.guild.id), "announce",
+                                        str(m.id), line_body, ts)
+                    sent += 1
+                except Exception:
+                    pass
+            note += f"（LINE配信 {sent}人）"
         await interaction.response.edit_message(
             content=f"✅ {ch.mention} に投稿しました。{note}", embed=None, view=None)
+
+    @discord.ui.button(label="📩 全員のLINEにも送る", style=discord.ButtonStyle.secondary, row=2)
+    async def toggle_line(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        self.line_all = not self.line_all
+        button.style = discord.ButtonStyle.success if self.line_all else discord.ButtonStyle.secondary
+        button.label = "📩 全員のLINEに送る：ON" if self.line_all else "📩 全員のLINEにも送る"
+        await interaction.response.edit_message(
+            embed=self.preview_embed(interaction.guild), view=self)
 
     @discord.ui.button(label="❌ やめる", style=discord.ButtonStyle.secondary, row=2)
     async def cancel(self, interaction, button):

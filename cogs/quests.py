@@ -77,6 +77,13 @@ class QuestView(discord.ui.View):
         )
         await interaction.followup.send(embed=result, ephemeral=True)
 
+    @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=1)
+    async def back_home(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction):
+            return
+        from cogs.phone import open_phone
+        await open_phone(interaction, self.uid)
+
 
 async def open_quests(interaction: discord.Interaction, uid: str = None):
     """メニュー等から開く用。既存メッセージを差し替える。"""

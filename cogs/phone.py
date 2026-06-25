@@ -8,9 +8,10 @@
 循環import回避のため、menu.py の関数はメソッド内で遅延importする。
 """
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import discord
 from database import Database
+from config import DAILY_AMOUNT
 
 db = Database()
 JST = timezone(timedelta(hours=9))
@@ -26,17 +27,21 @@ def _now_jst():
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ スマホ ホーム ━━
 def build_phone_embed(user, guild) -> discord.Embed:
-    bal = db.get_balance(str(user.id), str(guild.id))
-    unread = db.line_unread_count(str(guild.id), str(user.id))
+    gid = str(guild.id)
+    bal = db.get_balance(str(user.id), gid)
+    unread = db.line_unread_count(gid, str(user.id))
+    daily_done = db.get_last_daily(str(user.id), gid) == str(date.today())
     e = discord.Embed(
         title="📱 スマホ",
         description="アプリを選んでください。",
         color=0x111827,
     )
-    e.add_field(name="🏦 銀行", value=f"残高 **{bal:,}** ナトコイン", inline=False)
-    e.add_field(name="💬 LINE", value=(f"📩 未読 **{unread}** 件" if unread else "新着なし"), inline=True)
+    e.add_field(name="🏦 銀行口座", value=f"残高 **{bal:,}**", inline=True)
+    e.add_field(name="🏆 ランキング", value="順位を見る", inline=True)
+    e.add_field(name="🎁 デイリー", value=("受取済み" if daily_done else "🔴 受取可能"), inline=True)
+    e.add_field(name="📜 クエスト", value="日替わり任務", inline=True)
+    e.add_field(name="💬 LINE", value=(f"📩 未読 **{unread}**" if unread else "新着なし"), inline=True)
     e.add_field(name="🐦 ツイッター", value="つぶやく", inline=True)
-    e.set_footer(text="銀行＝送金/残高 ・ LINE＝メッセージ ・ ツイッター＝みんなに投稿")
     return e
 
 
@@ -50,6 +55,20 @@ async def open_phone(interaction: discord.Interaction, uid: str = None):
         await interaction.response.edit_message(embed=embed, view=view)
 
 
+class PhoneBackView(discord.ui.View):
+    """スマホに戻るボタンだけのView（アプリ表示用）。"""
+    def __init__(self, user_id: str):
+        super().__init__(timeout=600)
+        self.user_id = str(user_id)
+
+    @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary)
+    async def back(self, interaction, button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのスマホではありません", ephemeral=True)
+            return
+        await open_phone(interaction, self.user_id)
+
+
 class PhoneHomeView(discord.ui.View):
     def __init__(self, user_id: str):
         super().__init__(timeout=900)
@@ -61,30 +80,74 @@ class PhoneHomeView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="🏦 銀行", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(label="🏦 銀行口座", style=discord.ButtonStyle.success, row=0)
     async def bank(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.menu import WalletMenuView
         bal = db.get_balance(self.user_id, str(interaction.guild.id))
-        embed = discord.Embed(title="🏦 銀行", color=discord.Color.gold())
+        embed = discord.Embed(title="🏦 銀行口座", color=discord.Color.gold())
         embed.add_field(name="現在の残高", value=f"**{bal:,}** ナトコイン", inline=False)
+        embed.set_footer(text="残高の確認と送金ができます")
         await interaction.response.edit_message(embed=embed, view=WalletMenuView(self.user_id))
 
-    @discord.ui.button(label="💬 LINE", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label="🏆 ランキング", style=discord.ButtonStyle.secondary, row=0)
+    async def ranking(self, interaction, button):
+        if not await self._check(interaction): return
+        gid = str(interaction.guild.id)
+        rows = db.get_ranking(gid, 10)
+        medals = ["🥇", "🥈", "🥉"]
+        embed = discord.Embed(title="🏆 ナトコインランキング", color=discord.Color.gold())
+        if not rows:
+            embed.description = "まだデータがありません"
+        else:
+            lines = []
+            for i, (uid, bal) in enumerate(rows):
+                mk = medals[i] if i < 3 else f"{i+1}."
+                m = interaction.guild.get_member(int(uid))
+                name = m.display_name if m else f"ID:{uid}"
+                lines.append(f"{mk} **{name}** — {bal:,} ナトコイン")
+            embed.description = "\n".join(lines)
+        await interaction.response.edit_message(embed=embed, view=PhoneBackView(self.user_id))
+
+    @discord.ui.button(label="🎁 デイリー", style=discord.ButtonStyle.primary, row=0)
+    async def daily(self, interaction, button):
+        if not await self._check(interaction): return
+        gid = str(interaction.guild.id)
+        today = str(date.today())
+        if db.get_last_daily(self.user_id, gid) == today:
+            await interaction.response.send_message(
+                "⏰ 今日はもう受け取っています！", ephemeral=True)
+            return
+        db.update_balance(self.user_id, gid, DAILY_AMOUNT)
+        db.set_last_daily(self.user_id, gid, today)
+        bal = db.get_balance(self.user_id, gid)
+        embed = discord.Embed(
+            title="🎁 デイリーボーナス！",
+            description=f"**+{DAILY_AMOUNT:,} ナトコイン** ゲット！\n残高: **{bal:,}**",
+            color=discord.Color.green())
+        await interaction.response.edit_message(embed=embed, view=PhoneBackView(self.user_id))
+
+    @discord.ui.button(label="📜 クエスト", style=discord.ButtonStyle.primary, row=1)
+    async def quests(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.quests import open_quests
+        await open_quests(interaction, self.user_id)
+
+    @discord.ui.button(label="💬 LINE", style=discord.ButtonStyle.primary, row=1)
     async def line(self, interaction, button):
         if not await self._check(interaction): return
         await interaction.response.edit_message(
             embed=build_line_embed(interaction.user, interaction.guild),
             view=LineHomeView(self.user_id))
 
-    @discord.ui.button(label="🐦 ツイッター", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label="🐦 ツイッター", style=discord.ButtonStyle.primary, row=1)
     async def twitter(self, interaction, button):
         if not await self._check(interaction): return
         await interaction.response.edit_message(
             embed=build_twitter_embed(interaction.guild),
             view=TwitterView(self.user_id))
 
-    @discord.ui.button(label="🏠 メインメニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🏠 メインメニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
     async def home(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.menu import go_home
@@ -132,8 +195,11 @@ class LineHomeView(discord.ui.View):
         else:
             lines = []
             for _id, from_id, body, ts, is_read in rows:
-                m = interaction.guild.get_member(int(from_id))
-                name = m.display_name if m else f"ID:{from_id}"
+                if from_id == "announce":
+                    name = "📣 お知らせ"
+                else:
+                    m = interaction.guild.get_member(int(from_id))
+                    name = m.display_name if m else f"ID:{from_id}"
                 mark = "" if is_read else "🆕 "
                 short = body if len(body) <= 120 else body[:120] + "…"
                 lines.append(f"{mark}**{name}**（{ts}）\n{short}")
