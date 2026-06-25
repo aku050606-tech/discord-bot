@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from config import ADMIN_USER_IDS, ADMIN_MAX_AMOUNT
+from datetime import datetime, timezone, timedelta
 
 db = Database()
 
@@ -139,6 +140,32 @@ class AdminMenuView(discord.ui.View):
     async def announce(self, interaction, button):
         if not await self._guard(interaction): return
         await interaction.response.send_modal(AnnounceModal(self.admin_id))
+
+    @discord.ui.button(label="🔊 自由部屋設定", style=discord.ButtonStyle.primary, row=2)
+    async def tempvc_settings(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=build_tempvc_embed(interaction.guild),
+            view=TempVCConfigView(self.admin_id))
+
+    @discord.ui.button(label="📊 非アクティブ抽出", style=discord.ButtonStyle.secondary, row=3)
+    async def inactive(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.send_modal(InactiveModal(self.admin_id))
+
+    @discord.ui.button(label="🎚️ VC自動ロール", style=discord.ButtonStyle.secondary, row=3)
+    async def vc_autorole(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=build_vcrole_embed(interaction.guild),
+            view=VCRoleConfigView(self.admin_id))
+
+    @discord.ui.button(label="🐦 ツイート投稿先", style=discord.ButtonStyle.secondary, row=3)
+    async def twitter_ch(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=build_twitterch_embed(interaction.guild),
+            view=TwitterChConfigView(self.admin_id))
 
     @discord.ui.button(label="閉じる", style=discord.ButtonStyle.secondary, row=3)
     async def close(self, interaction, button):
@@ -586,6 +613,338 @@ class AnnounceEmojiModal(discord.ui.Modal, title="絵文字を割り当て"):
         self.builder.pairs.append({"key": key, "role_id": self.role.id, "raw": raw})
         await interaction.response.edit_message(
             embed=self.builder.preview_embed(interaction.guild), view=self.builder)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 自由部屋（一時VC）設定
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from cogs.tempvc import K_HUB, K_CATEGORY, K_PANEL, build_panel_embed, TempVoicePanel
+
+
+def build_tempvc_embed(guild: discord.Guild) -> discord.Embed:
+    def _name(cid, kind="ch"):
+        if not cid:
+            return "未設定"
+        c = guild.get_channel(int(cid))
+        if c is None:
+            return "⚠️ 消失"
+        return f"#{c.name}" if kind != "cat" else f"📁 {c.name}"
+    hub = db.get_log_channel_id(str(guild.id), K_HUB)
+    cat = db.get_log_channel_id(str(guild.id), K_CATEGORY)
+    panel = db.get_log_channel_id(str(guild.id), K_PANEL)
+    embed = discord.Embed(
+        title="🔊 自由部屋（一時VC）設定",
+        description=(
+            f"**作成用VC**　 {_name(hub)}\n"
+            f"**生成先カテゴリ** {_name(cat, 'cat')}\n"
+            f"**設定パネルch** {_name(panel)}\n\n"
+            "① 作成用VCを指定（ここに入ると部屋が作られる）\n"
+            "② 生成先カテゴリを指定（未指定なら作成用VCと同じ場所）\n"
+            "③ 設定パネルchを指定→「パネルを設置」で常設パネルを投稿"),
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text="Botに『チャンネルの管理／メンバーの移動／ロールの管理』権限が必要")
+    return embed
+
+
+class _TVCVoiceSelect(discord.ui.ChannelSelect):
+    def __init__(self, admin_id):
+        self.admin_id = admin_id
+        super().__init__(placeholder="① 作成用VCを選択…",
+                         channel_types=[discord.ChannelType.voice], row=0)
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        db.set_log_channel(str(interaction.guild.id), K_HUB, str(self.values[0].id))
+        await interaction.response.edit_message(
+            embed=build_tempvc_embed(interaction.guild), view=TempVCConfigView(self.admin_id))
+
+
+class _TVCCategorySelect(discord.ui.ChannelSelect):
+    def __init__(self, admin_id):
+        self.admin_id = admin_id
+        super().__init__(placeholder="② 生成先カテゴリを選択…",
+                         channel_types=[discord.ChannelType.category], row=1)
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        db.set_log_channel(str(interaction.guild.id), K_CATEGORY, str(self.values[0].id))
+        await interaction.response.edit_message(
+            embed=build_tempvc_embed(interaction.guild), view=TempVCConfigView(self.admin_id))
+
+
+class _TVCPanelSelect(discord.ui.ChannelSelect):
+    def __init__(self, admin_id):
+        self.admin_id = admin_id
+        super().__init__(placeholder="③ 設定パネルchを選択…",
+                         channel_types=[discord.ChannelType.text], row=2)
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        db.set_log_channel(str(interaction.guild.id), K_PANEL, str(self.values[0].id))
+        await interaction.response.edit_message(
+            embed=build_tempvc_embed(interaction.guild), view=TempVCConfigView(self.admin_id))
+
+
+class TempVCConfigView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=600)
+        self.admin_id = admin_id
+        self.add_item(_TVCVoiceSelect(admin_id))
+        self.add_item(_TVCCategorySelect(admin_id))
+        self.add_item(_TVCPanelSelect(admin_id))
+
+    @discord.ui.button(label="📌 パネルを設置", style=discord.ButtonStyle.success, row=3)
+    async def place_panel(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        pid = db.get_log_channel_id(str(interaction.guild.id), K_PANEL)
+        if not pid:
+            await interaction.response.send_message(
+                "⚠️ 先に「③ 設定パネルch」を選ぶか、「📌 好きなchに設置」を使ってください。", ephemeral=True)
+            return
+        ch = interaction.guild.get_channel(int(pid))
+        if ch is None:
+            await interaction.response.send_message("⚠️ パネルchが見つかりません。", ephemeral=True)
+            return
+        try:
+            await ch.send(embed=build_panel_embed(interaction.guild.name), view=TempVoicePanel())
+            await interaction.response.send_message(
+                f"📌 {ch.mention} にコントロールパネルを設置しました。", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "⚠️ そのchに投稿する権限がありません。", ephemeral=True)
+
+    @discord.ui.button(label="📌 好きなchに設置（複数OK）", style=discord.ButtonStyle.secondary, row=3)
+    async def place_anywhere(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        v = discord.ui.View(timeout=120)
+        v.add_item(_TVCPanelPlaceSelect())
+        await interaction.response.send_message(
+            "📌 設置するchを選んでください（繰り返せば何個でも置けます）：", view=v, ephemeral=True)
+
+    @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=3)
+    async def back(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        await interaction.response.edit_message(
+            embed=build_admin_embed(interaction), view=AdminMenuView(self.admin_id))
+
+
+class _TVCPanelPlaceSelect(discord.ui.ChannelSelect):
+    """選んだchへ常設パネルを設置（何度でも・複数ch可）。"""
+    def __init__(self):
+        super().__init__(placeholder="設置するchを選択…",
+                         channel_types=[discord.ChannelType.text])
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        target = interaction.guild.get_channel(int(self.values[0].id))
+        if target is None:
+            await interaction.response.edit_message(content="⚠️ chが見つかりません。", view=None)
+            return
+        try:
+            await target.send(embed=build_panel_embed(interaction.guild.name), view=TempVoicePanel())
+            await interaction.response.edit_message(
+                content=f"📌 {target.mention} にパネルを設置しました。（続けて別のchにも置けます）", view=None)
+        except discord.Forbidden:
+            await interaction.response.edit_message(
+                content="⚠️ そのchに投稿する権限がありません。", view=None)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 非アクティブ抽出（加入から N日以上 かつ 累計VC X時間未満）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class InactiveModal(discord.ui.Modal, title="📊 非アクティブ抽出"):
+    days_input = discord.ui.TextInput(
+        label="加入からの経過日数（これ以上）", placeholder="例: 14", max_length=4)
+    hours_input = discord.ui.TextInput(
+        label="累計VC時間（これ未満を抽出）", placeholder="例: 1", max_length=5)
+
+    def __init__(self, admin_id):
+        super().__init__()
+        self.admin_id = admin_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        try:
+            days = int(self.days_input.value)
+            hours = float(self.hours_input.value)
+        except ValueError:
+            await interaction.response.send_message("⚠️ 数字で入力してください。", ephemeral=True)
+            return
+        guild = interaction.guild
+        act = db.get_all_vc_activity(str(guild.id))
+        now = datetime.now(timezone.utc)
+        need_secs = hours * 3600
+        hits = []
+        for m in guild.members:
+            if m.bot:
+                continue
+            if m.joined_at is None:
+                continue
+            joined_days = (now - m.joined_at).days
+            if joined_days < days:
+                continue
+            vc_secs = act.get(str(m.id), (0, None))[0]
+            if vc_secs < need_secs:
+                hits.append((m, joined_days, vc_secs))
+        hits.sort(key=lambda x: x[2])  # VC時間が少ない順
+
+        if not hits:
+            await interaction.response.send_message(
+                f"✅ 条件（加入{days}日以上・累計VC{hours}時間未満）に該当する人はいません。",
+                ephemeral=True)
+            return
+        lines = []
+        for m, jd, vs in hits[:40]:
+            lines.append(f"・{m.mention}（加入{jd}日 / VC {vs//3600}時間{(vs%3600)//60}分）")
+        more = f"\n…ほか {len(hits) - 40} 人" if len(hits) > 40 else ""
+        embed = discord.Embed(
+            title="📊 非アクティブ抽出結果",
+            description=(f"**加入 {days}日以上 ＆ 累計VC {hours}時間未満**：{len(hits)}人\n\n"
+                        + "\n".join(lines) + more),
+            color=discord.Color.dark_orange(),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# VC自動ロール（累計VC ●時間で自動付与・選択式・OFF可）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VC_AUTOROLE_ROLE = "vc_autorole_role"
+VC_AUTOROLE_HOURS = "vc_autorole_hours"
+
+
+def build_vcrole_embed(guild: discord.Guild) -> discord.Embed:
+    rid = db.get_log_channel_id(str(guild.id), VC_AUTOROLE_ROLE)
+    hrs = db.get_log_channel_id(str(guild.id), VC_AUTOROLE_HOURS)
+    if rid == "OFF" or not rid:
+        state = "🔕 OFF"
+    else:
+        role = guild.get_role(int(rid))
+        state = f"{role.mention if role else '⚠️消失'}　／　{hrs or '?'}時間で付与"
+    return discord.Embed(
+        title="🎚️ VC自動ロール設定",
+        description=(f"現在： {state}\n\n"
+                     "累計VC在室が指定時間を超えた人に、選んだロールを自動付与します。\n"
+                     "① ロールを選ぶ → ② 必要時間を入力 → 自動でON。\n"
+                     "「🔕 OFF」で停止できます。"),
+        color=discord.Color.blurple(),
+    )
+
+
+class _VCRoleSelect(discord.ui.RoleSelect):
+    def __init__(self, admin_id):
+        self.admin_id = admin_id
+        super().__init__(placeholder="① 付与するロールを選択…", row=0)
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        db.set_log_channel(str(interaction.guild.id), VC_AUTOROLE_ROLE, str(self.values[0].id))
+        await interaction.response.send_modal(VCRoleHoursModal(self.admin_id))
+
+
+class VCRoleHoursModal(discord.ui.Modal, title="必要なVC時間"):
+    hours = discord.ui.TextInput(label="この時間を超えたら付与（時間）", placeholder="例: 10", max_length=5)
+
+    def __init__(self, admin_id):
+        super().__init__()
+        self.admin_id = admin_id
+
+    async def on_submit(self, interaction):
+        try:
+            h = float(self.hours.value)
+        except ValueError:
+            await interaction.response.send_message("⚠️ 数字で入力してください。", ephemeral=True)
+            return
+        db.set_log_channel(str(interaction.guild.id), VC_AUTOROLE_HOURS, str(h))
+        await interaction.response.edit_message(
+            embed=build_vcrole_embed(interaction.guild), view=VCRoleConfigView(self.admin_id))
+
+
+class VCRoleConfigView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=600)
+        self.admin_id = admin_id
+        self.add_item(_VCRoleSelect(admin_id))
+
+    @discord.ui.button(label="🔕 OFF", style=discord.ButtonStyle.danger, row=1)
+    async def off(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        db.set_log_channel(str(interaction.guild.id), VC_AUTOROLE_ROLE, "OFF")
+        await interaction.response.edit_message(
+            embed=build_vcrole_embed(interaction.guild), view=self)
+
+    @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        await interaction.response.edit_message(
+            embed=build_admin_embed(interaction), view=AdminMenuView(self.admin_id))
+
+
+def build_twitterch_embed(guild: discord.Guild) -> discord.Embed:
+    from cogs.phone import TWITTER_CHANNEL
+    cid = db.get_log_channel_id(str(guild.id), TWITTER_CHANNEL)
+    if cid and cid != "OFF":
+        ch = guild.get_channel(int(cid))
+        state = ch.mention if ch else "⚠️ 消失"
+    else:
+        state = "🔕 未設定（OFF）"
+    return discord.Embed(
+        title="🐦 ツイート投稿先",
+        description=(f"現在： {state}\n\n"
+                     "スマホ→ツイッターでみんなが投稿できるchを指定します。\n"
+                     "「🔕 OFF」で投稿を停止できます。"),
+        color=0x1DA1F2,
+    )
+
+
+class _TwitterChSelect(discord.ui.ChannelSelect):
+    def __init__(self, admin_id):
+        self.admin_id = admin_id
+        super().__init__(placeholder="投稿先chを選択…",
+                         channel_types=[discord.ChannelType.text], row=0)
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        from cogs.phone import TWITTER_CHANNEL
+        db.set_log_channel(str(interaction.guild.id), TWITTER_CHANNEL, str(self.values[0].id))
+        await interaction.response.edit_message(
+            embed=build_twitterch_embed(interaction.guild), view=TwitterChConfigView(self.admin_id))
+
+
+class TwitterChConfigView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=600)
+        self.admin_id = admin_id
+        self.add_item(_TwitterChSelect(admin_id))
+
+    @discord.ui.button(label="🔕 OFF", style=discord.ButtonStyle.danger, row=1)
+    async def off(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        from cogs.phone import TWITTER_CHANNEL
+        db.set_log_channel(str(interaction.guild.id), TWITTER_CHANNEL, "OFF")
+        await interaction.response.edit_message(
+            embed=build_twitterch_embed(interaction.guild), view=self)
+
+    @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        await interaction.response.edit_message(
+            embed=build_admin_embed(interaction), view=AdminMenuView(self.admin_id))
 
 
 async def setup(bot):

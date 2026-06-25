@@ -96,6 +96,25 @@ class Database:
             role_id TEXT, emoji_display TEXT,
             PRIMARY KEY (message_id, emoji_key)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS temp_vc (
+            channel_id TEXT PRIMARY KEY, guild_id TEXT, owner_id TEXT,
+            kind TEXT DEFAULT 'main', parent_id TEXT
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS vc_activity (
+            user_id TEXT, guild_id TEXT,
+            vc_seconds INTEGER DEFAULT 0, last_active TEXT,
+            PRIMARY KEY (user_id, guild_id)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS activity_log (
+            guild_id TEXT, user_id TEXT, kind TEXT, ts_hour INTEGER,
+            amount INTEGER DEFAULT 0,
+            PRIMARY KEY (guild_id, user_id, kind, ts_hour)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS line_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id TEXT, from_id TEXT, to_id TEXT,
+            body TEXT, ts TEXT, is_read INTEGER DEFAULT 0
+        )""")
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -563,3 +582,192 @@ class Database:
         row = c.fetchone()
         conn.close()
         return row[0] if row else None
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 自由部屋（一時VC）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def add_temp_vc(self, channel_id, guild_id, owner_id, kind="main", parent_id=None):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT OR REPLACE INTO temp_vc
+                (channel_id, guild_id, owner_id, kind, parent_id)
+                VALUES (?, ?, ?, ?, ?)""",
+            (str(channel_id), str(guild_id), str(owner_id), kind,
+             str(parent_id) if parent_id else None))
+        conn.commit()
+        conn.close()
+
+    def remove_temp_vc(self, channel_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM temp_vc WHERE channel_id=?", (str(channel_id),))
+        conn.commit()
+        conn.close()
+
+    def get_temp_vc(self, channel_id):
+        """owner_id を返す（無ければ None）。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT owner_id FROM temp_vc WHERE channel_id=?", (str(channel_id),))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def get_temp_vc_row(self, channel_id):
+        """(owner_id, kind, parent_id) を返す（無ければ None）。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT owner_id, kind, parent_id FROM temp_vc WHERE channel_id=?",
+                  (str(channel_id),))
+        row = c.fetchone()
+        conn.close()
+        return row if row else None
+
+    def set_temp_vc_owner(self, channel_id, owner_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("UPDATE temp_vc SET owner_id=? WHERE channel_id=?",
+                  (str(owner_id), str(channel_id)))
+        conn.commit()
+        conn.close()
+
+    def get_waiting_for(self, parent_id):
+        """親VCに紐づく待機VCの channel_id を返す（無ければ None）。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT channel_id FROM temp_vc WHERE kind='waiting' AND parent_id=?",
+                  (str(parent_id),))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # VC活動量（累計VC秒・最終活動）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def add_vc_seconds(self, user_id, guild_id, secs, ts=None):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO vc_activity (user_id, guild_id, vc_seconds, last_active)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id, guild_id)
+                DO UPDATE SET vc_seconds = vc_seconds + ?, last_active = ?""",
+            (str(user_id), str(guild_id), int(secs), ts, int(secs), ts))
+        conn.commit()
+        conn.close()
+
+    def touch_active(self, user_id, guild_id, ts):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO vc_activity (user_id, guild_id, vc_seconds, last_active)
+                VALUES (?, ?, 0, ?)
+                ON CONFLICT(user_id, guild_id)
+                DO UPDATE SET last_active = ?""",
+            (str(user_id), str(guild_id), ts, ts))
+        conn.commit()
+        conn.close()
+
+    def get_vc_seconds(self, user_id, guild_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT vc_seconds FROM vc_activity WHERE user_id=? AND guild_id=?",
+                  (str(user_id), str(guild_id)))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else 0
+
+    def get_all_vc_activity(self, guild_id):
+        """{user_id: (vc_seconds, last_active)} を返す。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT user_id, vc_seconds, last_active FROM vc_activity WHERE guild_id=?",
+                  (str(guild_id),))
+        rows = c.fetchall()
+        conn.close()
+        return {u: (s, la) for u, s, la in rows}
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 時間帯別アクティビティ（VC秒・チャット数を1時間バケットで蓄積）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def log_activity(self, guild_id, user_id, kind, amount, epoch):
+        ts_hour = int(epoch) // 3600
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO activity_log (guild_id, user_id, kind, ts_hour, amount)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, kind, ts_hour)
+                DO UPDATE SET amount = amount + ?""",
+            (str(guild_id), str(user_id), kind, ts_hour, int(amount), int(amount)))
+        conn.commit()
+        conn.close()
+
+    def rank_activity(self, guild_id, kind, since_hour, limit=10):
+        """(user_id, 合計) を多い順に返す。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""SELECT user_id, SUM(amount) AS total FROM activity_log
+                WHERE guild_id=? AND kind=? AND ts_hour>=?
+                GROUP BY user_id ORDER BY total DESC LIMIT ?""",
+            (str(guild_id), kind, int(since_hour), int(limit)))
+        rows = c.fetchall()
+        conn.close()
+        return [(u, t) for u, t in rows]
+
+    def activity_buckets(self, guild_id, kind, since_hour):
+        """(ts_hour, 合計) をサーバー全体で時間バケットごとに返す（グラフ用）。"""
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""SELECT ts_hour, SUM(amount) FROM activity_log
+                WHERE guild_id=? AND kind=? AND ts_hour>=?
+                GROUP BY ts_hour ORDER BY ts_hour ASC""",
+            (str(guild_id), kind, int(since_hour)))
+        rows = c.fetchall()
+        conn.close()
+        return [(int(h), int(a)) for h, a in rows]
+
+    def prune_activity(self, before_hour):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM activity_log WHERE ts_hour < ?", (int(before_hour),))
+        conn.commit()
+        conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # LINE（bot内メッセージ）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def add_line_message(self, guild_id, from_id, to_id, body, ts):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""INSERT INTO line_messages (guild_id, from_id, to_id, body, ts)
+                VALUES (?, ?, ?, ?, ?)""",
+            (str(guild_id), str(from_id), str(to_id), body, ts))
+        conn.commit()
+        conn.close()
+
+    def get_line_inbox(self, guild_id, to_id, limit=15):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""SELECT id, from_id, body, ts, is_read FROM line_messages
+                WHERE guild_id=? AND to_id=? ORDER BY id DESC LIMIT ?""",
+            (str(guild_id), str(to_id), int(limit)))
+        rows = c.fetchall()
+        conn.close()
+        return rows
+
+    def line_unread_count(self, guild_id, to_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""SELECT COUNT(*) FROM line_messages
+                WHERE guild_id=? AND to_id=? AND is_read=0""",
+            (str(guild_id), str(to_id)))
+        n = c.fetchone()[0]
+        conn.close()
+        return n
+
+    def mark_line_all_read(self, guild_id, to_id):
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""UPDATE line_messages SET is_read=1
+                WHERE guild_id=? AND to_id=? AND is_read=0""",
+            (str(guild_id), str(to_id)))
+        conn.commit()
+        conn.close()

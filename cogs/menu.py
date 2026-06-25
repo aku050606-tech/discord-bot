@@ -82,7 +82,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
             "🎣　**釣り**　　　── 湖・川・海／図鑑／釣具屋\n"
             "🃏　**カジノ**　　── BJ・ポーカー・チンチロ 他\n"
             "📜　**クエスト**　── 今日の任務をこなして稼ぐ\n"
-            "💰　**ウォレット**── 残高・送金・ランキング\n"
+            "📱　**スマホ**── 銀行（残高/送金）・LINE・ツイッター\n"
             "🎮　**募集**　　　── VALO・LoL 等の募集を立てる"
         ),
         inline=False,
@@ -137,15 +137,11 @@ class MainMenuView(discord.ui.View):
         )
         await interaction.response.edit_message(embed=embed, view=CasinoMenuView(uid))
 
-    @discord.ui.button(label="💰 ウォレット", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="📱 スマホ", style=discord.ButtonStyle.secondary, row=2)
     async def wallet(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        uid = str(interaction.user.id)
-        guild_id = str(interaction.guild.id)
-        bal = db.get_balance(uid, guild_id)
-        embed = discord.Embed(title="💰 ウォレット", color=discord.Color.gold())
-        embed.add_field(name="現在の残高", value=f"**{bal:,}** ナトコイン", inline=False)
-        await interaction.response.edit_message(embed=embed, view=WalletMenuView(uid))
+        from cogs.phone import open_phone
+        await open_phone(interaction, str(interaction.user.id))
 
     # ── 3段目：もらう系（緑で統一）＋ウォレット ──
     @discord.ui.button(label="🎁 デイリー受取", style=discord.ButtonStyle.success, row=2)
@@ -167,6 +163,12 @@ class MainMenuView(discord.ui.View):
         if not await self._check(interaction): return
         from cogs.quests import open_quests
         await open_quests(interaction, str(interaction.user.id))
+
+    @discord.ui.button(label="📊 アクティビティ", style=discord.ButtonStyle.secondary, row=1)
+    async def activity(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.activitystats import open_stats
+        await open_stats(interaction, str(interaction.user.id))
 
     @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=1)
     async def lfg(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -681,10 +683,11 @@ class WalletMenuView(discord.ui.View):
             color=discord.Color.blue())
         await interaction.response.edit_message(embed=embed, view=SendSelectView(uid, guild_id, remaining))
 
-    @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        await go_home(interaction, self.user_id)
+        from cogs.phone import open_phone
+        await open_phone(interaction, self.user_id)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
