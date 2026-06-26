@@ -7,6 +7,7 @@ import random
 import asyncio
 from datetime import datetime, timezone, timedelta
 from cogs.embed_utils import pad_embed
+from cogs import fish_assets as FA
 import weather as W
 from quest_tracker import record as quest_record
 
@@ -149,9 +150,9 @@ class NPCView(discord.ui.View):
         await interaction.response.edit_message(embed=build_fish_menu_embed(), view=FishMenuView(self.uid))
 
 
-def pick_effect_by_rarity(rarity: str) -> str:
-    """結果のレアリティに応じて演出テキストを抽選（FISHING_EFFECT_POOL）。
-    フェイント・不意打ち・確定演出はこのプールの％で表現される。"""
+def pick_effect_by_rarity(rarity: str):
+    """結果のレアリティに応じて演出を抽選（FISHING_EFFECT_POOL）。
+    返り値: (key, text)。key は情景画像の対応付けに使う。"""
     pool = FISHING_EFFECT_POOL.get(rarity, FISHING_EFFECT_POOL["common"])
     total = sum(p for _, p in pool)
     r = random.random() * total
@@ -159,8 +160,9 @@ def pick_effect_by_rarity(rarity: str) -> str:
     for key, p in pool:
         cumulative += p
         if r < cumulative:
-            return FISHING_EFFECTS.get(key, FISHING_EFFECTS["common_1"])
-    return FISHING_EFFECTS.get(pool[-1][0], FISHING_EFFECTS["common_1"])
+            return key, FISHING_EFFECTS.get(key, FISHING_EFFECTS["common_1"])
+    lastkey = pool[-1][0]
+    return lastkey, FISHING_EFFECTS.get(lastkey, FISHING_EFFECTS["common_1"])
 
 def pick_rarity_direct(rod_id: str) -> str:
     """竿別レアリティ出率テーブル（FISHING_RARITY）からレアリティを決定"""
@@ -277,8 +279,8 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     weather_key = wx["key"]
     weather_limited = wx.get("limited", False)
 
-    # 結果のレアリティに応じて演出テキストを選択（見せ方のみ。フェイント/確定込み）
-    effect_text = pick_effect_by_rarity(rarity)
+    # 結果のレアリティに応じて演出を選択（見せ方のみ。フェイント/確定込み）
+    effect_key, effect_text = pick_effect_by_rarity(rarity)
 
     # 主（ぬし）の影：コモンを釣った時だけ抽選。リールで出現率UP
     reel = FISHING_REELS[gear["reel_id"]]
@@ -392,10 +394,15 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     display_name = f"大きな{fish['name']}" if is_golden else fish["name"]
     display_emoji = "👑" if is_golden else fish["emoji"]
 
-    # 演出表示（中間なし：演出→待機→結果）
+    # 演出表示（情景画像＋SE文字。文字説明はなし、情景で見せる）
     # 当たり待ち中はレア度が分からないよう中立色で統一（結果表示はレアリティ色）
-    embed1 = discord.Embed(description=effect_text, color=SUSPENSE_COLOR)
+    embed1 = discord.Embed(color=SUSPENSE_COLOR)
     embed1.set_footer(text=area_info["name"])
+    scene = FA.scene_url(effect_key)
+    if scene:
+        embed1.set_image(url=scene)
+    else:
+        embed1.description = effect_text  # 画像が無い時はテキストにフォールバック
     pad_embed(embed1, target_fields=4)
 
     if edit:
@@ -404,6 +411,15 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
         await interaction.response.send_message(embed=embed1, view=None)
 
     await asyncio.sleep(wait_time)
+
+    # SR以上：カード開示の前に「プレミア影」で溜める
+    if rarity in ("super_rare", "legend"):
+        shadow_embed = discord.Embed(color=SUSPENSE_COLOR)
+        shadow_embed.set_image(url=FA.shadow_url())
+        shadow_embed.set_footer(text=area_info["name"])
+        pad_embed(shadow_embed, target_fields=4)
+        await interaction.edit_original_response(embed=shadow_embed, view=None)
+        await asyncio.sleep(FISHING_SHADOW_WAIT)
 
     # 結果表示
     embed3 = discord.Embed(color=color)
@@ -446,6 +462,11 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
     rod_uses = int(gear["rod_uses"]) if gear["rod_uses"] < 999999 else "∞"
     embed3.description = desc
+    # 結果カード画像（用意できてる魚だけ。無ければテキストのみ）
+    if rarity != "trash":
+        card = FA.card_url(fish["name"], rarity)
+        if card:
+            embed3.set_image(url=card)
     embed3.set_footer(text=f"残高: {new_bal:,} ナトコイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
     pad_embed(embed3, target_fields=4)
 
