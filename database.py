@@ -123,6 +123,25 @@ class Database:
             user_id TEXT, guild_id TEXT, dm_notify INTEGER DEFAULT 0,
             PRIMARY KEY (user_id, guild_id)
         )""")
+        # ── 解放ファンド（コミュニティ募金で次コンテンツ解放）──
+        c.execute("""CREATE TABLE IF NOT EXISTS community_fund (
+            guild_id TEXT, goal_key TEXT, total INTEGER DEFAULT 0, unlocked INTEGER DEFAULT 0,
+            PRIMARY KEY (guild_id, goal_key)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS fund_contrib (
+            guild_id TEXT, goal_key TEXT, user_id TEXT, amount INTEGER DEFAULT 0,
+            PRIMARY KEY (guild_id, goal_key, user_id)
+        )""")
+        # ── 魚名リネーム移行（冪等）──
+        # 湖 super_rare「アリゲーターガー」→「アロワナ」。最初からアロワナだった扱いにする。
+        # 川の「アリゲーターガー幼魚」は文字列が異なるため影響なし。
+        for tbl in ("zukan", "zukan_crown"):
+            c.execute(
+                f"UPDATE OR IGNORE {tbl} SET fish_name = 'アロワナ' WHERE fish_name = 'アリゲーターガー'"
+            )
+            # OR IGNORE で衝突した残骸（万一アロワナ既存時）を掃除
+            c.execute(f"DELETE FROM {tbl} WHERE fish_name = 'アリゲーターガー'")
+
         conn.commit()
         conn.close()
         print(f"✅ データベース初期化完了（保存先: {self.path}）")
@@ -823,3 +842,59 @@ class Database:
             (str(user_id), str(guild_id), 1 if enabled else 0, 1 if enabled else 0))
         conn.commit()
         conn.close()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 解放ファンド（コミュニティ募金）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def get_fund(self, guild_id, goal_key):
+        """(total, unlocked) を返す。未作成なら (0, False)。"""
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT total, unlocked FROM community_fund WHERE guild_id=? AND goal_key=?",
+                  (str(guild_id), goal_key))
+        row = c.fetchone(); conn.close()
+        return (row[0], bool(row[1])) if row else (0, False)
+
+    def is_fund_unlocked(self, guild_id, goal_key):
+        return self.get_fund(guild_id, goal_key)[1]
+
+    def add_fund_contribution(self, guild_id, goal_key, user_id, amount):
+        """募金を加算。新しい累積額を返す。"""
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("""INSERT INTO community_fund (guild_id, goal_key, total)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, goal_key) DO UPDATE SET total = total + ?""",
+            (str(guild_id), goal_key, amount, amount))
+        c.execute("""INSERT INTO fund_contrib (guild_id, goal_key, user_id, amount)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, goal_key, user_id) DO UPDATE SET amount = amount + ?""",
+            (str(guild_id), goal_key, str(user_id), amount, amount))
+        c.execute("SELECT total FROM community_fund WHERE guild_id=? AND goal_key=?",
+                  (str(guild_id), goal_key))
+        total = c.fetchone()[0]
+        conn.commit(); conn.close()
+        return total
+
+    def set_fund_unlocked(self, guild_id, goal_key):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("""INSERT INTO community_fund (guild_id, goal_key, total, unlocked)
+                VALUES (?, ?, 0, 1)
+                ON CONFLICT(guild_id, goal_key) DO UPDATE SET unlocked = 1""",
+            (str(guild_id), goal_key))
+        conn.commit(); conn.close()
+
+    def get_user_fund_contribution(self, guild_id, goal_key, user_id):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT amount FROM fund_contrib WHERE guild_id=? AND goal_key=? AND user_id=?",
+                  (str(guild_id), goal_key, str(user_id)))
+        row = c.fetchone(); conn.close()
+        return row[0] if row else 0
+
+    def get_fund_contributors(self, guild_id, goal_key, limit=10):
+        """[(user_id, amount), ...] を多い順に返す。"""
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("""SELECT user_id, amount FROM fund_contrib
+                WHERE guild_id=? AND goal_key=? AND amount > 0
+                ORDER BY amount DESC LIMIT ?""",
+            (str(guild_id), goal_key, limit))
+        rows = c.fetchall(); conn.close()
+        return [(r[0], r[1]) for r in rows]

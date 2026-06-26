@@ -58,7 +58,8 @@ async def show_rod_shop(interaction: discord.Interaction):
 
     AREA_LABEL = {"lake": "🏞️湖", "river": "🏔️川", "sea": "🌊海"}
     for rod_id, rod in FISHING_RODS.items():
-        inv_uses = gear["rod_inventory"].get(rod_id, 0)
+        # 装備中は能動カウンタ(rod_uses)が真値。非装備はインベントリ値。
+        inv_uses = gear["rod_uses"] if gear["rod_id"] == rod_id else gear["rod_inventory"].get(rod_id, 0)
         status = f"所持中（耐久 {int(inv_uses)}）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["rod_id"] == rod_id else ""
         price_str = "無料" if rod["price"] == 0 else f"{rod['price']:,}ナトコイン"
@@ -95,7 +96,7 @@ async def show_reel_shop(interaction: discord.Interaction):
     embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在: {FISHING_REELS[gear['reel_id']]['name']}（残り{gear['reel_uses'] if gear['reel_uses'] < 999999 else '∞'}回）")
 
     for reel_id, reel in FISHING_REELS.items():
-        inv_uses = gear["reel_inventory"].get(reel_id, 0)
+        inv_uses = gear["reel_uses"] if gear["reel_id"] == reel_id else gear["reel_inventory"].get(reel_id, 0)
         status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["reel_id"] == reel_id else ""
         price_str = "無料" if reel["price"] == 0 else f"{reel['price']:,}ナトコイン"
@@ -127,7 +128,7 @@ async def show_line_shop(interaction: discord.Interaction):
     embed.set_footer(text=f"残高: {bal:,} ナトコイン | 現在: {FISHING_LINES[gear['line_id']]['name']}（残り{gear['line_uses'] if gear['line_uses'] < 999999 else '∞'}回）")
 
     for line_id, line in FISHING_LINES.items():
-        inv_uses = gear["line_inventory"].get(line_id, 0)
+        inv_uses = gear["line_uses"] if gear["line_id"] == line_id else gear["line_inventory"].get(line_id, 0)
         status = f"所持中（残り{inv_uses}回）" if inv_uses > 0 else "未所持"
         equipped = "✅ 装備中" if gear["line_id"] == line_id else ""
         price_str = "無料" if line["price"] == 0 else f"{line['price']:,}ナトコイン"
@@ -161,18 +162,21 @@ async def show_equip(interaction: discord.Interaction):
         inline=False
     )
 
-    # 所持品一覧
+    # 所持品一覧（装備中は能動カウンタが真値）
     rod_inv = []
     for rod_id, uses in gear["rod_inventory"].items():
-        rod_inv.append(f"{FISHING_RODS[rod_id]['name']}（耐久 {int(uses)}）{'✅' if gear['rod_id'] == rod_id else ''}")
+        u = gear["rod_uses"] if gear["rod_id"] == rod_id else uses
+        rod_inv.append(f"{FISHING_RODS[rod_id]['name']}（耐久 {int(u)}）{'✅' if gear['rod_id'] == rod_id else ''}")
 
     reel_inv = []
     for reel_id, uses in gear["reel_inventory"].items():
-        reel_inv.append(f"{FISHING_REELS[reel_id]['name']}（{uses}回）{'✅' if gear['reel_id'] == reel_id else ''}")
+        u = gear["reel_uses"] if gear["reel_id"] == reel_id else uses
+        reel_inv.append(f"{FISHING_REELS[reel_id]['name']}（{u}回）{'✅' if gear['reel_id'] == reel_id else ''}")
 
     line_inv = []
     for line_id, uses in gear["line_inventory"].items():
-        line_inv.append(f"{FISHING_LINES[line_id]['name']}（{uses}回）{'✅' if gear['line_id'] == line_id else ''}")
+        u = gear["line_uses"] if gear["line_id"] == line_id else uses
+        line_inv.append(f"{FISHING_LINES[line_id]['name']}（{u}回）{'✅' if gear['line_id'] == line_id else ''}")
 
     if rod_inv:
         embed.add_field(name="🎋 所持中の竿", value="\n".join(rod_inv), inline=False)
@@ -228,8 +232,14 @@ class BuyRodButton(discord.ui.Button):
         gear = db.get_gear(self.uid)
         inv = gear["rod_inventory"]
 
-        if self.rod_id in inv:
-            # 既に所持→耐久を加算
+        if self.rod_id == gear["rod_id"]:
+            # 装備中 → 能動カウンタ(rod_uses)に加算し、インベントリも同期
+            base = 0 if gear["rod_uses"] >= 999999 else gear["rod_uses"]
+            gear["rod_uses"] = base + self.rod["uses"]
+            inv[self.rod_id] = gear["rod_uses"]
+            msg = f"✅ {self.rod['name']}を購入！\n耐久 {int(gear['rod_uses'])} になりました！"
+        elif self.rod_id in inv:
+            # 既に所持（非装備）→ 耐久を加算
             inv[self.rod_id] += self.rod["uses"]
             msg = f"✅ {self.rod['name']}を購入！\n耐久 {int(inv[self.rod_id])} になりました！"
         else:
@@ -279,7 +289,12 @@ class BuyReelButton(discord.ui.Button):
         gear = db.get_gear(self.uid)
         inv = gear["reel_inventory"]
 
-        if self.reel_id in inv:
+        if self.reel_id == gear["reel_id"]:
+            base = 0 if gear["reel_uses"] >= 999999 else gear["reel_uses"]
+            gear["reel_uses"] = base + self.reel["uses"]
+            inv[self.reel_id] = gear["reel_uses"]
+            msg = f"✅ {self.reel['name']}を購入！\n残り回数: {gear['reel_uses']}回になりました！"
+        elif self.reel_id in inv:
             inv[self.reel_id] += self.reel["uses"]
             msg = f"✅ {self.reel['name']}を購入！\n残り回数: {inv[self.reel_id]}回になりました！"
         else:
@@ -329,7 +344,12 @@ class BuyLineButton(discord.ui.Button):
         gear = db.get_gear(self.uid)
         inv = gear["line_inventory"]
 
-        if self.line_id in inv:
+        if self.line_id == gear["line_id"]:
+            base = 0 if gear["line_uses"] >= 999999 else gear["line_uses"]
+            gear["line_uses"] = base + self.line["uses"]
+            inv[self.line_id] = gear["line_uses"]
+            msg = f"✅ {self.line['name']}を購入！\n残り回数: {gear['line_uses']}回になりました！"
+        elif self.line_id in inv:
             inv[self.line_id] += self.line["uses"]
             msg = f"✅ {self.line['name']}を購入！\n残り回数: {inv[self.line_id]}回になりました！"
         else:

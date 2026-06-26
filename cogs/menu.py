@@ -723,17 +723,8 @@ class FishMenuView(discord.ui.View):
         from config import FISHING_RODS, rod_warns_here
         gear = db.get_gear(self.user_id)
         rod = FISHING_RODS[gear["rod_id"]]
-        # 行けない竿はここで弾く（do_fish前にUXよく）
-        if rod.get("sea_ban") and area == "sea":
-            await interaction.response.send_message(
-                f"❌ 今の竿「{rod['name']}」では🌊海に行けません。海にはカーボンロッド以上が必要です（/shop）。",
-                ephemeral=True)
-            return
-        if rod.get("river_ban") and area == "river":
-            await interaction.response.send_message(
-                f"❌ 今の竿「{rod['name']}」では🏔️川に行けません。川にはグラスロッド以上が必要です（/shop）。",
-                ephemeral=True)
-            return
+        # 入場自体は妨げない。竿が不適なら実際に釣ろうとした時(do_fish)に
+        # 「この竿だと釣れない」とアナウンスが出る方針。
         # 得意エリア外なら「得しない」警告を挟む
         if rod_warns_here(gear["rod_id"], area):
             await interaction.response.edit_message(
@@ -743,16 +734,12 @@ class FishMenuView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_spot_menu_embed(area), view=SpotMenuView(area, self.user_id))
 
-    @discord.ui.button(label="⚓ 危険海域", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="⚓ さびれた港", style=discord.ButtonStyle.danger, row=0)
     async def danger_zone(self, interaction: discord.Interaction, button: discord.ui.Button):
-        import random as _r
-        lines = [
-            "船がないとここには行けないぞ…どこまで泳ぐつもりだ？",
-            "ここから先は船がなけりゃ話にならん。波に呑まれて魚の餌になりたいのか？",
-            "危険海域…？　まだお前にゃ早い。第一、船はどうした。泳いで渡る気か？",
-            "船も無しに来る奴があるか。命がいくつあっても足りんぞ、ここはな。",
-        ]
-        await interaction.response.send_message(_r.choice(lines), ephemeral=True)
+        if not await self._check(interaction): return
+        # 未解放：伝説の釣り人＋支援　／　解放後：港ハブ（危険水域・ショップ）
+        from cogs.fund import open_port
+        await open_port(interaction, self.user_id, "danger_zone")
 
     @discord.ui.button(label="🌤️ 天気予報士", style=discord.ButtonStyle.secondary, row=1)
     async def forecaster(self, interaction: discord.Interaction, button: discord.ui.Button):

@@ -25,6 +25,8 @@ EFFECT_SCENE = {
 }
 
 # ── 魚名 → 個別カードのスラッグ（用意できてる分だけ。無い魚はテキストのみ）──
+# 注: card_url は魚名だけで引く（エリア非依存）。同名魚（アカメ等が湖・川両方に存在）も
+#     同じカードを共用するので接頭辞なしスラッグで登録する。
 CARD_SLUG_BY_NAME = {
     # 海 legend
     "ホホジロザメ": "sea_legend_great_white",
@@ -36,6 +38,39 @@ CARD_SLUG_BY_NAME = {
     "ダイオウイカ": "sea_super_giant_squid",
     "タカアシガニ": "sea_super_spider_crab",
     "メガマウスザメ": "sea_super_megamouth",
+    # 湖 legend
+    "幻のイトウ": "lake_legend_huchen",
+    "ガーパイク": "lake_legend_gar",
+    "黄金のコイ": "lake_legend_golden_carp",
+    # 湖 super_rare
+    "ダントウボウ": "lake_super_dantoubou",
+    "アロワナ": "lake_super_arowana",
+    # 湖・川 共用 super_rare（同名なので接頭辞なしで共用）
+    "アカメ": "akame",
+    "ビワコオオナマズ": "biwa_catfish",
+    "オオウナギ": "giant_eel",
+    # 川 super_rare
+    "ベルーガ幼魚": "river_super_beluga_juvenile",
+    "タイメン": "river_super_taimen",
+    "オオカワウソ": "river_super_giant_otter",
+    # 川 legend
+    "ゴライアスタイガーフィッシュ": "river_legend_goliath_tigerfish",
+    "ベルーガ": "river_legend_beluga",
+    "ブルシャーク": "river_legend_bull_shark",
+}
+
+# ── エリアボス → カード（通常時）──
+BOSS_CARD = {
+    "lake":  "lake_boss_nessie",
+    "river": "river_boss_kraken",
+    "sea":   "sea_boss_megalodon",
+}
+
+# ── 赤い月の主（血月ボス）→ カード ──
+BLOODMOON_BOSS_CARD = {
+    "lake":  "lake_bloodmoon_eye",
+    "river": "river_bloodmoon_serpent",
+    "sea":   "sea_bloodmoon_king",
 }
 
 # 下位共通カード（全エリア兼用）。ドット版生成済み（.png）。
@@ -65,6 +100,13 @@ def treasure_map_url():
 def storm_chest_url():
     """嵐の宝箱の結果カード。"""
     return f"{RAW_BASE}cards/storm_chest.png"
+
+def boss_card_url(area: str, is_blood_moon: bool = False):
+    """エリアボス／血月ボスの結果カード。無ければ None（画像なし）。"""
+    table = BLOODMOON_BOSS_CARD if is_blood_moon else BOSS_CARD
+    slug = table.get(area)
+    return f"{RAW_BASE}cards/{slug}.png" if slug else None
+
 
 def card_url(fish_name: str, rarity: str):
     """個別カード優先 → 下位共通 → なければ None（テキストのみ）。"""

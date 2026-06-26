@@ -156,11 +156,14 @@ class PhoneHomeView(discord.ui.View):
             embed=build_twitter_embed(interaction.guild),
             view=TwitterView(self.user_id))
 
-    @discord.ui.button(label="🏠 メインメニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
-    async def home(self, interaction, button):
+    @discord.ui.button(label="❌ 閉じる", style=discord.ButtonStyle.secondary, row=2)
+    async def close(self, interaction, button):
         if not await self._check(interaction): return
-        from cogs.menu import go_home
-        await go_home(interaction, self.user_id)
+        # スマホは本人専用のephemeral別窓。メインメニューはそのまま残ってるので、
+        # ここでは本メニューへ飛ばさず、この窓を閉じる（操作不能化）。
+        await interaction.response.edit_message(
+            content="📱 スマホを閉じました。",
+            embed=None, view=None)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ LINE ━━

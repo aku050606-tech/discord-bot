@@ -5,6 +5,7 @@ from database import Database
 from config import *
 import random
 import asyncio
+import time
 from datetime import datetime, timezone, timedelta
 from cogs.embed_utils import pad_embed
 from cogs import fish_assets as FA
@@ -34,7 +35,7 @@ def build_fish_menu_embed():
         f"{G}🏞️ 湖   {K}…… {W}10 ナトコイン   {K}竹竿でOK{X}\n"
         f"{G}🏔️ 川   {K}…… {W}50 ナトコイン   {K}グラス竿以上{X}\n"
         f"{G}🌊 海   {K}…… {W}100 ナトコイン  {K}カーボン竿以上{X}\n"
-        f"{G}⚓ 危険海域 {K}…… {W}一獲千金、されど高リスク{X}\n"
+        f"{G}⚓ さびれた港 {K}…… {W}寂れた遠洋の港跡…？{X}\n"
         "\n"
         f"{B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━{X}\n"
         f"{C}🌤️ 天気予報士  🎣 怪しい釣り人{X}\n"
@@ -176,35 +177,59 @@ def pick_rarity_direct(rod_id: str) -> str:
     return "common"
 
 def pick_fish(area: str, rarity: str, weather_key: str = None):
-    """通常プールから1匹。限定天候なら一定確率(LIMITED_FISH_RATE)で限定魚、
-    それ以外は通常魚（＝通常魚も出つつ限定魚も混ざる）。
+    """そのレアリティの「通常魚」と（特殊天候なら）その天候の「限定魚」を
+    同じ確率で混ぜて1匹選ぶ。＝既存の魚もちゃんと釣れるし、限定魚も同列で混ざる。
+    レアリティ自体の出率は竿テーブルで決まるので天候では変わらない。
     返り値: (fish_dict, is_limited)"""
-    if weather_key and random.random() < LIMITED_FISH_RATE:
+    normal = [f for f in FISH_BY_AREA[area] if f["rarity"] == rarity]
+    limited = []
+    if weather_key:
         lim = LIMITED_FISH.get(area, {}).get(weather_key)
         if lim:
-            cand = [f for f in lim if f["rarity"] == rarity]
-            if cand:
-                return random.choice(cand), True
-    candidates = [f for f in FISH_BY_AREA[area] if f["rarity"] == rarity]
-    if not candidates:
-        candidates = [f for f in FISH_BY_AREA[area] if f["rarity"] == "common"]
-    return random.choice(candidates), False
+            limited = [f for f in lim if f["rarity"] == rarity]
+    pool = normal + limited
+    if not pool:  # 念のためのフォールバック
+        pool = [f for f in FISH_BY_AREA[area] if f["rarity"] == "common"]
+    chosen = random.choice(pool)
+    return chosen, (chosen in limited)
 
-active_fishing: set = set()  # 釣り中のユーザーID
+active_fishing: dict = {}      # uid -> 開始時刻（釣り中ロック）
+FISHING_LOCK_TTL = 30.0        # 秒。これを超えた残骸ロックは無視して掃除する（スタック対策）
+
+def _is_fishing(uid: str) -> bool:
+    """釣り中ロックの判定。古すぎるロックは残骸とみなして自動解除する。"""
+    t = active_fishing.get(uid)
+    if t is None:
+        return False
+    if time.monotonic() - t > FISHING_LOCK_TTL:
+        active_fishing.pop(uid, None)   # 演出中に落ちて残ったロックを掃除
+        return False
+    return True
 
 async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, edit: bool = False):
+    """釣りロックを必ず確保/解除するラッパー。本体は _do_fish_impl。
+    演出中に例外（トークン失効・メッセージ削除等）が出ても finally で確実に解除する。"""
+    uid = str(interaction.user.id)
+    # 連打防止（残骸ロックは _is_fishing が自動で掃除する）
+    if _is_fishing(uid):
+        try:
+            await interaction.response.send_message("⏳ 釣り中です...", ephemeral=True)
+        except discord.InteractionResponded:
+            pass
+        return
+    active_fishing[uid] = time.monotonic()
+    try:
+        await _do_fish_impl(interaction, area, spot, edit)
+    finally:
+        active_fishing.pop(uid, None)   # 成功・失敗・例外いずれでも必ず解除
+
+async def _do_fish_impl(interaction: discord.Interaction, area: str, spot: int = 1, edit: bool = False):
     uid = str(interaction.user.id)
     guild_id = str(interaction.guild.id)
 
-    # 連打防止
-    if uid in active_fishing:
-        await interaction.response.send_message("⏳ 釣り中です...", ephemeral=True)
-        return
-    active_fishing.add(uid)
-
     # エラーは必ず本人だけに表示し、釣りメニュー（共有メッセージ）はそのまま残す
     async def _send_error(msg: str):
-        active_fishing.discard(uid)
+        active_fishing.pop(uid, None)
         await interaction.response.send_message(msg, ephemeral=True)
 
     area_info = FISHING_AREAS[area]
@@ -213,18 +238,18 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     # 装備取得
     gear = db.get_gear(uid)
 
-    # エリア禁止チェック（どの竿で行けるかを明示）
+    # 竿の適性チェック：不適な竿では「釣れない」アナウンスを出す（入場自体は妨げない）
     rod = FISHING_RODS[gear["rod_id"]]
     if rod.get("sea_ban") and area == "sea":
         await _send_error(
-            f"❌ 今の竿「{rod['name']}」では🌊海に行けません。\n"
-            f"海にはカーボンロッド以上が必要です（/shop で購入）。"
+            f"⚠️ 今の竿「{rod['name']}」だと🌊海ではまともに釣れない…。\n"
+            f"針を垂らしても何も食ってこない。海で狙うならカーボンロッド以上が必要だ（/shop で購入）。"
         )
         return
     if rod.get("river_ban") and area == "river":
         await _send_error(
-            f"❌ 今の竿「{rod['name']}」では🏔️川に行けません。\n"
-            f"川にはグラスロッド以上が必要です（/shop で購入）。"
+            f"⚠️ 今の竿「{rod['name']}」だと🏔️川ではまともに釣れない…。\n"
+            f"流れに負けて当たりすら取れない。川で狙うならグラスロッド以上が必要だ（/shop で購入）。"
         )
         return
 
@@ -278,6 +303,58 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     wx = W.get_weather(area, spot)
     weather_key = wx["key"]
     weather_limited = wx.get("limited", False)
+
+    # ── 嵐の宝箱（独立抽選）──
+    # 嵐の日は一定確率でこの一投が「宝箱だけ」になる。
+    # 魚は釣れない代わりに、宝箱が専用カード＆演出で堂々と登場する。
+    if weather_key == "storm" and random.random() < STORM_CHEST_RATE:
+        total_w = sum(t["weight"] for t in STORM_TREASURES)
+        rr = random.random() * total_w
+        acc = 0; chosen = STORM_TREASURES[-1]
+        for t in STORM_TREASURES:
+            acc += t["weight"]
+            if rr < acc:
+                chosen = t; break
+        chest_reward = random.randint(chosen["min"], chosen["max"])
+        db.update_balance(uid, guild_id, chest_reward)
+        chest_new = db.add_zukan(uid, "storm_treasure", chosen["name"])
+        db.set_last_area(uid, area)
+        new_bal = db.get_balance(uid, guild_id)
+
+        # 演出：嵐の中の溜め → 宝箱カード開示
+        embed1 = discord.Embed(color=SUSPENSE_COLOR,
+                               description="⛈️ 荒れ狂う波間に、何かが揺れている…！")
+        embed1.set_footer(text=area_info["name"])
+        pad_embed(embed1, target_fields=4)
+        if edit:
+            await interaction.response.edit_message(embed=embed1, view=None)
+        else:
+            await interaction.response.send_message(embed=embed1, view=None)
+        await asyncio.sleep(FISHING_WAIT_SUPER)
+
+        embed_c = discord.Embed(title="⛈️📦 嵐の宝箱を発見！", color=0xf1c40f)
+        cdesc = (f"{chosen['emoji']} **{chosen['name']}**\n"
+                 f"_{chosen['desc']}_\n\n"
+                 f"換金額: **+{chest_reward:,} ナトコイン**")
+        if chest_new:
+            cdesc += "\n🏆 **お宝図鑑に新しく登録されました！**"
+        embed_c.description = cdesc
+        embed_c.set_image(url=FA.storm_chest_url())
+        rod_name = FISHING_RODS[gear["rod_id"]]["name"]
+        rod_uses = int(gear["rod_uses"]) if gear["rod_uses"] < 999999 else "∞"
+        embed_c.set_footer(text=f"残高: {new_bal:,} ナトコイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
+
+        view = FishResultView(area, False, uid, guild_id, weather_key, spot)
+        await interaction.edit_original_response(embed=embed_c, view=view)
+        active_fishing.pop(uid, None)
+
+        # 1万以上は大勝利アナウンス（閾値判定は announce_big_win 側＝config基準）
+        if chest_reward > 0:
+            from cogs.bigwin import announce_big_win
+            await announce_big_win(interaction, interaction.user, "釣り（嵐の宝箱）",
+                                   chest_reward, balance=new_bal,
+                                   detail="⛈️📦 嵐の宝箱から大当たり！")
+        return
 
     # 結果のレアリティに応じて演出を選択（見せ方のみ。フェイント/確定込み）
     effect_key, effect_text = pick_effect_by_rarity(rarity)
@@ -363,25 +440,6 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
             new_bal = db.get_balance(uid, guild_id)
             bonus_msg += f"\n🌟 **全図鑑コンプリート！** +{ZUKAN_ALL_BONUS:,} ナトコイン！！"
 
-    # ── 嵐の宝箱（結果descに合流。新規interaction応答は作らない）──
-    chest_msg = ""
-    if weather_key == "storm" and random.random() < STORM_CHEST_RATE:
-        total_w = sum(t["weight"] for t in STORM_TREASURES)
-        rr = random.random() * total_w
-        acc = 0; chosen = STORM_TREASURES[-1]
-        for t in STORM_TREASURES:
-            acc += t["weight"]
-            if rr < acc:
-                chosen = t; break
-        chest_reward = random.randint(chosen["min"], chosen["max"])
-        db.update_balance(uid, guild_id, chest_reward)
-        chest_new = db.add_zukan(uid, "storm_treasure", chosen["name"])
-        new_bal = db.get_balance(uid, guild_id)
-        chest_msg = (f"\n\n⛈️📦 **嵐の宝箱！** {chosen['emoji']} {chosen['name']} を発見！"
-                     f"\n+{chest_reward:,} ナトコイン！")
-        if chest_new:
-            chest_msg += "\n🏆 **お宝図鑑に新しく登録！**"
-
     # ウェイト時間（レア度に応じて：SR以上は長めの溜め）
     wait_time = FISHING_WAIT_SUPER if rarity in ("super_rare", "legend") else FISHING_WAIT_NORMAL
 
@@ -454,8 +512,6 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
 
     if bonus_msg:
         desc += bonus_msg
-    if chest_msg:
-        desc += chest_msg
 
     # 装備残り回数表示
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
@@ -478,7 +534,7 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
 
     view = FishResultView(area, show_shadow, uid, guild_id, weather_key, spot)
     await interaction.edit_original_response(embed=embed3, view=view)
-    active_fishing.discard(uid)
+    active_fishing.pop(uid, None)
 
     # 換金額が大きい、またはレジェンドを釣ったらBOT告知（魚名はネタバレなので出さない）
     if rarity != "trash" and value > 0:
@@ -562,11 +618,13 @@ class ShadowChoiceView(discord.ui.View):
             reward = bdata["value"]
             succ_mult = bdata.get("success_mult", 1.0)
             zukan_key = self.area + "_bloodmoon"
+            is_bm = True
         else:
             boss = AREA_BOSS[self.area]
             reward = BOSS_REWARD
             succ_mult = 1.0
             zukan_key = self.area
+            is_bm = False
 
         # ライン装備で成功率UP（赤月主は succ_mult で難度補正）
         gear = db.get_gear(self.uid)
@@ -583,6 +641,9 @@ class ShadowChoiceView(discord.ui.View):
                 description=f"伝説の生物が釣れた！！！\n換金額: **{reward:,} ナトコイン**\n残高: **{new_bal:,} ナトコイン**",
                 color=discord.Color.red()
             )
+            bcard = FA.boss_card_url(self.area, is_blood_moon=is_bm)
+            if bcard:
+                embed.set_image(url=bcard)
             boss_caught = True
         else:
             embed = discord.Embed(

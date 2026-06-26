@@ -640,12 +640,12 @@ RARITY_COLORS = {
 # 竿別レアリティ出率テーブル（1キャストあたり・合計1.0）
 # レア度は「竿」だけで決まる（エリアで変わるのは釣れる魚種と売値のみ）。
 # このテーブルの数値を書き換えるだけでバランス調整できる。
-#   レア以上計: 竹4.3% / グラス7.5% / カーボン11.5% / チタン16% / 伝説22%
-#   レジェンドは竹・グラスでは出ない（0%）。
+#   レア以上計: 竹4.8% / グラス8.5% / カーボン11.5% / チタン16% / 伝説22%
+#   竹SR0.5%・レジェ0.3%／グラスSR1%・レジェ0.5%（スターター竿でも夢あり。上位は据え置き）。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FISHING_RARITY = {
-    "bamboo":   {"trash":0.330, "common":0.407,  "uncommon":0.220, "rare":0.040, "super_rare":0.003, "legend":0.000},
-    "glass":    {"trash":0.290, "common":0.385,  "uncommon":0.250, "rare":0.070, "super_rare":0.005, "legend":0.000},
+    "bamboo":   {"trash":0.325, "common":0.407,  "uncommon":0.220, "rare":0.040, "super_rare":0.005, "legend":0.003},
+    "glass":    {"trash":0.280, "common":0.385,  "uncommon":0.250, "rare":0.070, "super_rare":0.010, "legend":0.005},
     "carbon":   {"trash":0.260, "common":0.3675, "uncommon":0.260, "rare":0.100, "super_rare":0.010, "legend":0.0025},
     "titanium": {"trash":0.230, "common":0.345,  "uncommon":0.270, "rare":0.130, "super_rare":0.020, "legend":0.005},
     "legend":   {"trash":0.200, "common":0.320,  "uncommon":0.270, "rare":0.170, "super_rare":0.030, "legend":0.010},
@@ -793,7 +793,7 @@ LAKE_FISH = [
     {"name":"ピラルク", "rarity":"rare", "value":120, "emoji":"🐟"},
     # --- super_rare ---
     {"name":"ダントウボウ", "rarity":"super_rare", "value":200, "emoji":"🐟"},
-    {"name":"アリゲーターガー", "rarity":"super_rare", "value":300, "emoji":"🐊"},
+    {"name":"アロワナ", "rarity":"super_rare", "value":300, "emoji":"🐉"},
     {"name":"ビワコオオナマズ", "rarity":"super_rare", "value":450, "emoji":"🐡"},
     {"name":"オオウナギ", "rarity":"super_rare", "value":600, "emoji":"🐍"},
     {"name":"アカメ", "rarity":"super_rare", "value":950, "emoji":"🐟"},
@@ -981,11 +981,11 @@ LIMITED_FISH = {
 # 嵐の宝箱（中身はコイン化＋お宝図鑑 storm_treasure に登録）
 STORM_CHEST_RATE = 0.05
 STORM_TREASURES = [
-    {"name":"濡れた小銭袋","rarity":"並","min":800,"max":1500,"weight":38,"emoji":"💰","desc":"波に流れ着いた小銭の入った革袋。湿っている"},
-    {"name":"古い金貨","rarity":"並","min":1500,"max":3000,"weight":30,"emoji":"🪙","desc":"苔むした沈没船から零れた一枚。刻印は読めない"},
-    {"name":"沈没船の宝石","rarity":"レア","min":3000,"max":6000,"weight":20,"emoji":"💎","desc":"嵐で砕けた船倉から流れ出た原石。鈍く光る"},
-    {"name":"海賊の金塊","rarity":"レア","min":6000,"max":12000,"weight":9,"emoji":"🥇","desc":"どこぞの海賊が隠した延べ棒。ずっしり重い"},
-    {"name":"伝説の財宝","rarity":"激レア","min":15000,"max":30000,"weight":3,"emoji":"🏆","desc":"嵐の夜にのみ浮上すると伝わる財宝箱。本物だ"},
+    {"name":"濡れた小銭袋","rarity":"並","min":800,"max":1500,"weight":40,"emoji":"💰","desc":"波に流れ着いた小銭の入った革袋。湿っている"},
+    {"name":"古い金貨","rarity":"並","min":1500,"max":2800,"weight":30,"emoji":"🪙","desc":"苔むした沈没船から零れた一枚。刻印は読めない"},
+    {"name":"沈没船の宝石","rarity":"レア","min":2800,"max":5000,"weight":19,"emoji":"💎","desc":"嵐で砕けた船倉から流れ出た原石。鈍く光る"},
+    {"name":"海賊の金塊","rarity":"レア","min":5000,"max":8000,"weight":8,"emoji":"🥇","desc":"どこぞの海賊が隠した延べ棒。ずっしり重い"},
+    {"name":"伝説の財宝","rarity":"激レア","min":10000,"max":14000,"weight":3,"emoji":"🏆","desc":"嵐の夜にのみ浮上すると伝わる財宝箱。本物だ"},
 ]
 
 # 赤月主（赤い月の夜のみ各エリアの主とスワップ）
@@ -993,4 +993,22 @@ BLOOD_MOON_BOSS = {
   "lake": {"name":"緋眼の主","emoji":"👁️","value":120000,"success_mult":1.0,"desc":"赤い月の夜、湖底から緋色の眼だけが浮かび上がる。古老が見るなと戒めた湖の主。"},
   "river": {"name":"紅鱗の蛇神","emoji":"🐍","value":180000,"success_mult":1.0,"desc":"赤月に照らされた渓流を遡る、血色の鱗を持つ大蛇のごとき魚。捕えた者は富を得ると伝わる。"},
   "sea": {"name":"緋海の古王","emoji":"👑","value":300000,"success_mult":0.6,"desc":"赤い月が満ちる夜、深海より浮上する太古の王。その姿を見た船乗りは二度と戻らぬという。"},
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 解放ファンド（コミュニティ募金で次コンテンツ解放）
+#   みんなで貯めて目標額に到達するとサーバー全体で解放される。
+#   将来このリストに項目を足せば段階解放できる（順序は dict 順）。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FUND_GOALS = {
+    "danger_zone": {
+        "name": "⚓ さびれた港 再興",
+        "goal": 2_000_000,
+        "emoji": "⚓",
+        "desc": ("遥か先の二つの海への **遠征港** を取り戻す大計画。\n"
+                 "船を仕立て、未知の海へ漕ぎ出そう。"),
+        "unlock_title": "🌊⚓ さびれた港、再興ッ！！",
+        "unlock_msg": ("サーバーの総力で **さびれた港** がよみがえった！\n"
+                       "🧊 氷獄海・🔥 煉獄海への遠征が、ついに可能に…！"),
+    },
 }

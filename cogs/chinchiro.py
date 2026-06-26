@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from config import CHINCHIRO_MULT, CHINCHIRO_MIN_BET, CHINCHIRO_MAX_BET
+from quest_tracker import record as quest_record
 import random
 import asyncio
 from datetime import date
@@ -166,7 +167,7 @@ class ChinchiroAIView(discord.ui.View):
         self.rolling = True
         await interaction.response.defer()
         try:
-            await self._play(interaction)
+            await player_throw(interaction, self.user_id, self.guild_id, self.bet, attempt=1)
         finally:
             self.rolling = False
 
@@ -188,87 +189,177 @@ class ChinchiroAIView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=ChinchiroModeView(self.bet))
 
     async def _play(self, interaction: discord.Interaction):
-        uid, gid, bet = self.user_id, self.guild_id, self.bet
+        # 後方互換のため残置（現在は player_throw / resolve_vs_ai を使用）
+        await player_throw(interaction, self.user_id, self.guild_id, self.bet, attempt=1)
 
-        # プレイヤー（目なしは最大3回振り直し。3回でも目なし＝ションベンで負け扱い）
-        p_dice, p_score, p_label, p_kind = roll_with_reroll()
-        # AI
-        a_dice, a_score, a_label, a_kind = roll_with_reroll()
 
-        # ── サイコロを1個ずつめくる演出（あなた → AI）──
-        await animate_reveal(interaction, "🎲 チンチロ vs AI",
-                             "あなた", p_dice, p_label, "AI", a_dice, a_label)
+# ── プレイヤーの手動投げ（目なしのみ最大3投・各投を手動の振り直しボタンで）──
+MENASHI_MAX = 3
 
-        # ── 決着（出目どおりに判定。改ざんは一切しない）──
-        embed = discord.Embed(title="🎲 チンチロ vs AI", color=discord.Color.blue())
-        embed.add_field(name="あなた", value=f"{dice_str(p_dice)}\n{p_label}", inline=True)
-        embed.add_field(name="AI", value=f"{dice_str(a_dice)}\n{a_label}", inline=True)
+async def animate_player_throw(interaction, p_dice, p_label, attempt, delay=0.55):
+    """プレイヤーの1投を壺振り→1個ずつ開示。"""
+    name = "あなた" if attempt == 1 else f"あなた（{attempt}投目）"
+    def emb(shown, done=False, note=None):
+        e = discord.Embed(title="🎲 チンチロ vs AI", color=discord.Color.blue())
+        if note:
+            e.description = note
+        v = dice_reveal(p_dice, shown) + (f"\n{p_label}" if done else "")
+        e.add_field(name=name, value=v, inline=False)
+        return e
+    for frame in random.sample(SHAKE_FRAMES, 3):
+        await interaction.edit_original_response(embed=emb(0, note=f"**{frame}**"), view=None)
+        await asyncio.sleep(delay * 0.7)
+    for i in range(1, 4):
+        await interaction.edit_original_response(embed=emb(i, note="🎲 **あなた** の出目…！"), view=None)
+        await asyncio.sleep(delay)
+    await interaction.edit_original_response(embed=emb(3, done=True), view=None)
+    await asyncio.sleep(delay * 0.7)
 
-        outcome = decide(p_score, a_score)
-        bankrupt = False
 
-        if outcome == "win":
-            mult = settle_multiplier(p_kind, a_kind)
-            winnings = bet * mult                                 # 役倍率を反映（テラ銭なし）
-            db.update_balance(uid, gid, bet + winnings)           # 賭け金返却＋丸取り
-            net = winnings
-            mtxt = f"　{p_label}　**×{mult}倍**" if mult > 1 else f"　{p_label}（等倍）"
-            result = f"🎉 勝ち！{mtxt}\n内訳: {bet:,} × {mult} = +{winnings:,} ナトコイン"
-        elif outcome == "lose":
-            mult = settle_multiplier(a_kind, p_kind)
-            owed = bet * (mult - 1)                               # 賭け金は開始時に消費済み。追加で払う分
-            bal = db.get_balance(uid, gid)                        # 賭け金を引いた後の残高
-            if owed > bal:
-                # ── 払えない → 怖い人。残高0＆本日出禁 ──
-                lost_all = bet + bal
-                db.set_balance(uid, gid, 0)
-                db.ban_chinchiro_today(uid, gid, today_str())
-                net = -lost_all
-                bankrupt = True
-                mtxt = f" ×{mult}倍" if mult > 1 else ""
-                result = f"😱 AIの勝ち{mtxt} ── 払えない！"
-            else:
-                if owed > 0:
-                    db.update_balance(uid, gid, -owed)
-                net = -(bet + owed)
-                mtxt = f" ×{mult}倍" if mult > 1 else ""
-                result = f"😢 負け... AIの勝ち{mtxt}"
+async def animate_ai_reveal(interaction, p_dice, p_label, a_dice, a_label, delay=0.6):
+    """プレイヤーの出目は確定表示のまま、AIの出目を1個ずつ開示。"""
+    def emb(rs, r_done=False, note=None):
+        e = discord.Embed(title="🎲 チンチロ vs AI", color=discord.Color.blue())
+        if note:
+            e.description = note
+        e.add_field(name="あなた", value=f"{dice_str(p_dice)}\n{p_label}", inline=True)
+        rv = dice_reveal(a_dice, rs) + (f"\n{a_label}" if r_done else "　")
+        e.add_field(name="AI", value=rv, inline=True)
+        return e
+    await interaction.edit_original_response(embed=emb(0, note="**…AIの番だ…！**"), view=None)
+    await asyncio.sleep(delay)
+    for i in range(1, 4):
+        await interaction.edit_original_response(embed=emb(i, note="🎲 **AI** の出目…！"), view=None)
+        await asyncio.sleep(delay)
+    await interaction.edit_original_response(embed=emb(3, r_done=True), view=None)
+    await asyncio.sleep(delay * 0.7)
+
+
+async def player_throw(interaction, uid, gid, bet, attempt):
+    """プレイヤーの1投。目なしかつ3投未満なら手動の振り直しボタンを出す。"""
+    p_dice = roll_dice()
+    p_score, p_label, p_kind = evaluate(p_dice)
+    await animate_player_throw(interaction, p_dice, p_label, attempt)
+
+    if p_kind != "menashi" or attempt >= MENASHI_MAX:
+        # 出目確定（3投しても目なし＝ションベンで負け扱いのまま決着）
+        await resolve_vs_ai(interaction, uid, gid, bet, p_dice, p_score, p_label, p_kind)
+        return
+
+    # 目なし → 手動で振り直し（次の投へ）
+    embed = discord.Embed(
+        title="🎲 チンチロ vs AI",
+        description=(f"{dice_str(p_dice)}\n**目なし…！** もう一度振れる "
+                     f"（{attempt}/{MENASHI_MAX}投）\n\n3投しても目が出なければ"
+                     f"ションベン（負け）だ。"),
+        color=discord.Color.orange())
+    await interaction.edit_original_response(
+        embed=embed, view=ChinchiroRerollView(uid, gid, bet, attempt + 1))
+
+
+async def resolve_vs_ai(interaction, uid, gid, bet, p_dice, p_score, p_label, p_kind):
+    """AIが振って決着・精算する。"""
+    # AI（目なしは最大3回自動振り直し）
+    a_dice, a_score, a_label, a_kind = roll_with_reroll()
+
+    # AIの出目を1個ずつめくる演出
+    await animate_ai_reveal(interaction, p_dice, p_label, a_dice, a_label)
+
+    embed = discord.Embed(title="🎲 チンチロ vs AI", color=discord.Color.blue())
+    embed.add_field(name="あなた", value=f"{dice_str(p_dice)}\n{p_label}", inline=True)
+    embed.add_field(name="AI", value=f"{dice_str(a_dice)}\n{a_label}", inline=True)
+
+    outcome = decide(p_score, a_score)
+    bankrupt = False
+
+    if outcome == "win":
+        mult = settle_multiplier(p_kind, a_kind)
+        winnings = bet * mult                                 # 役倍率を反映（テラ銭なし）
+        db.update_balance(uid, gid, bet + winnings)           # 賭け金返却＋丸取り
+        net = winnings
+        mtxt = f"　{p_label}　**×{mult}倍**" if mult > 1 else f"　{p_label}（等倍）"
+        result = f"🎉 勝ち！{mtxt}\n内訳: {bet:,} × {mult} = +{winnings:,} ナトコイン"
+    elif outcome == "lose":
+        mult = settle_multiplier(a_kind, p_kind)
+        owed = bet * (mult - 1)                               # 賭け金は開始時に消費済み。追加で払う分
+        bal = db.get_balance(uid, gid)                        # 賭け金を引いた後の残高
+        if owed > bal:
+            # ── 払えない → 怖い人。残高0＆本日出禁 ──
+            lost_all = bet + bal
+            db.set_balance(uid, gid, 0)
+            db.ban_chinchiro_today(uid, gid, today_str())
+            net = -lost_all
+            bankrupt = True
+            mtxt = f" ×{mult}倍" if mult > 1 else ""
+            result = f"😱 AIの勝ち{mtxt} ── 払えない！"
         else:
-            db.update_balance(uid, gid, bet)                      # 引き分けは賭け金返却
-            net = 0
-            result = "🤝 引き分け！"
+            if owed > 0:
+                db.update_balance(uid, gid, -owed)
+            net = -(bet + owed)
+            mtxt = f" ×{mult}倍" if mult > 1 else ""
+            result = f"😢 負け... AIの勝ち{mtxt}"
+    else:
+        db.update_balance(uid, gid, bet)                      # 引き分けは賭け金返却
+        net = 0
+        result = "🤝 引き分け！"
 
-        new_bal = db.get_balance(uid, gid)
+    new_bal = db.get_balance(uid, gid)
 
-        if bankrupt:
-            # 追い出し演出（リプレイ不可）
-            embed.color = discord.Color.dark_red()
-            embed.add_field(name="結果", value=f"{result}\n{net:,} ナトコイン", inline=False)
-            embed.add_field(name="\u200b", value=KICKED_LINES, inline=False)
-            embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
-            await interaction.edit_original_response(embed=embed, view=_KickedView())
-            return
-
-        embed.color = discord.Color.gold() if net > 0 else discord.Color.red() if net < 0 else discord.Color.blue()
-        embed.add_field(
-            name="結果",
-            value=f"{result}\n{'+' if net >= 0 else ''}{net:,} ナトコイン",
-            inline=False
-        )
+    if bankrupt:
+        # 追い出し演出（リプレイ不可）
+        embed.color = discord.Color.dark_red()
+        embed.add_field(name="結果", value=f"{result}\n{net:,} ナトコイン", inline=False)
+        embed.add_field(name="\u200b", value=KICKED_LINES, inline=False)
         embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
+        await interaction.edit_original_response(embed=embed, view=_KickedView())
+        return
 
-        view = ChinchiroAgainView(uid, gid, bet)
-        if net > 0:
-            from cogs.doubleup import build_entry_view
-            view = build_entry_view(uid, gid, net, "チンチロ",
-                                    lambda: ChinchiroAgainView(uid, gid, bet))
-        await interaction.edit_original_response(embed=embed, view=view)
+    embed.color = discord.Color.gold() if net > 0 else discord.Color.red() if net < 0 else discord.Color.blue()
+    embed.add_field(
+        name="結果",
+        value=f"{result}\n{'+' if net >= 0 else ''}{net:,} ナトコイン",
+        inline=False
+    )
+    embed.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
 
-        # 勝ち額が大きければBOT告知
-        if net > 0:
-            from cogs.bigwin import announce_big_win
-            await announce_big_win(interaction, interaction.user, "チンチロ",
-                                   net, balance=new_bal, detail=p_label)
+    view = ChinchiroAgainView(uid, gid, bet)
+    if net > 0:
+        from cogs.doubleup import build_entry_view
+        view = build_entry_view(uid, gid, net, "チンチロ",
+                                lambda: ChinchiroAgainView(uid, gid, bet))
+    await interaction.edit_original_response(embed=embed, view=view)
+
+    # 勝ち額が大きければBOT告知
+    if net > 0:
+        from cogs.bigwin import announce_big_win
+        await announce_big_win(interaction, interaction.user, "チンチロ",
+                               net, balance=new_bal, detail=p_label)
+
+
+class ChinchiroRerollView(discord.ui.View):
+    """目なし時の手動振り直しボタン。"""
+    def __init__(self, user_id: str, guild_id: str, bet: int, attempt: int):
+        super().__init__(timeout=900)
+        self.user_id = user_id
+        self.guild_id = guild_id
+        self.bet = bet
+        self.attempt = attempt
+        self.rolling = False
+
+    @discord.ui.button(label="🎲 振り直す", style=discord.ButtonStyle.primary)
+    async def reroll(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
+            return
+        if self.rolling:
+            await interaction.response.send_message("⏳ 処理中です...", ephemeral=True)
+            return
+        self.rolling = True
+        await interaction.response.defer()
+        try:
+            await player_throw(interaction, self.user_id, self.guild_id, self.bet, self.attempt)
+        finally:
+            self.rolling = False
 
 class ChinchiroAgainView(discord.ui.View):
     def __init__(self, user_id: str, guild_id: str, bet: int):
@@ -293,6 +384,9 @@ class ChinchiroAgainView(discord.ui.View):
             await interaction.response.send_message(f"❌ ナトコインが足りません（残高: {bal:,}）", ephemeral=True)
             return
         db.update_balance(self.user_id, self.guild_id, -self.bet)
+        # 「もう一回」も1プレイ＝クエスト加算（初回はmenu側の賭け金確定で記録される）
+        quest_record(self.user_id, self.guild_id, "casino")
+        quest_record(self.user_id, self.guild_id, "chinchiro")
         embed = discord.Embed(title="🎲 チンチロ vs AI", description="サイコロを振ってください！", color=discord.Color.blue())
         embed.set_footer(text=f"賭け: {self.bet:,} ナトコイン")
         view = ChinchiroAIView(self.user_id, self.guild_id, self.bet)
