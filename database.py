@@ -271,23 +271,23 @@ class Database:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def add_send_log(self, user_id, guild_id, amount):
-        from datetime import date
+        from config import jst_today_str
         conn = self.get_conn()
         c = conn.cursor()
         c.execute(
             "INSERT INTO send_log (user_id, guild_id, amount, sent_date) VALUES (?, ?, ?, ?)",
-            (user_id, guild_id, amount, str(date.today())),
+            (user_id, guild_id, amount, jst_today_str()),
         )
         conn.commit()
         conn.close()
 
     def get_today_sent(self, user_id, guild_id):
-        from datetime import date
+        from config import jst_today_str
         conn = self.get_conn()
         c = conn.cursor()
         c.execute(
             "SELECT COALESCE(SUM(amount), 0) FROM send_log WHERE user_id = ? AND guild_id = ? AND sent_date = ?",
-            (user_id, guild_id, str(date.today())),
+            (user_id, guild_id, jst_today_str()),
         )
         total = c.fetchone()[0]
         conn.close()

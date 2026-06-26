@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from config import CHINCHIRO_MULT, CHINCHIRO_MIN_BET, CHINCHIRO_MAX_BET
+from config import CHINCHIRO_MULT, CHINCHIRO_MIN_BET, CHINCHIRO_MAX_BET, jst_today_str
 from quest_tracker import record as quest_record
 import random
 import asyncio
@@ -11,7 +11,7 @@ from datetime import date
 db = Database()
 
 def today_str() -> str:
-    return date.today().isoformat()
+    return jst_today_str()
 
 # 払えず追い出されたときの演出（怖い人）
 KICKED_LINES = (

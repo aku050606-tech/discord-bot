@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import random
 from datetime import date
+from config import jst_today, jst_today_str
 
 FORTUNES = [
     ("大吉", discord.Color.gold(), "🌟", "最高の一日になりそう！何でも積極的に挑戦しよう！"),
@@ -33,7 +34,7 @@ class Fortune(commands.Cog):
     @app_commands.command(name="fortune", description="今日の運勢を占う")
     async def fortune(self, interaction: discord.Interaction):
         # ユーザーID + 日付でシードを固定（1日1回同じ結果）
-        seed = int(str(interaction.user.id) + str(date.today()).replace("-", ""))
+        seed = int(str(interaction.user.id) + jst_today_str().replace("-", ""))
         rng = random.Random(seed)
 
         name, color, emoji, message = rng.choice(FORTUNES)
@@ -59,7 +60,7 @@ class Fortune(commands.Cog):
         embed.add_field(name="🍀 ラッキーアイテム", value=lucky_item, inline=True)
         embed.add_field(name="🎨 ラッキーカラー", value=lucky_color, inline=True)
         embed.add_field(name="🔢 ラッキーナンバー", value=str(lucky_number), inline=True)
-        embed.set_footer(text=f"📅 {date.today()} の運勢（毎日更新）")
+        embed.set_footer(text=f"📅 {jst_today_str()} の運勢（毎日更新）")
 
         await interaction.response.send_message(embed=embed)
 

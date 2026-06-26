@@ -73,7 +73,7 @@ PRO_MISS = [
 
 
 def _today():
-    return str(date.today())
+    return jst_today_str()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from datetime import date
-from config import DAILY_AMOUNT
+from config import DAILY_AMOUNT, jst_today_str
 from quest_tracker import record as quest_record
 
 db = Database()
@@ -26,7 +26,7 @@ class Economy(commands.Cog):
     async def daily(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         guild_id = str(interaction.guild.id)
-        today = str(date.today())
+        today = jst_today_str()
         last = db.get_last_daily(user_id, guild_id)
 
         if last == today:

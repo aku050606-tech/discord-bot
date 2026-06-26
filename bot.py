@@ -1,10 +1,14 @@
 import os
 import time
-# ── タイムゾーンを JST に固定（日替わりリセットを全て 0:00 JST に統一）──
-#   date.today() / naive な datetime.now() がこの設定に従う。
-#   明示的に tz 指定している箇所（logger=UTC, weather=UTC, rewards=JST）は影響を受けない。
+# ── タイムゾーン補助（保険）──
+#   日替わりリセットは config.jst_today() の固定オフセット(+9)で判定しており、
+#   システムTZやtzdataの有無に依存しない（Nixpacksにtzdataが無くても正しく0時JSTで切替）。
+#   下の tzset はログ等の naive な時刻表示を一応JST寄りにするだけの保険。
 os.environ["TZ"] = "Asia/Tokyo"
-time.tzset()
+try:
+    time.tzset()
+except Exception:
+    pass
 
 import discord
 from discord.ext import commands

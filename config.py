@@ -2,6 +2,24 @@
 # 全体設定ファイル
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+# ── 日替わりの基準日（JST固定オフセット）──
+#   Railway(Nixpacks)のコンテナには tzdata が無いことがあり、TZ=Asia/Tokyo を
+#   指定しても解決できず黙ってUTCにフォールバックする。すると date.today() が
+#   UTCになり、日替わりが JST 9時(=UTC 0時)にズレる。
+#   日本はサマータイム無し＝+9固定で常に正しいので、tzdataに依存しないこの方式を
+#   全ての日替わり判定の単一ソースにする（釣り/weather/rewardsと同じ作法に統一）。
+from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+JST = _tz(_td(hours=9))
+
+def jst_today():
+    """JST(日本時間)基準の今日の日付(date)。日替わり判定はすべてこれを使う。"""
+    return _dt.now(JST).date()
+
+def jst_today_str() -> str:
+    """JST基準の今日の日付を 'YYYY-MM-DD' 文字列で返す。"""
+    return jst_today().isoformat()
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 管理者設定（このIDのユーザーだけ /admin を操作できる）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -41,10 +59,9 @@ SLOT_BET = 60
 HIGH_SETTING_DAY_DIGITS = (1, 3, 7)
 
 def is_high_setting_day(today=None):
-    """その日が『設定6が1台入る熱い日（末尾1/3/7）』かどうか"""
-    from datetime import date
+    """その日が『設定6が1台入る熱い日（末尾1/3/7）』かどうか（JST基準）"""
     if today is None:
-        today = date.today()
+        today = jst_today()
     return (today.day % 10) in HIGH_SETTING_DAY_DIGITS
 
 def get_daily_machines(today=None):
@@ -52,10 +69,9 @@ def get_daily_machines(today=None):
     ・末尾 1/3/7 の日 : 設定6を1台 + 設定2〜5（=設定1なし）
     ・それ以外の日     : 設定1〜5を1台ずつ
     """
-    from datetime import date
     import random as _r
     if today is None:
-        today = date.today()
+        today = jst_today()
     rng = _r.Random(int(str(today).replace("-", "")))
     if is_high_setting_day(today):
         settings = [6, 2, 3, 4, 5]   # 設定6を1台、設定1は無し
@@ -402,10 +418,9 @@ def get_daily_jugglers(today=None):
     ・末尾 1/3/7 の日 : 設定6を1台 + 設定2〜5（設定1なし）
     ・それ以外の日     : 設定1〜5を1台ずつ
     """
-    from datetime import date
     import random as _r
     if today is None:
-        today = date.today()
+        today = jst_today()
     # GRAVITASと被らないようシードをずらす（+77）
     rng = _r.Random(int(str(today).replace("-", "")) + 77)
     if is_high_setting_day(today):

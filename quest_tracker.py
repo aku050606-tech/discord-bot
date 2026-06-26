@@ -6,6 +6,7 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import random
 from datetime import date
+from config import jst_today_str
 from database import Database
 
 db = Database()
@@ -38,7 +39,7 @@ DAILY_RANDOM_COUNT = 3   # ランダムプールから毎日選ぶ数
 
 
 def _today() -> str:
-    return str(date.today())
+    return jst_today_str()
 
 
 def get_daily_pool_keys(today: str = None):

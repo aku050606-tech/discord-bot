@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone, timedelta, date
 import discord
 from database import Database
-from config import DAILY_AMOUNT
+from config import DAILY_AMOUNT, jst_today_str
 
 db = Database()
 JST = timezone(timedelta(hours=9))
@@ -30,7 +30,7 @@ def build_phone_embed(user, guild) -> discord.Embed:
     gid = str(guild.id)
     bal = db.get_balance(str(user.id), gid)
     unread = db.line_unread_count(gid, str(user.id))
-    daily_done = db.get_last_daily(str(user.id), gid) == str(date.today())
+    daily_done = db.get_last_daily(str(user.id), gid) == jst_today_str()
     now = datetime.now(JST)
     clock = now.strftime("%H:%M")
     batt = 70 + (now.minute % 30)  # 70〜99%で変化（演出）
@@ -122,7 +122,7 @@ class PhoneHomeView(discord.ui.View):
     async def daily(self, interaction, button):
         if not await self._check(interaction): return
         gid = str(interaction.guild.id)
-        today = str(date.today())
+        today = jst_today_str()
         if db.get_last_daily(self.user_id, gid) == today:
             await interaction.response.send_message(
                 "⏰ 今日はもう受け取っています！", ephemeral=True)

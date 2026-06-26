@@ -4,7 +4,7 @@ from discord import app_commands
 from database import Database
 from datetime import date, datetime, timezone, timedelta
 import random
-from config import DAILY_AMOUNT, DAILY_SEND_LIMIT
+from config import DAILY_AMOUNT, DAILY_SEND_LIMIT, jst_today_str
 from quest_tracker import record as quest_record
 import quest_tracker as QT
 
@@ -22,7 +22,7 @@ async def check_user(interaction: discord.Interaction, user_id: str) -> bool:
 
 
 def _daily_claimable(user_id: str, guild_id: str) -> bool:
-    return db.get_last_daily(user_id, guild_id) != str(date.today())
+    return db.get_last_daily(user_id, guild_id) != jst_today_str()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
