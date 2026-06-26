@@ -38,9 +38,9 @@ CARD_SLUG_BY_NAME = {
     "メガマウスザメ": "sea_super_megamouth",
 }
 
-# 下位共通カード（全エリア兼用）。用意できてる拡張子で。今はまだドット版未生成なら None 運用可。
+# 下位共通カード（全エリア兼用）。ドット版生成済み（.png）。
 LOW_SHARED = {
-    # "common": "low_common", "uncommon": "low_uncommon", "rare": "low_rare",
+    "common": "low_common", "uncommon": "low_uncommon", "rare": "low_rare",
 }
 
 def scene_url(effect_key: str):
@@ -50,6 +50,22 @@ def scene_url(effect_key: str):
 def shadow_url():
     return f"{RAW_BASE}cards/shadow_premium.jpg"
 
+def nushi_url():
+    """ぬし演出：水中にでかい影が潜む情景。"""
+    return f"{RAW_BASE}scenes/scene_nushi.jpg"
+
+def trash_bag_url():
+    """通常ゴミの結果カード（ゴミ袋）。"""
+    return f"{RAW_BASE}cards/trash_bag.png"
+
+def treasure_map_url():
+    """宝の地図を引いた時の結果カード。"""
+    return f"{RAW_BASE}cards/treasure_map.png"
+
+def storm_chest_url():
+    """嵐の宝箱の結果カード。"""
+    return f"{RAW_BASE}cards/storm_chest.png"
+
 def card_url(fish_name: str, rarity: str):
     """個別カード優先 → 下位共通 → なければ None（テキストのみ）。"""
     slug = CARD_SLUG_BY_NAME.get(fish_name)
@@ -57,5 +73,5 @@ def card_url(fish_name: str, rarity: str):
         return f"{RAW_BASE}cards/{slug}.png"
     low = LOW_SHARED.get(rarity)
     if low:
-        return f"{RAW_BASE}cards/{low}.jpg"
+        return f"{RAW_BASE}cards/{low}.png"
     return None

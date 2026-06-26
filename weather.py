@@ -25,7 +25,7 @@ WEATHER = {
     "storm":     {"name":"嵐","emoji":"⛈️","weight":6,"gate":None,"limited":True,"chest":True},
     "blood_moon":{"name":"赤い月","emoji":"🩸","weight":4,"gate":"night","limited":True,"boss":True},
 }
-WEATHER_UPDATE_MINUTES = 30
+WEATHER_UPDATE_MINUTES = 60
 GATE_PERIODS = {"glow":{"asa","yugata"}, "night":{"yoru","shinya"}}
 
 def _epoch_minutes(now=None):

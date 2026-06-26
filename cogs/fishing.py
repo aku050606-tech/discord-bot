@@ -403,7 +403,7 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
         embed1.set_image(url=scene)
     else:
         embed1.description = effect_text  # 画像が無い時はテキストにフォールバック
-    pad_embed(embed1, target_fields=4)
+        pad_embed(embed1, target_fields=4)
 
     if edit:
         await interaction.response.edit_message(embed=embed1, view=None)
@@ -417,7 +417,6 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
         shadow_embed = discord.Embed(color=SUSPENSE_COLOR)
         shadow_embed.set_image(url=FA.shadow_url())
         shadow_embed.set_footer(text=area_info["name"])
-        pad_embed(shadow_embed, target_fields=4)
         await interaction.edit_original_response(embed=shadow_embed, view=None)
         await asyncio.sleep(FISHING_SHADOW_WAIT)
 
@@ -462,13 +461,20 @@ async def do_fish(interaction: discord.Interaction, area: str, spot: int = 1, ed
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]
     rod_uses = int(gear["rod_uses"]) if gear["rod_uses"] < 999999 else "∞"
     embed3.description = desc
-    # 結果カード画像（用意できてる魚だけ。無ければテキストのみ）
-    if rarity != "trash":
+    # 結果カード画像（用意できてる分だけ。無ければテキストのみ）
+    has_card_img = False
+    if rarity == "trash":
+        if got_map:
+            embed3.set_image(url=FA.treasure_map_url()); has_card_img = True
+        elif not got_rare_trash:   # 通常ゴミ → ゴミ袋（レアごみは画像未定なのでテキスト）
+            embed3.set_image(url=FA.trash_bag_url()); has_card_img = True
+    else:
         card = FA.card_url(fish["name"], rarity)
         if card:
-            embed3.set_image(url=card)
+            embed3.set_image(url=card); has_card_img = True
     embed3.set_footer(text=f"残高: {new_bal:,} ナトコイン | {area_info['name']} | 竿:{rod_name}(耐久{rod_uses})")
-    pad_embed(embed3, target_fields=4)
+    if not has_card_img:
+        pad_embed(embed3, target_fields=4)
 
     view = FishResultView(area, show_shadow, uid, guild_id, weather_key, spot)
     await interaction.edit_original_response(embed=embed3, view=view)
@@ -529,6 +535,7 @@ class ShadowButton(discord.ui.Button):
             description="何か不穏な影が見える...\nこのまま釣竿を垂らしておきますか？",
             color=discord.Color.dark_red()
         )
+        embed.set_image(url=FA.nushi_url())
         await interaction.response.edit_message(embed=embed, view=ShadowChoiceView(self.area, self.uid, self.guild_id, self.weather_key, self.spot))
 
 
