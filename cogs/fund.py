@@ -5,10 +5,17 @@
 import discord
 from discord.ext import commands
 from database import Database
-from config import FUND_GOALS
+from config import FUND_GOALS, ADMIN_USER_IDS
 
 db = Database()
 DEFAULT_GOAL = "danger_zone"
+
+
+def _has_port_access(guild, user, goal_key):
+    """解放済み or admin（テストプレイ用の早期入場）なら港に入れる。"""
+    if db.is_fund_unlocked(str(guild.id), goal_key):
+        return True
+    return str(user.id) in ADMIN_USER_IDS
 
 # 遠征先の正式名（かっこいい名前。釣り人はこれをぼかして語る）
 COOL_SEAS = "🧊 **氷獄海（ひょうごくかい）**　／　🔥 **煉獄海（れんごくかい）**"
@@ -112,30 +119,21 @@ class PortHubView(discord.ui.View):
         self.user_id = str(user_id)
         self.goal_key = goal_key
 
-    @discord.ui.button(label="🌊 危険水域", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="🌊 危険水域（航海）", style=discord.ButtonStyle.danger, row=0)
     async def waters(self, interaction, button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
             return
-        embed = discord.Embed(
-            title="🌊 危険水域 ── 遠征",
-            description=(f"{COOL_SEAS}\n\n"
-                        "船を仕立て、専用の竿を担いで未知の海へ。\n"
-                        "（遠征システムは現在準備中…燃料を焚いて、いずれ漕ぎ出そう）"),
-            color=discord.Color.dark_teal())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        from cogs.voyage import open_voyage
+        await open_voyage(interaction, self.user_id)
 
     @discord.ui.button(label="🏪 総合ショップ", style=discord.ButtonStyle.success, row=0)
     async def shop(self, interaction, button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
             return
-        embed = discord.Embed(
-            title="🏪 港の総合ショップ",
-            description=("🚢 船（3種）と 🎣 専用釣り竿（🔥用3・🧊用3）の売り場。\n"
-                        "（品揃えは現在準備中…）"),
-            color=discord.Color.gold())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        from cogs.voyage import open_voyage
+        await open_voyage(interaction, self.user_id)
 
     @discord.ui.button(label="🚪 立ち去る", style=discord.ButtonStyle.secondary, row=1)
     async def leave(self, interaction, button):
@@ -201,7 +199,7 @@ class ContributeModal(discord.ui.Modal):
 async def open_port(interaction: discord.Interaction, user_id: str = None, goal_key=DEFAULT_GOAL):
     """さびれた港を開く（本人専用ephemeral）。解放状態で表示を分岐。"""
     uid = user_id or str(interaction.user.id)
-    if db.is_fund_unlocked(str(interaction.guild.id), goal_key):
+    if _has_port_access(interaction.guild, interaction.user, goal_key):
         embed = build_port_hub_embed(interaction.guild, goal_key)
         view = PortHubView(uid, goal_key)
     else:

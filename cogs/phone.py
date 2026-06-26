@@ -156,6 +156,15 @@ class PhoneHomeView(discord.ui.View):
             embed=build_twitter_embed(interaction.guild),
             view=TwitterView(self.user_id))
 
+    @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.primary, row=2)
+    async def lfg(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.lfg import CreateView
+        view = CreateView(interaction.user.id)
+        await interaction.response.send_message(
+            embed=view.status_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
+
     @discord.ui.button(label="❌ 閉じる", style=discord.ButtonStyle.secondary, row=2)
     async def close(self, interaction, button):
         if not await self._check(interaction): return

@@ -241,6 +241,20 @@ async def go_home(interaction: discord.Interaction, user_id: str = None):
     await interaction.response.edit_message(embed=embed, view=MainMenuView(uid, str(interaction.guild.id)))
 
 
+async def go_town(interaction: discord.Interaction, user_id: str = None):
+    """ナトタウン（=ホーム本体）へ戻る。go_home と同義。"""
+    await go_home(interaction, user_id)
+
+
+async def _coming_soon(interaction, title):
+    """未実装の棚：準備中アナウンス（本人だけにephemeral）。"""
+    embed = discord.Embed(
+        title=f"🔧 {title} ── 準備中",
+        description="この施設は近日オープン予定。お楽しみに！",
+        color=0x7F8C8D)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ホーム画面
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -249,7 +263,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
     """ホームのembed。user と guild_id があれば残高・デイリー・クエスト状況を表示する。"""
     E = "\u001b"  # ANSIエスケープ
     embed = discord.Embed(
-        title="✦　Ｎ Ａ Ｔ Ｏ　Ｗ Ｏ Ｒ Ｌ Ｄ　✦",
+        title="🏙️　Ｎ Ａ Ｔ Ｏ　Ｔ Ｏ Ｗ Ｎ　🏙️",
         color=0xC8A24B,  # 上質なゴールド
     )
 
@@ -287,12 +301,13 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
     embed.add_field(
         name="〔　Ｍ Ｅ Ｎ Ｕ　〕",
         value=(
-            "🎰　**スロット**　── GRAVITAS GAME を目指せ\n"
             "🎣　**釣り**　　　── 湖から大海原まで大物を狙え！\n"
-            "🃏　**カジノ**　　── 一攫千金を目指せ\n"
-            "📜　**クエスト**　── 今日の任務をこなして稼ぐ\n"
-            "📱　**スマホ**　　── デイリー・便利機能\n"
-            "🎮　**募集**　　　── VALO・LoL 等の募集を立てる"
+            "⚓　**さびれた港**── 海へ繰り出す遠征の拠点\n"
+            "🛒　**商店街**　　── 船・道具・装備・ガチャ\n"
+            "🏛️　**ギルド**　　── 討伐クエストを請け負って稼ぐ\n"
+            "🛤️　**街道**　　　── 森・山・砂漠へ徒歩で冒険\n"
+            "🃏　**カジノ**　　── スロット＆テーブルで一攫千金\n"
+            "📱　**スマホ**　　── 銀行・デイリー・クエスト・募集"
         ),
         inline=False,
     )
@@ -320,56 +335,67 @@ class MainMenuView(discord.ui.View):
     async def _check(self, interaction):
         return await check_user(interaction, self.user_id)
 
-    # ── 1段目：力を入れている2大コンテンツを個別枠で ──
-    @discord.ui.button(label="🎰 スロット", style=discord.ButtonStyle.primary, row=0)
-    async def slot(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.slot import active_slots
-        from cogs.juggler import active_jug, build_kishu_embed, KishuSelectView
-        uid = str(interaction.user.id)
-        g = active_slots.get(uid)
-        jg = active_jug.get(uid)
-        if (g and g.get("spinning")) or (jg and jg.get("spinning")):
-            await interaction.response.send_message(
-                "⏳ 演出の途中です。数秒待ってからもう一度お試しください。", ephemeral=True)
-            return
-        active_slots.pop(uid, None)
-        active_jug.pop(uid, None)
-        await interaction.response.edit_message(embed=build_kishu_embed(), view=KishuSelectView())
-
+    # ── 1段目：今あそべる2大コンテンツ ──
     @discord.ui.button(label="🎣 釣り", style=discord.ButtonStyle.primary, row=0)
     async def fishing(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        uid = str(interaction.user.id)
         from cogs.fishing import build_fish_menu_embed
-        embed = build_fish_menu_embed()
-        await interaction.response.edit_message(embed=embed, view=FishMenuView(uid))
+        await interaction.response.edit_message(
+            embed=build_fish_menu_embed(), view=FishMenuView(str(interaction.user.id)))
 
-    # ── 2段目：その他アクティビティ（灰で統一）──
-    @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="⚓ さびれた港", style=discord.ButtonStyle.primary, row=0)
+    async def port(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.fund import open_port
+        await open_port(interaction, str(interaction.user.id), "danger_zone")
+
+    # ── 2段目：商店街（船・道具・装備・ガチャ）──
+    @discord.ui.button(label="🚢 船屋", style=discord.ButtonStyle.secondary, row=1)
+    async def shipwright(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "船屋")
+
+    @discord.ui.button(label="🛒 道具屋", style=discord.ButtonStyle.secondary, row=1)
+    async def item_shop(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "道具屋")
+
+    @discord.ui.button(label="⚔️ 装備屋", style=discord.ButtonStyle.secondary, row=1)
+    async def equip_shop(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "装備屋")
+
+    @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
+    async def gacha(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "ガチャ屋")
+
+    # ── 3段目：冒険（ギルド・街道）──
+    @discord.ui.button(label="🏛️ ギルド", style=discord.ButtonStyle.secondary, row=2)
+    async def guild(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "ギルド")
+
+    @discord.ui.button(label="🛤️ 街道（陸の冒険）", style=discord.ButtonStyle.secondary, row=2)
+    async def road(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "街道")
+
+    # ── 4段目：カジノ・スマホ ──
+    @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.success, row=3)
     async def casino(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
         await interaction.response.edit_message(embed=build_casino_embed(), view=CasinoMenuView(uid))
 
-    @discord.ui.button(label="📱 スマホ", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="📱 スマホ", style=discord.ButtonStyle.success, row=3)
     async def wallet(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
         from cogs.phone import build_phone_embed, PhoneHomeView
-        # スマホ操作は本人だけに見えるよう、別のephemeralで開く（公開メニューはそのまま）
         await interaction.response.send_message(
             embed=build_phone_embed(interaction.user, interaction.guild),
             view=PhoneHomeView(uid), ephemeral=True)
-
-    # ── 3段目：スマホ ──
-    @discord.ui.button(label="🎮 ゲーム募集", style=discord.ButtonStyle.secondary, row=1)
-    async def lfg(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.lfg import CreateView
-        view = CreateView(interaction.user.id)
-        await interaction.response.send_message(embed=view.status_embed(), view=view, ephemeral=True)
-        view.message = await interaction.original_response()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -466,6 +492,22 @@ class CasinoMenuView(discord.ui.View):
 
     async def _check(self, interaction):
         return await check_user(interaction, self.user_id)
+
+    @discord.ui.button(label="🎰 スロット", style=discord.ButtonStyle.danger, row=0)
+    async def slot(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.slot import active_slots
+        from cogs.juggler import active_jug, build_kishu_embed, KishuSelectView
+        uid = str(interaction.user.id)
+        g = active_slots.get(uid)
+        jg = active_jug.get(uid)
+        if (g and g.get("spinning")) or (jg and jg.get("spinning")):
+            await interaction.response.send_message(
+                "⏳ 演出の途中です。数秒待ってからもう一度お試しください。", ephemeral=True)
+            return
+        active_slots.pop(uid, None)
+        active_jug.pop(uid, None)
+        await interaction.response.edit_message(embed=build_kishu_embed(), view=KishuSelectView())
 
     @discord.ui.button(label="🃏 ブラックジャック", style=discord.ButtonStyle.primary, row=0)
     async def blackjack(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -734,13 +776,6 @@ class FishMenuView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_spot_menu_embed(area), view=SpotMenuView(area, self.user_id))
 
-    @discord.ui.button(label="⚓ さびれた港", style=discord.ButtonStyle.danger, row=0)
-    async def danger_zone(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        # 未解放：伝説の釣り人＋支援　／　解放後：港ハブ（危険水域・ショップ）
-        from cogs.fund import open_port
-        await open_port(interaction, self.user_id, "danger_zone")
-
     @discord.ui.button(label="🌤️ 天気予報士", style=discord.ButtonStyle.secondary, row=1)
     async def forecaster(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
@@ -774,10 +809,10 @@ class FishMenuView(discord.ui.View):
         from cogs.fishing import use_treasure_map
         await use_treasure_map(interaction, edit=True)
 
-    @discord.ui.button(label="🏠 ホームへ戻る", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="◀ ナトタウンへ戻る", style=discord.ButtonStyle.secondary, row=3)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check(interaction): return
-        await go_home(interaction, self.user_id)
+        await go_town(interaction, self.user_id)
 
 
 class SpotMenuView(discord.ui.View):

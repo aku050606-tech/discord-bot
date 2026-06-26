@@ -132,6 +132,10 @@ class Database:
             guild_id TEXT, goal_key TEXT, user_id TEXT, amount INTEGER DEFAULT 0,
             PRIMARY KEY (guild_id, goal_key, user_id)
         )""")
+        # ── ⚓ 航海（船・装備・レベル・航海中状態を1つのJSONブロブで保持）──
+        c.execute("""CREATE TABLE IF NOT EXISTS voyage (
+            user_id TEXT PRIMARY KEY, data TEXT
+        )""")
         # ── 魚名リネーム移行（冪等）──
         # 湖 super_rare「アリゲーターガー」→「アロワナ」。最初からアロワナだった扱いにする。
         # 川の「アリゲーターガー幼魚」は文字列が異なるため影響なし。
@@ -898,3 +902,45 @@ class Database:
             (str(guild_id), goal_key, limit))
         rows = c.fetchall(); conn.close()
         return [(r[0], r[1]) for r in rows]
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ⚓ 航海プロフィール（船・装備・レベル・航海中状態をJSONで保持）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def _default_voyage(self):
+        return {
+            "has_ship": False,
+            "ship_equip": {            # 船装備：tier と現在耐久
+                "cannon": None,        # {"t":int, "dura":int} or None
+                "armor":  None,
+                "hull":   None,        # 船購入時に tier1 が入る
+            },
+            "hull_dura": 0,            # 船本体の耐久
+            "personal": {"weapon": 0, "armor": 0},  # 所持最高tier（0=未所持）
+            "level": 1, "xp": 0,
+            "voyage": None,            # 航海中: {"sea":str,"leg":int,"hold":int,"log":[...]}
+        }
+
+    def get_voyage(self, user_id):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT data FROM voyage WHERE user_id=?", (str(user_id),))
+        row = c.fetchone(); conn.close()
+        if row is None:
+            d = self._default_voyage()
+            self.save_voyage(user_id, d)
+            return d
+        d = json.loads(row[0])
+        # 後方互換：欠けたキーを補完
+        base = self._default_voyage()
+        for k, v in base.items():
+            if k not in d: d[k] = v
+        for k, v in base["ship_equip"].items():
+            if k not in d["ship_equip"]: d["ship_equip"][k] = v
+        for k, v in base["personal"].items():
+            if k not in d["personal"]: d["personal"][k] = v
+        return d
+
+    def save_voyage(self, user_id, data):
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO voyage (user_id, data) VALUES (?, ?)",
+                  (str(user_id), json.dumps(data, ensure_ascii=False)))
+        conn.commit(); conn.close()
