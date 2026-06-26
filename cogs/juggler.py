@@ -57,46 +57,40 @@ def _lamp_kind(bonus) -> str:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# テストモード（admin専用・自分の次スピンの結果を強制）
-#   JUGGLER_FORCE[uid] = "miss"/"reg"/"big"/"frame"/"rainbow"/"random"
-#   OFFにするまで持続。adminメニューから切替。
+# テスト台（admin専用・激甘＝約1/3で当たる。ランプ演出の確認用）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JUGGLER_FORCE: dict[str, str] = {}
-
-TEST_LABELS = {
-    "miss": "ハズレ", "reg": "REG", "big": "BIG（通常）",
-    "frame": "プレミア（枠）", "rainbow": "虹", "random": "ランダム当たり",
-}
+JUGGLER_TEST_HIT_RATE = 1 / 3   # 当たり確率（3回に1回くらい）
 
 
-def set_test_mode(uid, mode):
-    """mode=None でOFF。"""
-    uid = str(uid)
-    if mode is None:
-        JUGGLER_FORCE.pop(uid, None)
+def roll_juggler_test() -> dict:
+    """激甘抽選。約1/3で当たり（BIG多め）。子役払いは無し。"""
+    if random.random() < JUGGLER_TEST_HIT_RATE:
+        bonus = "big" if random.random() < 0.6 else "reg"
     else:
-        JUGGLER_FORCE[uid] = mode
+        bonus = None
+    return {"bonus": bonus, "koyaku": None, "payout": 0}
 
 
-def get_test_mode(uid):
-    return JUGGLER_FORCE.get(str(uid))
-
-
-def _forced_result(mode):
-    """テストモードの強制結果 → (res, lamp)。子役払いは無し。"""
-    if mode == "miss":
-        return {"bonus": None, "koyaku": None, "payout": 0}, "off"
-    if mode == "reg":
-        return {"bonus": "reg", "koyaku": None, "payout": 0}, "on"
-    if mode == "big":
-        return {"bonus": "big", "koyaku": None, "payout": 0}, "on"
-    if mode == "frame":
-        return {"bonus": "big", "koyaku": None, "payout": 0}, "frame"
-    if mode == "rainbow":
-        return {"bonus": "big", "koyaku": None, "payout": 0}, "rainbow"
-    # random当たり：BIG/REGランダム（ランプは通常判定）
-    b = random.choice(["big", "reg"])
-    return {"bonus": b, "koyaku": None, "payout": 0}, _lamp_kind(b)
+async def start_test_table(interaction):
+    """admin専用：激甘テスト台を起動して、その場で打てるようにする。"""
+    uid = str(interaction.user.id)
+    guild_id = str(interaction.guild.id)
+    active_jug[uid] = {
+        "machine": 0, "setting": 6, "guild_id": guild_id,
+        "spinning": False, "sid": uuid.uuid4().hex,
+        "test": True,   # ← 激甘フラグ
+    }
+    bal = db.get_balance(uid, guild_id)
+    e = discord.Embed(
+        title="🧪 テスト台（激甘）",
+        description=("約 **1/3** で当たる確認用の台です。\n"
+                     "普通に回してランプ演出をチェックできます。\n"
+                     "💡 プレミア（枠／虹）はBIGの50%で出ます。"),
+        color=discord.Color.teal(),
+    )
+    e.add_field(name="残高", value=f"{bal:,} ナトコイン", inline=True)
+    pad_embed(e, target_fields=3)
+    await interaction.response.edit_message(embed=e, view=JugglerGameView(uid))
 
 
 def _alive(uid: str, sid: str):
@@ -408,14 +402,9 @@ async def _play_spin(interaction, uid):
     # ベット消費 → 抽選 → 払い出しは先に確定（途中で落ちても保全）
     db.update_balance(uid, guild_id, -JUGGLER_BET)
     quest_record(uid, guild_id, "slot")
-    res = roll_juggler(g["setting"])
-
-    # テストモード（admin専用）：自分の結果を強制
-    force = get_test_mode(uid)
-    if force:
-        res, lamp = _forced_result(force)
-    else:
-        lamp = _lamp_kind(res["bonus"])
+    # テスト台（admin専用・激甘）なら専用抽選
+    res = roll_juggler_test() if g.get("test") else roll_juggler(g["setting"])
+    lamp = _lamp_kind(res["bonus"])
 
     if res["payout"]:
         db.update_balance(uid, guild_id, res["payout"])
