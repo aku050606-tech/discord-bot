@@ -19,6 +19,50 @@ db = Database()
 # ジャグラーのセッション（GRAVITASの active_slots とは別管理）
 active_jug: dict[str, dict] = {}
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# NATOランプ演出（GitHub raw のGIFをembed画像で表示）
+#   毎回URL末尾に ?v=ユニーク を付け、Discordにアニメを頭から再生させる
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAMP_BASE = "https://raw.githubusercontent.com/aku050606-tech/discord-bot/main/assets/"
+LAMP_FILES = {
+    "off":     "nato_off.gif",
+    "blue":    "nato_on_blue.gif",
+    "fast":    "nato_on_fast.gif",
+    "slow":    "nato_on_slow.gif",
+    "rainbow": "nato_on_rainbow.gif",
+}
+# ランプ再生に合わせた待ち時間（点灯しきる＝ボタン復活まで）
+# 点灯(青/先ペカ/虹)・ハズレは統一。遅れだけ長め(3秒)。
+LAMP_WAIT = {
+    "off":     2.2,
+    "blue":    2.2,
+    "fast":    2.2,
+    "slow":    3.4,   # 遅れ＝暗い溜め3秒ぶん長い
+    "rainbow": 2.2,
+}
+
+
+def _lamp_url(kind: str) -> str:
+    return f"{LAMP_BASE}{LAMP_FILES[kind]}?v={uuid.uuid4().hex[:8]}"
+
+
+# BIGのうちプレミア（特別な光り方）が出る割合。プレミア＝BIG確定演出。
+JUGGLER_PREMIUM_RATE = 0.5
+JUGGLER_PREMIUM_LAMPS = ["fast", "slow", "rainbow"]
+
+
+def _lamp_kind(bonus) -> str:
+    """抽選結果→ランプの光り方。
+      ハズレ=off / REG=blue（常に青）
+      BIG=基本blue、JUGGLER_PREMIUM_RATEでプレミア(fast/slow/rainbow)＝BIG確定演出"""
+    if not bonus:
+        return "off"
+    if bonus == "hyper":
+        return "rainbow"
+    if bonus == "big" and random.random() < JUGGLER_PREMIUM_RATE:
+        return random.choice(JUGGLER_PREMIUM_LAMPS)
+    return "blue"
+
 
 def _alive(uid: str, sid: str):
     """演出sleepをまたいでセッション同一性を確認。再起動/作り直し/時間切れなら None。"""
@@ -328,28 +372,15 @@ async def _play_spin(interaction, uid):
 
     # ベット消費 → 抽選 → 払い出しは先に確定（途中で落ちても保全）
     db.update_balance(uid, guild_id, -JUGGLER_BET)
-    quest_record(uid, guild_id, "slot")   # スロットクエスト（GRAVITASと共通カウント）
+    quest_record(uid, guild_id, "slot")
     res = roll_juggler(g["setting"])
     if res["payout"]:
         db.update_balance(uid, guild_id, res["payout"])
 
     bonus = res["bonus"]
-    preemptive = bonus and (random.random() < JUGGLER_PREEMPTIVE_RATE)
+    lamp = _lamp_kind(bonus)
 
-    # ── 先告知：回した瞬間にペカる ──
-    if bonus and preemptive:
-        peka = random.choice(JUGGLER_PEKA_PRE)
-        e = discord.Embed(title="🎰 …", description=f"```\n{_miss_reel()}\n```\n{peka}",
-                          color=discord.Color.from_rgb(255, 200, 0))
-        pad_embed(e, target_fields=3)
-        await render(interaction, uid, e, buttons=False)
-        await asyncio.sleep(JUGGLER_WAIT["peka"])
-        if _alive(uid, sid) is None:
-            return
-        await _reveal_bonus(interaction, uid, bonus)
-        return
-
-    # ── 子役/ハズレ表示（後告知ならこのあとペカる）──
+    # リール表示（子役/ハズレ）＋ ランプGIFを画像で
     if res["koyaku"]:
         disp, reel = _koyaku_info(res["koyaku"])
         reel_str = _reel_str(reel)
@@ -360,47 +391,43 @@ async def _play_spin(interaction, uid):
 
     new_bal = db.get_balance(uid, guild_id)
     e = discord.Embed(title=title, description=f"```\n{reel_str}\n```",
-                      color=discord.Color.blue() if res["payout"] else discord.Color.dark_gray())
+                      color=discord.Color.from_rgb(255, 200, 0) if bonus else discord.Color.dark_gray())
     if res["payout"]:
         e.add_field(name="獲得", value=f"+{res['payout']:,} ナトコイン", inline=True)
     e.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
+    e.set_image(url=_lamp_url(lamp))   # ← ここでランプGIFが暗→点灯（or 暗いまま）
+    pad_embed(e, target_fields=3)
 
-    if bonus:
-        # 後告知：いったん通常表示（ボタン無し）→ ペカる
-        pad_embed(e, target_fields=3)
-        await render(interaction, uid, e, buttons=False)
-        await asyncio.sleep(JUGGLER_WAIT["spin"])
-        if _alive(uid, sid) is None:
-            return
-        peka = random.choice(JUGGLER_PEKA_POST)
-        e2 = discord.Embed(title="💡 ！？", description=f"```\n{reel_str}\n```\n{peka}",
-                           color=discord.Color.from_rgb(255, 200, 0))
-        pad_embed(e2, target_fields=3)
-        await render(interaction, uid, e2, buttons=False)
-        await asyncio.sleep(JUGGLER_WAIT["peka"])
-        if _alive(uid, sid) is None:
-            return
-        await _reveal_bonus(interaction, uid, bonus)
+    # ランプが点灯しきる（or 暗いまま終わる）まで、ボタンを出さずに待つ＝連打防止
+    await render(interaction, uid, e, buttons=False)
+    await asyncio.sleep(LAMP_WAIT[lamp])
+    if _alive(uid, sid) is None:
         return
 
-    # ── 通常ハズレ/子役のみ（ランプ点かず）──
+    # 当たりなら BIG/REG 開示へ。ハズレならここで確定（ボタン復活）
+    if bonus:
+        await _reveal_bonus(interaction, uid, bonus, lamp)
+        return
+
     if not res["payout"]:
         e.description += f"\n{random.choice(JUGGLER_MISS_LINES)}"
-    pad_embed(e, target_fields=3)
+        pad_embed(e, target_fields=3)
     await render(interaction, uid, e)
 
 
-async def _reveal_bonus(interaction, uid, bonus):
+async def _reveal_bonus(interaction, uid, bonus, lamp="blue"):
     """ペカリ後、BIG/REGを後出し開示して純増を付与する。"""
     g = active_jug.get(uid)
     if not g:
         return
     sid = g["sid"]
     guild_id = g["guild_id"]
+    lit_url = _lamp_url(lamp)   # 点灯したランプを開示中も表示
 
     # 種別を伏せたタメ
     e = discord.Embed(title="💡 GOGO!! ", description="**BIG**か **REG**か……！",
                       color=discord.Color.from_rgb(255, 170, 0))
+    e.set_image(url=lit_url)
     pad_embed(e, target_fields=3)
     await render(interaction, uid, e, buttons=False)
     await asyncio.sleep(JUGGLER_WAIT["reveal"])
@@ -426,6 +453,7 @@ async def _reveal_bonus(interaction, uid, bonus):
     e = discord.Embed(title=head, color=color)
     e.add_field(name="獲得", value=f"**+{net:,}** ナトコイン", inline=True)
     e.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=True)
+    e.set_image(url=lit_url)
     e.set_footer(text="🎰 回す ── 次のゲームへ")
     pad_embed(e, target_fields=3)
     await render(interaction, uid, e)
