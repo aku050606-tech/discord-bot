@@ -56,6 +56,49 @@ def _lamp_kind(bonus) -> str:
     return "on"
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# テストモード（admin専用・自分の次スピンの結果を強制）
+#   JUGGLER_FORCE[uid] = "miss"/"reg"/"big"/"frame"/"rainbow"/"random"
+#   OFFにするまで持続。adminメニューから切替。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+JUGGLER_FORCE: dict[str, str] = {}
+
+TEST_LABELS = {
+    "miss": "ハズレ", "reg": "REG", "big": "BIG（通常）",
+    "frame": "プレミア（枠）", "rainbow": "虹", "random": "ランダム当たり",
+}
+
+
+def set_test_mode(uid, mode):
+    """mode=None でOFF。"""
+    uid = str(uid)
+    if mode is None:
+        JUGGLER_FORCE.pop(uid, None)
+    else:
+        JUGGLER_FORCE[uid] = mode
+
+
+def get_test_mode(uid):
+    return JUGGLER_FORCE.get(str(uid))
+
+
+def _forced_result(mode):
+    """テストモードの強制結果 → (res, lamp)。子役払いは無し。"""
+    if mode == "miss":
+        return {"bonus": None, "koyaku": None, "payout": 0}, "off"
+    if mode == "reg":
+        return {"bonus": "reg", "koyaku": None, "payout": 0}, "on"
+    if mode == "big":
+        return {"bonus": "big", "koyaku": None, "payout": 0}, "on"
+    if mode == "frame":
+        return {"bonus": "big", "koyaku": None, "payout": 0}, "frame"
+    if mode == "rainbow":
+        return {"bonus": "big", "koyaku": None, "payout": 0}, "rainbow"
+    # random当たり：BIG/REGランダム（ランプは通常判定）
+    b = random.choice(["big", "reg"])
+    return {"bonus": b, "koyaku": None, "payout": 0}, _lamp_kind(b)
+
+
 def _alive(uid: str, sid: str):
     """演出sleepをまたいでセッション同一性を確認。再起動/作り直し/時間切れなら None。"""
     g = active_jug.get(uid)
@@ -366,11 +409,18 @@ async def _play_spin(interaction, uid):
     db.update_balance(uid, guild_id, -JUGGLER_BET)
     quest_record(uid, guild_id, "slot")
     res = roll_juggler(g["setting"])
+
+    # テストモード（admin専用）：自分の結果を強制
+    force = get_test_mode(uid)
+    if force:
+        res, lamp = _forced_result(force)
+    else:
+        lamp = _lamp_kind(res["bonus"])
+
     if res["payout"]:
         db.update_balance(uid, guild_id, res["payout"])
 
     bonus = res["bonus"]
-    lamp = _lamp_kind(bonus)
 
     # リール表示（子役/ハズレ）＋ ランプGIFを画像で
     if res["koyaku"]:

@@ -102,6 +102,12 @@ class AdminMenuView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_money_admin_embed(), view=MoneyView(self.admin_id))
 
+    @discord.ui.button(label="🧪 テストモード", style=discord.ButtonStyle.secondary, row=1)
+    async def testmode(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=build_testmode_embed(self.admin_id), view=TestModeView(self.admin_id))
+
     @discord.ui.button(label="📋 ログ設定", style=discord.ButtonStyle.primary, row=2)
     async def log_settings(self, interaction, button):
         if not await self._guard(interaction): return
@@ -943,6 +949,66 @@ class MoneyView(discord.ui.View):
     async def distribute(self, interaction, button):
         if not await self._guard(interaction): return
         await interaction.response.send_modal(AdminDistributeModal(self.admin_id))
+
+    @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=2)
+    async def back(self, interaction, button):
+        if not await self._guard(interaction): return
+        await interaction.response.edit_message(
+            embed=build_admin_embed(interaction), view=AdminMenuView(self.admin_id))
+
+
+def build_testmode_embed(admin_id: str) -> discord.Embed:
+    from cogs.juggler import get_test_mode, TEST_LABELS
+    cur = get_test_mode(admin_id)
+    state = TEST_LABELS.get(cur, "OFF（通常）") if cur else "OFF（通常）"
+    return discord.Embed(
+        title="🧪 テストモード（あなた専用）",
+        description=(f"現在：**{state}**\n\n"
+                    "ボタンを押すと、**あなたが回すジャグラー**の結果が固定されます。\n"
+                    "ランプ演出の確認用。OFFにするまで持続します。\n\n"
+                    "❌ ハズレ ／ 🔵 REG ／ 🟣 BIG（通常点灯）\n"
+                    "✨ プレミア枠 ／ 🌈 虹 ／ 🎲 ランダム当たり"),
+        color=discord.Color.teal(),
+    )
+
+
+class TestModeView(discord.ui.View):
+    def __init__(self, admin_id: str):
+        super().__init__(timeout=900)
+        self.admin_id = admin_id
+
+    async def _guard(self, interaction) -> bool:
+        if not is_admin(interaction.user):
+            await deny(interaction); return False
+        return True
+
+    async def _set(self, interaction, mode):
+        if not await self._guard(interaction): return
+        from cogs.juggler import set_test_mode
+        set_test_mode(self.admin_id, mode)
+        await interaction.response.edit_message(
+            embed=build_testmode_embed(self.admin_id), view=self)
+
+    @discord.ui.button(label="❌ ハズレ", style=discord.ButtonStyle.secondary, row=0)
+    async def f_miss(self, interaction, button): await self._set(interaction, "miss")
+
+    @discord.ui.button(label="🔵 REG", style=discord.ButtonStyle.primary, row=0)
+    async def f_reg(self, interaction, button): await self._set(interaction, "reg")
+
+    @discord.ui.button(label="🟣 BIG（通常）", style=discord.ButtonStyle.primary, row=0)
+    async def f_big(self, interaction, button): await self._set(interaction, "big")
+
+    @discord.ui.button(label="✨ プレミア枠", style=discord.ButtonStyle.success, row=1)
+    async def f_frame(self, interaction, button): await self._set(interaction, "frame")
+
+    @discord.ui.button(label="🌈 虹", style=discord.ButtonStyle.success, row=1)
+    async def f_rainbow(self, interaction, button): await self._set(interaction, "rainbow")
+
+    @discord.ui.button(label="🎲 ランダム当たり", style=discord.ButtonStyle.success, row=1)
+    async def f_random(self, interaction, button): await self._set(interaction, "random")
+
+    @discord.ui.button(label="♻️ 通常モードに戻す", style=discord.ButtonStyle.danger, row=2)
+    async def f_off(self, interaction, button): await self._set(interaction, None)
 
     @discord.ui.button(label="◀ 管理メニューへ", style=discord.ButtonStyle.secondary, row=2)
     async def back(self, interaction, button):
