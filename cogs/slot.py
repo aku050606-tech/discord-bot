@@ -138,6 +138,11 @@ def god_play_game(g, up):
     key, prob, rup, base, disp, emo = chosen
 
     payout = int((base + _draw_up(up)) * GOD_PAYOUT_SCALE)
+    # ⚡ GRAVITY BURST：各ゲームで低確率発動の大型上乗せ（共通イベント）
+    burst_amt = 0
+    if random.random() < GOD_BURST_RATE:
+        burst_amt = _draw_up(GOD_BURST_TABLE)   # (額,重み)の重み付き抽選を流用
+        payout += burst_amt
     g["total"] += payout
     g["game"] += 1
 
@@ -162,7 +167,8 @@ def god_play_game(g, up):
 
     return {"koyaku": (key, disp, emo), "payout": payout,
             "set_done": set_done, "continued": continued,
-            "rankup_to": rankup_to, "rankup_yaku": rankup_yaku}
+            "rankup_to": rankup_to, "rankup_yaku": rankup_yaku,
+            "burst": burst_amt}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -643,6 +649,21 @@ def _aim_wait(g):
     return SLOT_WAIT["aim"]
 
 
+def _burst_effect(amt):
+    """⚡ GRAVITY BURST の演出（額に応じてタイトル/色/タメを返す）。"""
+    for thr, title, sub, rgb in GOD_BURST_EFFECTS:
+        if amt >= thr:
+            if amt >= 10000:
+                wait = SLOT_WAIT["burst_max"]
+            elif amt >= 5000:
+                wait = SLOT_WAIT["burst_big"]
+            else:
+                wait = SLOT_WAIT["burst"]
+            return title, sub, rgb, wait
+    t = GOD_BURST_EFFECTS[-1]
+    return t[1], t[2], t[3], SLOT_WAIT["burst"]
+
+
 async def _advance_god(interaction, uid):
     """GOD中の1ゲームを消化して開示する。10ゲーム目だけ継続抽選(aim)へ送る。"""
     g = active_slots.get(uid)
@@ -651,6 +672,21 @@ async def _advance_god(interaction, uid):
     god = g["god"]
     r = god_play_game(god, g["up"])
     db.update_balance(uid, g["guild_id"], r["payout"])
+
+    # ⚡ GRAVITY BURST 発動なら、通常開示の前に専用フレームでドカンとバラす
+    if r.get("burst"):
+        sid = g["sid"]
+        bt, bsub, brgb, bwait = _burst_effect(r["burst"])
+        be = discord.Embed(
+            title=bt,
+            description=(f"```\n{get_reel('singularity')}\n```\n{bsub}\n\n"
+                        f"⚡ **+{r['burst']:,}** ナトコイン上乗せ！"),
+            color=discord.Color.from_rgb(*brgb))
+        pad_embed(be, target_fields=3)
+        await render(interaction, uid, be, buttons=False)
+        await asyncio.sleep(bwait)
+        if _alive(uid, sid) is None:
+            return
 
     info = god_rank_info(god)
     key, disp, emo = r["koyaku"]
@@ -746,6 +782,17 @@ async def _reveal_aim(interaction, uid):
         await _finish_god(interaction, uid, feint=feint)
 
 
+def roll_settei_badge(setting: int):
+    """終了画面の設定示唆メダルを抽選。出たメダルは必ず本物（条件を満たす設定でしか出ない）。"""
+    table = GOD_SETTEI_BADGES.get(setting, GOD_SETTEI_BADGES[1])
+    r = random.random(); acc = 0.0
+    for key, p in table:
+        acc += p
+        if r < acc:
+            return key
+    return None
+
+
 async def _finish_god(interaction, uid, feint=False):
     g = active_slots.get(uid)
     if not g:
@@ -786,6 +833,15 @@ async def _finish_god(interaction, uid, feint=False):
     e.add_field(name="セット数", value=f"{sets}", inline=True)
     e.add_field(name="💰 一撃合計", value=f"**{total:,}** ナトコイン", inline=False)
     e.add_field(name="残高", value=f"{new_bal:,} ナトコイン", inline=False)
+
+    # 🎖️ 設定推測メダル（出たら必ず本物。確定系ほど控えめ）
+    badge = roll_settei_badge(g["setting"])
+    if badge:
+        bemo, bname, btxt, brgb = GOD_BADGE_INFO[badge]
+        e.add_field(name="🎖️ 設定示唆", value=f"{bemo} **{bname}** ── {btxt}", inline=False)
+        # 強い示唆（金・NATO）はカラーも上書きして画面で主張させる
+        if badge in ("gold", "nato"):
+            e.color = discord.Color.from_rgb(*brgb)
     pad_embed(e, target_fields=5)
 
     g = _alive(uid, sid)
