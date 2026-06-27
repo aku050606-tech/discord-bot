@@ -33,12 +33,14 @@ def new_battle(phase, ally, enemy):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ダメージ計算（攻撃力 vs 防御力）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DMG_VARIANCE = 0.10   # ダメージ乱数の幅（±10%）。大きいほどバラつく。
+
 def dmg_calc(atk, defn, mult, pierce=0.0, variance=True):
     eff_def = max(0.0, defn * (1.0 - pierce))
     raw = atk * mult
     dealt = raw * (100.0 / (100.0 + eff_def))   # 防御を%軽減として扱う
     if variance:
-        dealt *= random.uniform(0.9, 1.1)
+        dealt *= random.uniform(1.0 - DMG_VARIANCE, 1.0 + DMG_VARIANCE)
     return max(1, round(dealt))
 
 
@@ -237,10 +239,26 @@ def enemy_action(state):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 1ターン進行（味方の行動 → 敵の行動 → ラウンド終了）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _offhand_strike(state):
+    """双剣の追撃。白兵のみ・武器power分だけ（レベルボーナス抜き＝案B）。溜め中は出ない。"""
+    a = state["ally"]; e = state["enemy"]
+    if a.get("charging"):
+        return
+    d = dmg_calc(a["offhand_power"], e["def"], 1.0)
+    amt, line = _deal(state, a, e, d)
+    state["log"].append(f"  🗡️ 追撃！{e['name']} に {amt}")
+    if e["hp"] <= 0:
+        state["over"] = True; state["result"] = "win"
+
+
 def take_turn(state, ally_action):
     """味方の行動を解決し、敵が生きていれば敵も行動、ラウンドを締める。"""
     state["log"] = []   # このターンのログだけ保持
     resolve_action(state, "ally", ally_action)
+    # 双剣の追撃（白兵のみ・武器power分＝レベル抜き）
+    if (not state["over"] and state["phase"] == "board"
+            and state["ally"].get("offhand_power")):
+        _offhand_strike(state)
     if not state["over"]:
         resolve_action(state, "enemy", enemy_action(state))
     if not state["over"]:

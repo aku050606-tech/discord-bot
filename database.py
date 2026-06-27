@@ -922,6 +922,7 @@ class Database:
             "level": 1, "xp": 0, "cur_hp": 100,
             "learned_skills": {},
             "unequip_kits": 0,
+            "special_items": [],       # 全損しても持ち帰れる特殊アイテム（救済枠）
             "voyage": None,
         }
 
@@ -971,6 +972,7 @@ class Database:
         d.setdefault("ship_skills", [])
         d.setdefault("ship_hp_cur", 0)
         d.setdefault("ship", None)
+        d.setdefault("special_items", [])
         return d
 
     def save_voyage(self, user_id, data):

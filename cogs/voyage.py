@@ -70,7 +70,7 @@ def attack_power(vp):
     return V.LEVEL_BASE_POWER * vp["level"] + base
 
 def defense_power(vp):
-    d = 0
+    d = V.LEVEL_BASE_DEF * vp["level"]   # 防御もレベルで +2/Lv（攻撃と同じ伸び）
     for part in ("torso", "legs"):
         it = equipped_inst(vp, part)
         if it and it["item"] in V.ARMOR_PARTS[part]["items"]:
@@ -161,57 +161,17 @@ def _try_shard(v, key):
         return f"\n　{V.SHARD_NAME} 発見！（{got}/{V.SHARD_NEEDED}）"
     return ""
 
-def _pirate_fight(vp, pr, scale, vm_eff, header):
-    """海賊/ボス戦（2層・確率式）。scale=敵強さ倍率, vm_eff=報酬倍率。"""
-    v = vp["voyage"]
-    sp = ship_power(vp); pp = personal_power(vp)
-    esp = int(pr["sea_power"] * scale); ecp = int(pr["crew_power"] * scale)
-    lines = [header]
-    for part in ("cannon", "armor"):
-        inst = vp["ship_parts"].get(part)
-        if inst:
-            inst["dura"] = max(0, inst.get("dura", 0) - V.NAVAL_DURA_COST)
-    if random.random() < win_prob(sp, esp):
-        lines.append(f"\u2693 \u7832\u6483\u6226\u3092\u5236\u3057\u305f\uff01\uff08\u8239 {sp} vs {esp}\uff09\u65ac\u308a\u8fbc\u307f\u3060\uff01")
-        if random.random() < win_prob(pp, ecp):
-            base = random.uniform(V.PIRATE_BASE_REWARD["base_min"], V.PIRATE_BASE_REWARD["base_max"])
-            rew = int(base * pr["reward_mult"] * vm_eff)
-            v["hold"] += rew
-            add_xp(vp, V.XP_PER_PIRATE_WIN)
-            lines.append(f"\U0001f5e1\ufe0f \u767d\u5175\u6226\u3082\u5236\u5727\uff01\uff08\u500b\u4eba {pp} vs {ecp}\uff09\u9603\u7372\u3057\u3066 **+{rew:,}**\uff01")
-            s = _try_shard(v, "boss" if pr.get("is_boss") else "pirate_win")
-            if s: lines.append(s.strip())
-        else:
-            add_xp(vp, V.XP_PER_PIRATE_LOSE)
-            lines.append(f"\U0001f4a2 \u4e57\u308a\u8fbc\u3093\u3060\u304c\u8fd4\u308a\u8a0e\u3061\u2026\uff08\u500b\u4eba {pp} vs {ecp}\uff09\u64a4\u9000\u3002\u8239\u5009\u306f\u5b88\u3063\u305f\u3002")
-    else:
-        lines.append(f"\U0001f525 \u7832\u6483\u6226\u3067\u62bc\u3057\u8ca0\u3051\u305f\u2026\uff08\u8239 {sp} vs {esp}\uff09\u4e57\u308a\u8fbc\u307e\u308c\u308b\uff01")
-        if random.random() < win_prob(pp, ecp):
-            add_xp(vp, V.XP_PER_PIRATE_WIN)
-            lines.append(f"\U0001f6e1\ufe0f \u767d\u5175\u3067\u6483\u9000\u6210\u529f\uff01\uff08\u500b\u4eba {pp} vs {ecp}\uff09\u7a4d\u307f\u8377\u306f\u7121\u4e8b\u3060\u3002")
-        else:
-            add_xp(vp, V.XP_PER_PIRATE_LOSE)
-            diff = esp / max(sp, 1)
-            weights = [max(0.1, diff), 1, 1, max(0.1, 1 / diff)]
-            rate = random.choices(V.LOSS_TIERS, weights=weights)[0]
-            armor_def = ship_part_def(vp, "armor")
-            armor_t = armor_def["rank"] if armor_def else 0
-            if random.random() < V.ARMOR_MITIGATE_CHANCE.get(armor_t, 0):
-                idx = V.LOSS_TIERS.index(rate)
-                rate = V.LOSS_TIERS[min(idx + 1, len(V.LOSS_TIERS) - 1)]
-            lost = int(v["hold"] * rate)
-            v["hold"] -= lost
-            lines.append(f"\U0001f480 \u9632\u885b\u5931\u6557\uff08\u500b\u4eba {pp} vs {ecp}\uff09\u2026\u8239\u5009\u306e **{int(rate*100)}%\uff1d{lost:,}** \u3092\u596a\u308f\u308c\u305f\uff01")
-    return "\n".join([x for x in lines if x])
-
-# \u2501\u2501\u2501 \U0001f50d \u63a2\u7d22\uff08\u305d\u306e\u30a8\u30ea\u30a2\u3092\u63a2\u308b\uff1d\u9047\u9047\u62bd\u9078\uff09 \u2501\u2501\u2501
-def resolve_explore(vp):
-    """\u63a2\u7d22\u30921\u56de\u3002\u9047\u9047\u3092\u62bd\u9078\u3057\u3066\u51e6\u7406\u3057\u3001\u63a2\u7d22\u30ab\u30a6\u30f3\u30c8\u3092+1\u3057\u3066\u7d50\u679c\u30c6\u30ad\u30b9\u30c8\u3092\u8fd4\u3059\u3002"""
+# ━━━ 🔍 探索（そのエリアを探る＝遭遇抽選）━━━
+# 戦闘以外は vp を直接更新して ("text", msg) を返す。
+# 海賊/ボスは ("combat", spec, scale, vm, is_boss) を返し、呼び出し側が
+# NavalEncounter で実コマンド戦に入る（船倉の増減は戦闘側で精算）。
+def roll_explore(vp):
+    """探索を1回。探索カウント+1・航海消耗を適用し、遭遇を抽選して結果を返す。"""
     v = vp["voyage"]
     sea = v["sea"]; s = V.SEAS[sea]
     area = area_of(v); amult = V.AREA_MULT[area]
-    vm = s["val_mult"] * amult            # \u5831\u916c\u306f\u6d77\u00d7\u30a8\u30ea\u30a2
-    scale = s["danger"] * amult           # \u6575\u5f37\u3055\u306f\u5371\u967a\u5ea6\u00d7\u30a8\u30ea\u30a2
+    vm = s["val_mult"] * amult            # 報酬は海×エリア
+    scale = s["danger"] * amult           # 敵強さ/危険度は海×エリア
     v["explores"] = v.get("explores", 0) + 1
     for part in ("cannon", "armor"):
         inst = vp["ship_parts"].get(part)
@@ -222,32 +182,31 @@ def resolve_explore(vp):
     enc = random.choices(list(table), weights=list(table.values()))[0]
 
     if enc == "calm":
-        return "\U0001f305 \u7a4f\u3084\u304b\u306a\u6d77\u3002\u6c17\u306b\u306a\u308b\u3082\u306e\u306f\u898b\u5f53\u305f\u3089\u306a\u304b\u3063\u305f\u2026"
+        return ("text", "🌅 穏やかな海。気になるものは見当たらなかった…")
     if enc == "fish":
         tier = random.choices(list(V.FISH_HAUL), weights=[V.FISH_HAUL[k]["weight"] for k in V.FISH_HAUL])[0]
         val = _scaled(V.FISH_HAUL[tier], vm); v["hold"] += val; add_xp(vp, V.XP_PER_FISH)
-        label = {"common":"\U0001f41f \u96d1\u9b5a","good":"\U0001f420 \u5927\u7269","rare":"\u2728 \u30ec\u30a2\u7269","legend":"\U0001f308 \u4f1d\u8aac\u306e\u7372\u7269"}[tier]
-        return f"{label}\u304c\u7db2\u306b\u304b\u304b\u3063\u305f\uff01 \u8239\u5009\u306b **+{val:,}**" + _try_shard(v, "fish")
+        label = {"common":"🐟 雑魚","good":"🐠 大物","rare":"✨ レア物","legend":"🌈 伝説の獲物"}[tier]
+        return ("text", f"{label}が網にかかった！ 船倉に **+{val:,}**" + _try_shard(v, "fish"))
     if enc == "island":
         if random.random() < V.ISLAND_TREASURE_RATE:
             val = _scaled(V.ISLAND_TREASURE, vm); v["hold"] += val; add_xp(vp, V.XP_PER_ISLAND)
-            return f"\U0001f3dd\ufe0f \u7121\u4eba\u5cf6\u306b\u4e0a\u9678\u2026**\u304a\u5b9d\u767a\u898b\uff01** \u8239\u5009\u306b **+{val:,}**" + _try_shard(v, "island")
+            return ("text", f"🏝️ 無人島に上陸…**お宝発見！** 船倉に **+{val:,}**" + _try_shard(v, "island"))
         add_xp(vp, V.XP_PER_ISLAND)
-        return "\U0001f3dd\ufe0f \u7121\u4eba\u5cf6\u306b\u4e0a\u9678\u3057\u305f\u304c\u2026\u3081\u307c\u3057\u3044\u7269\u306f\u7121\u304b\u3063\u305f\u3002" + _try_shard(v, "island")
+        return ("text", "🏝️ 無人島に上陸したが…めぼしい物は無かった。" + _try_shard(v, "island"))
     if enc == "maelstrom":
         val = _scaled(V.MAELSTROM_REWARD, vm); v["hold"] += val
-        return (f"\U0001f300 \u6e26\u6f6e\u306b\u5dfb\u304d\u8fbc\u307e\u308c\u305f\uff01\u3046\u307e\u304f\u4e57\u308a\u5207\u308a\u3001\u6f02\u6d41\u7269\u304b\u3089 **+{val:,}**"
-                + _try_shard(v, "maelstrom"))
+        return ("text", f"🌀 渦潮に巻き込まれた！うまく乗り切り、漂流物から **+{val:,}**" + _try_shard(v, "maelstrom"))
     if enc == "abyss":
         val = _scaled(V.ABYSS_TREASURE, vm); v["hold"] += val
-        return f"\U0001f573\ufe0f \u5149\u308b\u6d77\u6df5\u3092\u8993\u304d\u8fbc\u3080\u2026\u5438\u3044\u5bc4\u305b\u3089\u308c\u305f\u8ca1\u5b9d **+{val:,}**"
+        return ("text", f"🕳️ 光る海淵を覗き込む…吸い寄せられた財宝 **+{val:,}**")
     if enc == "boss":
-        boss = dict(V.AREA_BOSS[area]); boss["is_boss"] = True
-        hd = f"{boss['emoji']} **{boss['name']}** \u304c\u7acb\u3061\u306f\u3060\u304b\u308b\uff01\uff08\u30a8\u30ea\u30a2{area}\u306e\u4e3b\u30fb\u6d77\u6226\u529b {int(boss['sea_power']*scale)}\uff09"
-        return _pirate_fight(vp, boss, scale, vm, hd)
-    pr = random.choices(V.PIRATE_RANKS, weights=V.PIRATE_TABLE[sea])[0]
-    hd = f"{pr['emoji']} **{pr['name']}** \u304c\u73fe\u308c\u305f\uff01\uff08\u6d77\u6226\u529b {int(pr['sea_power']*scale)}\uff09"
-    return _pirate_fight(vp, pr, scale, vm, hd)
+        boss = dict(V.AREA_BOSS[area])
+        boss["is_boss"] = True
+        boss["tier"] = V.BOSS_TIER.get(area, 4)
+        return ("combat", boss, scale, vm, True)
+    pr = random.choices(V.PIRATE_RANKS, weights=V.pirate_weights(sea, area))[0]
+    return ("combat", dict(pr), scale, vm, False)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Embed ビルダー
@@ -328,6 +287,9 @@ def build_voyage_embed(vp, last_msg=None):
         if inst and pdef:
             cond.append(f"{V.SHIP_PART_META[part]['emoji']}{dura_bar(inst.get('dura',0), pdef.get('dura',1))}")
     e.add_field(name="🛠️ 船", value=" ".join(cond) if cond else "—", inline=True)
+    mxhp = ship_max_hp(vp); curhp = vp.get("ship_hp_cur", mxhp)
+    e.add_field(name="❤️ 船体HP",
+                value=f"{max(0,curhp)}/{mxhp}\n{hp_bar(curhp, mxhp, 10)}", inline=True)
     e.set_footer(text="🔍探索＝その場を探る／⛵進む＝奥のエリアへ(探索10回)／⚓引き返す＝1つ手前へ")
     return e
 
@@ -480,6 +442,7 @@ class SeaButton(discord.ui.Button):
         if not can_enter_sea(vp, self.sea):
             await interaction.response.send_message("🔒 この海にはまだ出られない（もっと上位の船が要る）", ephemeral=True); return
         vp["voyage"] = {"sea": self.sea, "area": 1, "explores": 0, "hold": 0, "shards": 0}
+        vp["ship_hp_cur"] = ship_max_hp(vp)   # 出航時は船体HP全快
         db.save_voyage(uid, vp)
         await interaction.response.edit_message(
             embed=build_voyage_embed(vp, f"⛵ {V.SEAS[self.sea]['name']} へ出航した！"),
@@ -522,9 +485,18 @@ class VoyageView(discord.ui.View):
         if any_part_broken(vp):
             await interaction.response.send_message(
                 "🛠️ 装備が壊れた！引き返して修理を。", ephemeral=True); return
+        if vp.get("ship_hp_cur", 1) <= 0:
+            await interaction.response.send_message(
+                "🛠️ 船体が大破している！引き返して修理を。", ephemeral=True); return
         db.update_balance(uid, gid, -fuel)
-        msg = resolve_explore(vp)
-        db.save_voyage(uid, vp)
+        res = roll_explore(vp)
+        db.save_voyage(uid, vp)   # 探索カウント／航海消耗／非戦闘の獲得を確定
+        if res[0] == "combat":
+            _, spec, scale, vm, is_boss = res
+            enc = NavalEncounter(uid, gid, spec, scale, vm, is_boss)
+            await enc.start(interaction)
+            return
+        msg = res[1]
         if any_part_broken(vp):
             msg += "\n\n🛠️ **装備が限界だ…！引き返すしかない。**"
         await interaction.response.edit_message(embed=build_voyage_embed(vp, msg), view=VoyageView(uid, gid))
@@ -537,6 +509,9 @@ class VoyageView(discord.ui.View):
         v = vp.get("voyage")
         if not v:
             await interaction.response.edit_message(embed=build_port_embed(vp), view=PortView(uid, gid)); return
+        if vp.get("ship_hp_cur", 1) <= 0:
+            await interaction.response.send_message(
+                "🛠️ 船体が大破している！引き返して修理を。", ephemeral=True); return
         if not can_advance(v):
             if area_of(v) == 3 and v.get("shards", 0) < V.SHARD_NEEDED:
                 await interaction.response.send_message(
@@ -574,6 +549,7 @@ class VoyageView(discord.ui.View):
         if hold > 0:
             db.update_balance(uid, gid, hold)
         vp["voyage"] = None
+        vp["ship_hp_cur"] = ship_max_hp(vp)   # 帰港で船体HP全快（修理代は装備耐久のみ）
         db.save_voyage(uid, vp)
         e = discord.Embed(
             title="⚓ 帰港",
@@ -1408,11 +1384,45 @@ def naval_skills(vp):
 
 _ENEMY_SKILLS = {1: [], 2: [], 3: ["kyougeki"], 4: ["kyougeki", "shukketsu"], 5: ["kyougeki", "konshin"]}
 
-def board_enemy_from_pirate(pr, danger=1.0):
-    cp = pr["crew_power"] * danger
-    return C.make_combatant(pr["name"], pr["emoji"], hp=int(cp * 5),
-                            atk=int(cp), defense=int(cp * 0.5),
-                            skills=_ENEMY_SKILLS.get(pr["tier"], []), ai_tier=pr["tier"])
+# ── 敵ステ導出（sea_power/crew_power × combat_scale）──
+def make_naval_ally(vp):
+    """自船の海戦コンバタント。HPは ship_hp_cur を持ち越し（0以下は全快扱い＝出航直後など）。"""
+    mx = ship_max_hp(vp)
+    cur = vp.get("ship_hp_cur", mx)
+    if cur <= 0:
+        cur = mx
+    c = C.make_combatant("自船", "🚢", mx, ship_attack(vp), ship_defense(vp), naval_skills(vp), ai_tier=0)
+    c["hp"] = min(mx, cur)
+    return c
+
+def make_naval_enemy(spec, scale):
+    S = spec["sea_power"] * V.combat_scale(scale)
+    hp = max(1, round(S * V.NAVAL_E_HP_MULT))
+    atk = max(1, round(S * V.NAVAL_E_ATK_MULT))
+    dfn = max(0, round(S * V.NAVAL_E_DEF_MULT))
+    tier = spec.get("tier", 3)
+    return C.make_combatant(spec["name"], spec["emoji"], hp, atk, dfn,
+                            skills=V.NAVAL_ENEMY_SKILLS.get(tier, []), ai_tier=tier)
+
+def make_board_ally(vp):
+    """白兵コンバタント。個人HPは毎戦全快。双剣なら追撃用 offhand_power（武器power分）を付与。"""
+    c = C.make_combatant("あなた", "🧑", max_hp(vp),
+                         attack_power(vp), defense_power(vp), board_skills(vp))
+    w = equipped_inst(vp, "weapon")
+    if w and V.WEAPONS.get(w["item"], {}).get("wtype") == "twin":
+        c["offhand_power"] = V.WEAPONS[w["item"]]["power"]   # 案B：レベル抜き＝武器power分のみ
+    return c
+
+def make_board_enemy(spec, scale, defense=False):
+    # 乗り込む側(攻)=敵全員で強い／乗り込まれる側(防衛)=敵一部で弱い
+    mult = V.BOARD_DEFENSE_CREW_MULT if defense else 1.0
+    Cw = spec["crew_power"] * V.combat_scale(scale) * mult
+    hp = max(1, round(Cw * V.BOARD_E_HP_MULT))
+    atk = max(1, round(Cw * V.BOARD_E_ATK_MULT))
+    dfn = max(0, round(Cw * V.BOARD_E_DEF_MULT))
+    tier = spec.get("tier", 3)
+    return C.make_combatant(spec["name"], spec["emoji"], hp, atk, dfn,
+                            skills=_ENEMY_SKILLS.get(tier, []), ai_tier=tier)
 
 def build_combat_embed(state):
     a = state["ally"]; e = state["enemy"]
@@ -1421,7 +1431,7 @@ def build_combat_embed(state):
     emb = discord.Embed(title=f"{title} ── ターン {state['turn']}", color=col)
     emb.add_field(name=f"{e['emoji']} {e['name']}",
                   value=f"HP {max(0,e['hp'])}/{e['max_hp']}\n{hp_bar(e['hp'],e['max_hp'])}", inline=False)
-    emb.add_field(name=f"🧑 あなた  ⚔️{a['atk']} 🛡️{a['def']}",
+    emb.add_field(name=f"{a['emoji']} {a['name']}  ⚔️{a['atk']} 🛡️{a['def']}",
                   value=f"HP {max(0,a['hp'])}/{a['max_hp']}\n{hp_bar(a['hp'],a['max_hp'])}", inline=False)
     if state["log"]:
         emb.add_field(name="📜 経過", value="\n".join(state["log"][-8:]), inline=False)
@@ -1429,24 +1439,33 @@ def build_combat_embed(state):
         emb.set_footer(text=f"💢 {VS.SKILLS[a['charging']]['name']} 溜め中…次の行動で解放！")
     return emb
 
-async def _advance(interaction, holder, action):
-    """味方行動を解決して再描画。終了なら結果画面へ。"""
-    state = holder.state
-    C.take_turn(state, action)
-    if state["over"]:
-        a = state["ally"]; e = state["enemy"]
+def _default_on_end(user_id):
+    """模擬戦用：終了で結果＋閉じるボタン。"""
+    async def _end(interaction, state):
         res = "🏆 勝利！" if state["result"] == "win" else "💀 敗北…"
         emb = build_combat_embed(state)
         emb.add_field(name="― 決着 ―", value=res, inline=False)
-        await interaction.response.edit_message(embed=emb, view=CombatEndView(holder.user_id))
+        await interaction.response.edit_message(embed=emb, view=CombatEndView(user_id))
+    return _end
+
+async def _advance(interaction, holder, action):
+    """味方行動を解決して再描画。終了なら on_end に委譲（遷移/精算はそこで）。"""
+    state = holder.state
+    C.take_turn(state, action)
+    if state["over"]:
+        await holder.on_end(interaction, state)
     else:
         await interaction.response.edit_message(
-            embed=build_combat_embed(state), view=CombatView(holder.user_id, holder.gid, state))
+            embed=build_combat_embed(state),
+            view=CombatView(holder.user_id, holder.gid, state,
+                            on_end=holder.on_end, flee_cb=holder.flee_cb, flee_pct=holder.flee_pct))
 
 class CombatView(discord.ui.View):
-    def __init__(self, user_id, gid, state):
+    def __init__(self, user_id, gid, state, on_end=None, flee_cb=None, flee_pct=None):
         super().__init__(timeout=900)
         self.user_id = str(user_id); self.gid = str(gid); self.state = state
+        self.on_end = on_end or _default_on_end(self.user_id)
+        self.flee_cb = flee_cb; self.flee_pct = flee_pct
         a = state["ally"]
         if a.get("charging"):
             self.add_item(CmdButton("💥 解放する", discord.ButtonStyle.danger, {"kind": "attack"}))
@@ -1456,6 +1475,8 @@ class CombatView(discord.ui.View):
             us = C.usable_skills(a)
             if us:
                 self.add_item(SkillCommandSelect(us))
+        if flee_cb is not None and not a.get("charging"):
+            self.add_item(FleeButton(flee_pct))
 
 class CmdButton(discord.ui.Button):
     def __init__(self, label, style, action):
@@ -1482,6 +1503,16 @@ class SkillCommandSelect(discord.ui.Select):
             await it.response.send_message("これはあなたの戦闘ではありません", ephemeral=True); return
         await _advance(it, view, {"kind": "skill", "sid": self.values[0]})
 
+class FleeButton(discord.ui.Button):
+    def __init__(self, flee_pct=None):
+        label = "🏳️ 撤退" if flee_pct is None else f"🏳️ 撤退（成功{int(round(flee_pct*100))}%）"
+        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=2)
+    async def callback(self, it):
+        view: CombatView = self.view
+        if str(it.user.id) != view.user_id:
+            await it.response.send_message("これはあなたの戦闘ではありません", ephemeral=True); return
+        await view.flee_cb(it, view.state)
+
 class CombatEndView(discord.ui.View):
     def __init__(self, user_id):
         super().__init__(timeout=300)
@@ -1492,13 +1523,162 @@ class CombatEndView(discord.ui.View):
             await it.response.send_message("これはあなたの戦闘ではありません", ephemeral=True); return
         await it.response.edit_message(content="模擬戦を終えた。", embed=None, view=None)
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🌊 航海復帰（戦闘/撤退の後、航海画面に戻す）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class ContinueVoyageView(discord.ui.View):
+    def __init__(self, user_id, gid, msg):
+        super().__init__(timeout=900)
+        self.user_id = str(user_id); self.gid = str(gid); self.msg = msg
+    @discord.ui.button(label="⛵ 航海に戻る", style=discord.ButtonStyle.primary)
+    async def back(self, it, b):
+        if str(it.user.id) != self.user_id:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        vp = db.get_voyage(self.user_id)
+        if not vp.get("voyage"):
+            await it.response.edit_message(embed=build_port_embed(vp), view=PortView(self.user_id, self.gid)); return
+        await it.response.edit_message(embed=build_voyage_embed(vp, self.msg), view=VoyageView(self.user_id, self.gid))
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ⚔️ 海賊/ボス遭遇＝海戦→白兵の実コマンド戦フロー
+#   敵船HP0 → 乗り込み白兵(攻) ：勝=撃破・報酬／負=撤退(船倉無事)
+#   自船HP0 → 防衛白兵(守)      ：勝=撃退(船倉無事/船大破)／負=💀全損(船倉ロスト)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class NavalEncounter:
+    def __init__(self, uid, gid, spec, scale, vm_eff, is_boss=False):
+        self.uid = str(uid); self.gid = str(gid)
+        self.spec = spec; self.scale = scale; self.vm_eff = vm_eff
+        self.is_boss = is_boss
+        self.naval_win = None
+        self.sea_eff = spec["sea_power"] * V.combat_scale(scale)
+
+    def _flee_pct(self, vp):
+        return V.flee_success_chance(ship_power(vp), self.sea_eff)
+
+    async def start(self, interaction):
+        vp = db.get_voyage(self.uid)
+        # 海戦の耐久消費（勝敗問わず＝修理代シンク）
+        for part in ("cannon", "armor"):
+            inst = vp["ship_parts"].get(part)
+            if inst:
+                inst["dura"] = max(0, inst.get("dura", 0) - V.NAVAL_DURA_COST)
+        db.save_voyage(self.uid, vp)
+        ally = make_naval_ally(vp)
+        enemy = make_naval_enemy(self.spec, self.scale)
+        state = C.new_battle("naval", ally, enemy)
+        view = CombatView(self.uid, self.gid, state, on_end=self.on_naval_end,
+                          flee_cb=(self.on_flee if V.NAVAL_ALLOW_FLEE else None),
+                          flee_pct=(self._flee_pct(vp) if V.NAVAL_ALLOW_FLEE else None))
+        emb = build_combat_embed(state)
+        sp_eff = int(self.sea_eff)
+        head = f"{self.spec['emoji']} **{self.spec['name']}**"
+        head += "（この海域の主）！" if self.is_boss else " が現れた！"
+        emb.description = f"{head}（海戦力 {sp_eff}）"
+        await interaction.response.edit_message(embed=emb, view=view)
+
+    async def on_flee(self, interaction, state):
+        vp = db.get_voyage(self.uid)
+        chance = self._flee_pct(vp)
+        if random.random() < chance:
+            # 撤退成功：受けた傷を持ち越して離脱（報酬なし）
+            vp["ship_hp_cur"] = max(1, state["ally"]["hp"])
+            db.save_voyage(self.uid, vp)
+            await interaction.response.edit_message(
+                embed=_result_embed(state, "🏳️ 撤退成功",
+                                    f"{self.spec['name']} を振り切って離脱した。（報酬なし）"),
+                view=ContinueVoyageView(self.uid, self.gid, "🏳️ 戦いを避けて航海を続ける。"))
+            return
+        # 撤退失敗：隙を突かれ敵の一撃。戦闘続行（沈めば防衛白兵へ）
+        state["log"] = ["🏃💨 撤退失敗！隙を突かれた…"]
+        if not state["over"]:
+            C.resolve_action(state, "enemy", C.enemy_action(state))
+        if not state["over"]:
+            C.end_round(state)
+        if state["over"]:
+            await self.on_naval_end(interaction, state)
+        else:
+            await interaction.response.edit_message(
+                embed=build_combat_embed(state),
+                view=CombatView(self.uid, self.gid, state, on_end=self.on_naval_end,
+                                flee_cb=self.on_flee, flee_pct=chance))
+
+    async def on_naval_end(self, interaction, state):
+        self.naval_win = (state["result"] == "win")
+        vp = db.get_voyage(self.uid)
+        vp["ship_hp_cur"] = max(0, state["ally"]["hp"])   # 船HP持ち越し（負け=0）
+        db.save_voyage(self.uid, vp)
+        ally = make_board_ally(vp)
+        enemy = make_board_enemy(self.spec, self.scale, defense=not self.naval_win)
+        bstate = C.new_battle("board", ally, enemy)
+        if self.naval_win:
+            head = f"💥 敵船を撃ち抜いた！ **{self.spec['name']}** に斬り込む！（乗り込み）"
+        else:
+            head = f"🛡️ 自船が大破…！ **{self.spec['name']}** が乗り込んできた！（防衛・最後の抵抗）"
+        view = CombatView(self.uid, self.gid, bstate, on_end=self.on_board_end)
+        emb = build_combat_embed(bstate)
+        emb.description = head
+        await interaction.response.edit_message(embed=emb, view=view)
+
+    async def on_board_end(self, interaction, state):
+        board_win = (state["result"] == "win")
+        vp = db.get_voyage(self.uid)
+        tag, body, cont = apply_encounter_outcome(
+            vp, self.spec, self.vm_eff, self.is_boss, self.naval_win, board_win)
+        db.save_voyage(self.uid, vp)
+        await interaction.response.edit_message(
+            embed=_result_embed(state, tag, body),
+            view=ContinueVoyageView(self.uid, self.gid, cont))
+
+def apply_encounter_outcome(vp, spec, vm_eff, is_boss, naval_win, board_win):
+    """海戦/白兵の結果から船倉・XP・カケラを精算（discord非依存・純ロジック）。
+    戻り値: (tag, body, cont) の表示文字列。vp は in-place 更新。"""
+    v = vp["voyage"]
+    shard_key = "boss" if is_boss else "pirate_win"
+    if naval_win and board_win:
+        base = random.uniform(V.PIRATE_BASE_REWARD["base_min"], V.PIRATE_BASE_REWARD["base_max"])
+        rew = int(base * spec["reward_mult"] * vm_eff)
+        v["hold"] += rew; add_xp(vp, V.XP_PER_PIRATE_WIN)
+        tag = "🏆 撃破"
+        body = f"**{spec['name']}** を制圧！ 船倉に **+{rew:,}**"
+        sh = _try_shard(v, shard_key)
+        if sh: body += sh
+        cont = "⛵ 戦果を抱えて航海を続ける。"
+    elif naval_win and not board_win:
+        add_xp(vp, V.XP_PER_PIRATE_LOSE)
+        tag = "🏃 撤退"
+        body = "乗り込んだが返り討ち…撤退した。（船倉は無事・報酬なし）"
+        cont = "⛵ 仕切り直して航海を続ける。"
+    elif (not naval_win) and board_win:
+        add_xp(vp, V.XP_PER_PIRATE_WIN)
+        tag = "🛡️ 撃退"
+        body = ("乗り込みを撃退した！船倉は守りきった。\n"
+                "🛠️ だが**船は大破**…引き返して修理を。")
+        cont = "⚓ 大破した船で引き返そう。"
+    else:
+        lost = int(v["hold"] * V.WRECK_HOLD_LOSS)
+        v["hold"] -= lost
+        add_xp(vp, V.XP_PER_PIRATE_LOSE)
+        tag = "💀 全損"
+        body = f"防衛に失敗…船倉の **{lost:,}** を失った。"
+        specials = vp.get("special_items", [])
+        if specials:
+            body += f"\n🎒 特殊アイテム **{len(specials)}個** は辛うじて持ち帰った。"
+        body += "\n🛠️ **船は大破**…引き返して立て直せ。"
+        cont = "⚓ 命からがら引き返そう。"
+    return tag, body, cont
+
+def _result_embed(state, tag, body):
+    emb = build_combat_embed(state)
+    emb.add_field(name=f"― {tag} ―", value=body, inline=False)
+    return emb
+
 async def start_board_test(interaction, user_id=None):
     """admin用：装備中ロードアウトで海賊と白兵模擬戦。"""
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
     vp = db.get_voyage(uid)
-    ally = C.make_combatant("あなた", "🧑", max_hp(vp), attack_power(vp), defense_power(vp), board_skills(vp))
-    pr = random.choice(V.PIRATE_RANKS[:3])  # 模擬戦は中堅まで
-    enemy = board_enemy_from_pirate(pr)
+    ally = make_board_ally(vp)
+    pr = dict(random.choice(V.PIRATE_RANKS[:3]))  # 模擬戦は中堅まで
+    enemy = make_board_enemy(pr, 1.0)
     state = C.new_battle("board", ally, enemy)
     holder = CombatView(uid, gid, state)
     emb = build_combat_embed(state)
