@@ -1493,6 +1493,7 @@ class BuySelect(discord.ui.Select):
         opts = []
         if cat == "weapon":
             for wid, wd in V.WEAPONS.items():
+                if wd["rank"] != 1: continue   # 装備屋は☆1のみ（☆2☆3はドロップ）
                 wt = V.WEAPON_TYPES[wd["wtype"]]["name"]
                 opts.append(discord.SelectOption(
                     label=f"{V.rarity_stars(wd['rank'])} {wd['name']}（{wt}）", value=f"weapon:{wid}",
@@ -1501,6 +1502,7 @@ class BuySelect(discord.ui.Select):
             for part in V.ARMOR_PART_ORDER:
                 info = V.ARMOR_PARTS[part]
                 for iid, idd in info["items"].items():
+                    if idd["rank"] != 1: continue   # 装備屋は☆1のみ
                     opts.append(discord.SelectOption(
                         label=f"{V.rarity_stars(idd['rank'])} {idd['name']}（{info['name']}）", value=f"{part}:{iid}",
                         description=f"防{idd['power']}・{idd['price']:,}コイン"))
@@ -1520,6 +1522,7 @@ class BuySelect(discord.ui.Select):
                 view=SwapView(uid, gid, part, iid)); return
         db.update_balance(uid, gid, -d["price"])
         vp["inventory"][part].append({"item": iid, "skills": []})
+        db.add_zukan(uid, "equip_seen", iid)
         db.save_voyage(uid, vp)
         await it.response.edit_message(embed=build_equipshop_embed(vp, uid, gid), view=BuyView(uid, gid, self.cat))
         await it.followup.send(f"🛒 **{d['name']}** を購入！インベントリに追加（-{d['price']:,}）", ephemeral=True)
@@ -1556,6 +1559,7 @@ class SwapSelect(discord.ui.Select):
         _remove_item(vp, part, idx)
         db.update_balance(uid, gid, -d["price"] + sell)
         vp["inventory"][part].append({"item": self.new_iid, "skills": []})
+        db.add_zukan(uid, "equip_seen", self.new_iid)
         db.save_voyage(uid, vp)
         await it.response.edit_message(embed=build_equipshop_embed(vp, uid, gid), view=EquipShopView(uid, gid))
         await it.followup.send(
@@ -2003,12 +2007,19 @@ def make_naval_enemy(spec, scale):
                             skills=V.NAVAL_ENEMY_SKILLS.get(tier, []), ai_tier=tier)
 
 def make_board_ally(vp):
-    """白兵コンバタント。個人HPは毎戦全快。双剣なら追撃用 offhand_power（武器power分）を付与。"""
+    """白兵コンバタント。個人HPは毎戦全快。武器の手数(hits)で通常攻撃が多段になる。
+    技ダメージは武器powerに依存せず、レベル+武器☆の基礎値で決まる（A案＝武器種で技は横並び）。"""
     c = C.make_combatant("あなた", "🧑", max_hp(vp),
                          attack_power(vp), defense_power(vp), board_skills(vp))
+    lv_atk = V.LEVEL_BASE_POWER * vp["level"]
     w = equipped_inst(vp, "weapon")
-    if w and V.WEAPONS.get(w["item"], {}).get("wtype") == "twin":
-        c["offhand_power"] = V.WEAPONS[w["item"]]["power"]   # 案B：レベル抜き＝武器power分のみ
+    if w and w["item"] in V.WEAPONS:
+        wd = V.WEAPONS[w["item"]]
+        c["base_hits"] = wd.get("hits", 1)
+        c["offhand_power"] = round(wd["power"] * V.OFFHAND_HIT_MULT)   # 2発目以降は武器power×0.6（レベル抜き）
+        c["skill_base"] = lv_atk + V.SKILL_BASE_BY_RANK.get(wd["rank"], 30)  # 技基礎値＝レベル分+武器☆分
+    else:
+        c["skill_base"] = lv_atk
     return c
 
 def make_board_enemy(spec, scale, defense=False):
@@ -2157,8 +2168,26 @@ def enemy_category(spec):
     if key == "castaway_foe": return "castaway"
     return "pirate"
 
+def grant_random_equip(uid, vp, star):
+    """その☆の武器/防具から1個をランダムでインベントリに付与。図鑑も記録。戻り値=表示文字列。"""
+    pool = []  # (part, item_key, name)
+    for wid, w in V.WEAPONS.items():
+        if w["rank"] == star:
+            pool.append(("weapon", wid, f"🗡️ {w['name']}"))
+    for part in V.ARMOR_PART_ORDER:
+        for iid, d in V.ARMOR_PARTS[part]["items"].items():
+            if d["rank"] == star:
+                pool.append((part, iid, f"🛡️ {d['name']}"))
+    if not pool:
+        return None
+    part, ikey, label = random.choice(pool)
+    vp.setdefault("inventory", {}).setdefault(part, [])
+    vp["inventory"][part].append({"item": ikey, "skills": []})  # レアドロップは満杯でも受け取る
+    db.add_zukan(uid, "equip_seen", ikey)
+    return f"{label}（★{star}）"
+
 def drop_loot(uid, vp, spec):
-    """敵撃破時のドロップ（素材＋食料）。インベントリに加算し図鑑も記録。戻り値=表示行リスト。"""
+    """敵撃破時のドロップ（素材＋食料＋装備）。インベントリに加算し図鑑も記録。戻り値=表示行リスト。"""
     out = []
     cat = enemy_category(spec); stars = int(spec.get("stars", 1))
     # 💎 素材（カテゴリ×☆。ボスは海賊扱いで一旦☆2素材も）
@@ -2175,6 +2204,14 @@ def drop_loot(uid, vp, spec):
         vp.setdefault("foods", {}); vp["foods"][food] = vp["foods"].get(food, 0) + 1
         db.add_zukan(uid, "item_seen", food)
         out.append(f"{f['emoji']} **{f['name']}**（食料）")
+    # 🗡️ 装備（人型のみ・敵☆に対応・武器か防具ランダム1個）
+    if cat in V.HUMANOID_CATS:
+        for eq_star, rate in V.EQUIP_DROP_RATES.get(stars, []):
+            if random.random() < rate:
+                got = grant_random_equip(uid, vp, eq_star)
+                if got:
+                    out.append(f"✨ {got} を入手！")
+                break  # 1回の撃破で装備は1個まで
     return out
 
 def _discover_drop(uid, vp, kind):
@@ -2568,50 +2605,66 @@ class EnemyZukanView(discord.ui.View):
                                        view=ZukanCategoryView(self.user_id))
 
 # ━━━ 🗡️🛡️📜🎒 装備・技・アイテム図鑑 ━━━
-def build_weapon_zukan_embed():
-    emb = discord.Embed(title="🗡️ 武器図鑑", color=0x95a5a6,
-                        description="現存する武器（レアリティ順）")
+def build_weapon_zukan_embed(uid=None):
+    seen = set(db.get_zukan(uid, "equip_seen")) if uid else set()
+    if uid:  # 今持ってる武器も既知扱い
+        vp = db.get_voyage(uid)
+        for inst in vp.get("inventory", {}).get("weapon", []):
+            seen.add(inst["item"])
+    emb = discord.Embed(title="🗡️ 武器図鑑", color=0x95a5a6)
+    lines = []
     for wid, w in sorted(V.WEAPONS.items(), key=lambda x: (x[1]["rank"], x[0])):
-        wt = V.WEAPON_TYPES.get(w["wtype"], {}).get("name", w["wtype"])
-        emb.add_field(name=f"{V.rarity_stars(w['rank'])} {w['name']}",
-                      value=f"{wt}・攻 {w['power']}・技枠 {w['slots']}・{w['price']:,}コイン",
-                      inline=False)
+        if wid in seen:
+            wt = V.WEAPON_TYPES.get(w["wtype"], {}).get("name", w["wtype"])
+            lines.append(f"{V.rarity_stars(w['rank'])} **{w['name']}**（{wt}・攻{w['power']}×{w['hits']}・技枠{w['slots']}）")
+        else:
+            lines.append(f"{V.rarity_stars(w['rank'])} ？？？")
+    emb.description = "\n".join(lines)
     return emb
 
-def build_armor_zukan_embed():
-    emb = discord.Embed(title="🛡️ 防具図鑑", color=0x95a5a6,
-                        description="現存する防具（レアリティ順）")
+def build_armor_zukan_embed(uid=None):
+    seen = set(db.get_zukan(uid, "equip_seen")) if uid else set()
+    if uid:  # 今持ってる防具も既知扱い
+        vp = db.get_voyage(uid)
+        for part in V.ARMOR_PART_ORDER:
+            for inst in vp.get("inventory", {}).get(part, []):
+                seen.add(inst["item"])
+    emb = discord.Embed(title="🛡️ 防具図鑑", color=0x95a5a6)
+    lines = []
     for part in V.ARMOR_PART_ORDER:
         info = V.ARMOR_PARTS[part]
         for iid, d in sorted(info["items"].items(), key=lambda x: (x[1]["rank"], x[0])):
-            emb.add_field(name=f"{V.rarity_stars(d['rank'])} {d['name']}（{info['name']}）",
-                          value=f"防 {d['power']}・{d['price']:,}コイン",
-                          inline=False)
+            if iid in seen:
+                lines.append(f"{V.rarity_stars(d['rank'])} **{d['name']}**（{info['name']}・防{d['power']}）")
+            else:
+                lines.append(f"{V.rarity_stars(d['rank'])} ？？？（{info['name']}）")
+    emb.description = "\n".join(lines)
     return emb
 
 def build_skill_zukan_embed():
-    emb = discord.Embed(title="📜 技図鑑", color=0x9b59b6,
-                        description="現存する技")
-    for sid, s in VS.SKILLS.items():
+    emb = discord.Embed(title="📜 技図鑑", color=0x9b59b6)
+    lines = []
+    for sid, s in sorted(VS.SKILLS.items(), key=lambda x: (x[1].get("rank", 2), x[0])):
+        if s.get("slot") not in ("weapon", "armor"):
+            continue  # 船戦の技は除外（白兵技のみ）
         if s.get("slot") == "weapon":
             tags = "・".join(V.WEAPON_TYPES[w]["name"] for w in s.get("wtypes", []))
-        elif s.get("slot") == "armor":
-            tags = "胴・脚"
         else:
-            tags = "船"
-        emb.add_field(name=f"{s['emoji']} {s['name']}（{s['price']:,}）",
-                      value=f"[{tags}] {s['desc']}", inline=False)
+            tags = "胴・脚"
+        lines.append(f"{V.rarity_stars(s.get('rank', 2))} {s['emoji']} **{s['name']}**　[{tags}] {s['desc']}")
+    emb.description = "\n".join(lines)
     return emb
 
 def build_item_zukan_embed(uid=None):
     seen = set(db.get_zukan(uid, "item_seen")) if uid else set()
-    emb = discord.Embed(title="🎒 アイテム図鑑", color=0xe67e22,
-                        description="特殊・食料・素材・消費アイテム")
-    emb.add_field(name="✨ 特殊アイテム",
-                  value=(f"{V.SHARD_NAME}\n　└ エリア4を開く鍵。3つ集めると最深部への道が開く。\n"
-                         f"{SHADOW_DARK_SHARD}\n　└ 巨大な影が残す不穏な欠片。いずれ意味を持つ…？"),
-                  inline=False)
-    # 🍖 食料（取得済みのみ詳細表示）
+    emb = discord.Embed(title="🎒 アイテム図鑑", color=0xe67e22)
+    # ✨ 特殊アイテム（オープンにしない・説明なし・未取得は伏せる）
+    sp_lines = [
+        V.SHARD_NAME if "shard" in seen else "❔ ？？？",
+        SHADOW_DARK_SHARD if "shadow_dark_shard" in seen else "❔ ？？？",
+    ]
+    emb.add_field(name="✨ 特殊アイテム", value="\n".join(sp_lines), inline=False)
+    # 🍖 食料
     food_lines = []
     for fid, f in V.FOODS.items():
         if fid in seen:
@@ -2622,12 +2675,11 @@ def build_item_zukan_embed(uid=None):
     # ⛽ 補給
     barrel = "🛢️ **燃料樽** … 拾うとその場で燃料補給" if "fuel_barrel" in seen else "❔ ？？？"
     emb.add_field(name="⛽ 補給品", value=barrel, inline=False)
-    # 💎 素材（取得済み=名前／未取得=❔）
+    # 💎 素材（未取得=❔）
     got = len([m for m in V.MATERIALS if m in seen])
-    mat_lines = []
-    for mid, m in V.MATERIALS.items():
-        mat_lines.append(f"{m['emoji']} {m['name']}" if mid in seen else "❔")
-    emb.add_field(name=f"💎 素材（{got}/{len(V.MATERIALS)}・将来クラフト用）",
+    mat_lines = [f"{m['emoji']} {m['name']}" if mid in seen else "❔"
+                 for mid, m in V.MATERIALS.items()]
+    emb.add_field(name=f"💎 素材（{got}/{len(V.MATERIALS)}）",
                   value="　".join(mat_lines), inline=False)
     emb.add_field(name="🧪 消費アイテム",
                   value=("🎣 **各種の竿** … 釣り用。エリアが深いほど早く摩耗（耐久制）\n"

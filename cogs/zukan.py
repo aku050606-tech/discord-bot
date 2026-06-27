@@ -132,14 +132,14 @@ class ZukanCategoryView(discord.ui.View):
         if not self._check(interaction):
             await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
         from cogs.voyage import build_weapon_zukan_embed, SimpleZukanView
-        await interaction.response.edit_message(embed=build_weapon_zukan_embed(), view=SimpleZukanView(self.user_id))
+        await interaction.response.edit_message(embed=build_weapon_zukan_embed(self.user_id), view=SimpleZukanView(self.user_id))
 
     @discord.ui.button(label="🛡️ 防具", style=discord.ButtonStyle.secondary, row=1)
     async def armor(self, interaction, button):
         if not self._check(interaction):
             await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
         from cogs.voyage import build_armor_zukan_embed, SimpleZukanView
-        await interaction.response.edit_message(embed=build_armor_zukan_embed(), view=SimpleZukanView(self.user_id))
+        await interaction.response.edit_message(embed=build_armor_zukan_embed(self.user_id), view=SimpleZukanView(self.user_id))
 
     @discord.ui.button(label="📜 技", style=discord.ButtonStyle.secondary, row=2)
     async def skill(self, interaction, button):

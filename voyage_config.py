@@ -162,6 +162,17 @@ MATERIAL_DROP_RATE = 0.65   # 敵撃破時に素材が落ちる確率
 FOOD_DROP_RATE     = 0.35   # 島/戦闘勝利で食料が落ちる確率
 BARREL_DROP_RATE   = 0.40   # 漂流物/渦で燃料樽が出る確率
 
+# 🗡️ 装備ドロップ（人型の敵のみ・敵の☆に対応）。武器か防具をランダムで1個。
+HUMANOID_CATS = ("pirate", "military", "castaway", "merchant", "undead")  # 装備を落とす＝人型
+EQUIP_DROP_RATES = {
+    # 敵☆: [(装備☆, 確率), ...]
+    1: [(2, 0.003)],            # ☆1敵 → ☆2装備を超低確率
+    2: [(2, 0.01)],             # ☆2敵 → ☆2装備を低確率
+    3: [(2, 0.01), (3, 0.005)], # ☆3敵 → ☆2低確率＋☆3超低確率
+    4: [(2, 0.01), (3, 0.005)], # ☆4敵も同様（ボスは別途除外）
+    5: [(2, 0.01), (3, 0.005)],
+}
+
 def materials_for(cat, stars):
     """カテゴリ＋☆以下の素材キー一覧（その敵から落ちうる素材）。"""
     return [k for k, m in MATERIALS.items() if m["cat"] == cat and m["stars"] <= stars]
@@ -455,34 +466,52 @@ def rarity_stars(rank):
 
 # 武器カタログ（全部 rank1=★1・Lv1）。slots=技スロット数。
 WEAPONS = {
-    "cutlass":   {"name": "カトラス",   "wtype": "sword", "power": 35, "slots": 1,
-                  "rank": 1, "req_lv": 1, "price": 8_000,
-                  "desc": "扱いやすい片手剣。一撃の重さが持ち味。"},
-    "twinblade": {"name": "双剣",       "wtype": "twin",  "power": 17, "slots": 2,
-                  "rank": 1, "req_lv": 1, "price": 12_000,
-                  "desc": "二刀の手数型。技を2つ刻めて連撃と好相性。"},
-    "staff":     {"name": "司祭の錫杖", "wtype": "staff", "power": 30, "slots": 2,
-                  "rank": 1, "req_lv": 1, "price": 10_000,
-                  "desc": "回復技を扱えるヒーラー兼アタッカー。攻撃も多少こなす。"},
+    # ⚔️ 剣（バランス・一撃中）
+    "cutlass":         {"name": "カトラス",   "wtype": "sword", "power": 35, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 8_000,  "desc": "扱いやすい片手剣。一撃の重さが持ち味。"},
+    "corsair_blade":   {"name": "海賊刀",     "wtype": "sword", "power": 49, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 24_000, "desc": "歴戦の海賊が振るう片手剣。"},
+    "admiral_sword":   {"name": "提督の長剣", "wtype": "sword", "power": 68, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 60_000, "desc": "艦隊提督の佩刀。技を2つ刻める。"},
+    # 🗡️ 双剣（手数・1発軽い／後半暴れないようpower低め）
+    "twinblade":       {"name": "双剣",       "wtype": "twin",  "power": 12, "hits": 3, "slots": 1, "rank": 1, "req_lv": 1,  "price": 12_000, "desc": "二刀の手数型。1発は軽いが三連で押す。"},
+    "twin_fang":       {"name": "双牙",       "wtype": "twin",  "power": 17, "hits": 3, "slots": 1, "rank": 2, "req_lv": 8,  "price": 30_000, "desc": "鋭く噛みつく二刀。"},
+    "storm_twin":      {"name": "嵐の双刃",   "wtype": "twin",  "power": 24, "hits": 3, "slots": 2, "rank": 3, "req_lv": 15, "price": 68_000, "desc": "嵐のように斬り刻む双刃。技を2つ刻める。"},
+    # 🪄 杖（補助・回復）
+    "staff":           {"name": "司祭の錫杖", "wtype": "staff", "power": 28, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 10_000, "desc": "回復技を扱えるヒーラー兼アタッカー。"},
+    "sea_staff":       {"name": "海神の杖",   "wtype": "staff", "power": 40, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 28_000, "desc": "海神の加護を宿す杖。"},
+    "abyss_staff":     {"name": "深海の宝杖", "wtype": "staff", "power": 55, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 64_000, "desc": "深海の秘宝。技を2つ刻める。"},
+    # 🏹 弓（中手数・安定）
+    "pirate_bow":      {"name": "海賊の弓",   "wtype": "bow",   "power": 18, "hits": 2, "slots": 1, "rank": 1, "req_lv": 1,  "price": 11_000, "desc": "二の矢で押す手数の弓。"},
+    "strong_bow":      {"name": "強弓",       "wtype": "bow",   "power": 26, "hits": 2, "slots": 1, "rank": 2, "req_lv": 8,  "price": 29_000, "desc": "張りの強い弓。"},
+    "storm_bow":       {"name": "嵐弓",       "wtype": "bow",   "power": 35, "hits": 2, "slots": 2, "rank": 3, "req_lv": 15, "price": 66_000, "desc": "矢継ぎ早に射る嵐の弓。技を2つ刻める。"},
+    # 🔫 銃（一撃・貫通技と好相性）
+    "matchlock":       {"name": "火縄銃",     "wtype": "gun",   "power": 35, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 13_000, "desc": "一撃は重いが、扱いに癖がある。"},
+    "repeater":        {"name": "連発銃",     "wtype": "gun",   "power": 50, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 31_000, "desc": "連射の効く実弾銃。"},
+    "admiral_gun":     {"name": "提督の銃",   "wtype": "gun",   "power": 68, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 70_000, "desc": "提督の象徴たる銃。技を2つ刻める。"},
+    # 🗡️ 大剣（重い一撃・硬い敵を断つ）
+    "greatsword":      {"name": "大剣",       "wtype": "greatsword", "power": 42, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 14_000, "desc": "重い一撃で硬い敵を断つ。"},
+    "iron_greatsword": {"name": "鉄塊の大剣", "wtype": "greatsword", "power": 59, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 33_000, "desc": "鉄塊のごとき大剣。"},
+    "sea_cleaver":     {"name": "海割の大剣", "wtype": "greatsword", "power": 82, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 74_000, "desc": "海をも断つ大剣。技を2つ刻める。"},
 }
 
 # 防具カタログ（部位制：胴/脚。今後 足/腕 を追加予定）。全部 rank1=★1・Lv1。
 ARMOR_PARTS = {
     "torso": {"name": "胴", "emoji": "🦺", "items": {
-        "leather_vest": {"name": "革の胴鎧", "power": 12, "slots": 1,
-                         "rank": 1, "req_lv": 1, "price": 7_000,
-                         "desc": "胴を守る革鎧。防御の要。"},
+        "leather_vest": {"name": "革の胴鎧",     "power": 12, "slots": 1, "rank": 1, "req_lv": 1,  "price": 7_000,  "desc": "胴を守る革鎧。防御の要。"},
+        "chainmail":    {"name": "鎖帷子",       "power": 20, "slots": 1, "rank": 2, "req_lv": 8,  "price": 22_000, "desc": "鎖を編んだ胴鎧。斬撃に強い。"},
+        "plate_armor":  {"name": "鋼鉄の胸当て", "power": 30, "slots": 1, "rank": 3, "req_lv": 15, "price": 56_000, "desc": "鋼鉄の重鎧。最高の守り。"},
     }},
     "legs": {"name": "脚", "emoji": "🦵", "items": {
-        "leather_greaves": {"name": "革のすね当て", "power": 8, "slots": 1,
-                            "rank": 1, "req_lv": 1, "price": 5_000,
-                            "desc": "脚を守るすね当て。軽い守り。"},
+        "leather_greaves": {"name": "革のすね当て",   "power": 8,  "slots": 1, "rank": 1, "req_lv": 1,  "price": 5_000,  "desc": "脚を守るすね当て。軽い守り。"},
+        "chain_greaves":   {"name": "鎖の脚甲",       "power": 14, "slots": 1, "rank": 2, "req_lv": 8,  "price": 18_000, "desc": "鎖で編んだ脚甲。"},
+        "plate_greaves":   {"name": "鋼鉄のグリーブ", "power": 22, "slots": 1, "rank": 3, "req_lv": 15, "price": 48_000, "desc": "鋼鉄の脚甲。重いが頑強。"},
     }},
 }
 ARMOR_PART_ORDER = ["torso", "legs"]
 
 # ── 個人レベル ──
 LEVEL_BASE_POWER = 2          # Lvごとの個人攻撃力ベース加算（控えめ＝装備が主役）
+OFFHAND_HIT_MULT = 0.6        # 通常攻撃の2発目以降（手数武器の追撃）＝武器power×この倍率（レベル分は乗らない＝後半の手数爆発を抑制）
+# A案：技の基礎値は武器の☆で決まる（武器の種類によらず横並び）。＝その☆の武器power平均値あたり。
+SKILL_BASE_BY_RANK = {1: 30, 2: 42, 3: 56}
 LEVEL_BASE_DEF   = 2          # Lvごとの個人防御力ベース加算（攻撃と同じ伸び）
 LEVEL_MAX = 50
 # XP獲得源（薄く配分）

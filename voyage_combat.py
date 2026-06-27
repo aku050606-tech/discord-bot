@@ -110,9 +110,18 @@ def resolve_action(state, side, action):
         return _fire_skill(state, attacker, defender, sid, released=True)
 
     if kind == "attack":
-        d = dmg_calc(attacker["atk"], defender["def"], 1.0)
-        amt, line = _deal(state, attacker, defender, d)
-        state["log"].append(f"{attacker['emoji']} {attacker['name']} の攻撃！{line}")
+        base_hits = max(1, attacker.get("base_hits", 1))
+        offhand = attacker.get("offhand_power", 0)
+        total = 0
+        for i in range(base_hits):
+            atk = attacker["atk"] if i == 0 else offhand
+            if atk <= 0: break
+            d = dmg_calc(atk, defender["def"], 1.0)
+            amt, line = _deal(state, attacker, defender, d)
+            total += amt
+            if defender["hp"] <= 0: break
+        htxt = f"（{base_hits}連撃）" if base_hits > 1 else ""
+        state["log"].append(f"{attacker['emoji']} {attacker['name']} の攻撃{htxt}！ 計{total}ダメージ")
     elif kind == "defend":
         attacker["guard"] = 0.5
         state["log"].append(f"🛡️ {attacker['name']} は身を守った（次の被弾-50%）")
@@ -136,6 +145,8 @@ def _fire_skill(state, attacker, defender, sid, released=False):
     s = VS.SKILLS[sid]
     pre = "💥 溜め解放！" if released else ""
     t = s["type"]
+    # 技ダメージの基準値：skill_base があればそれ（味方＝レベル+武器☆）、なければ atk（敵）
+    skatk = attacker.get("skill_base", attacker["atk"])
     if t in ("attack", "pierce"):
         hits = s.get("hits", 1)
         pierce = s.get("pierce", 0.0)
@@ -144,14 +155,14 @@ def _fire_skill(state, attacker, defender, sid, released=False):
             if random.random() > s.get("acc", 1.0):
                 state["log"].append(f"{attacker['emoji']} {s['name']} … 外した！")
                 continue
-            d = dmg_calc(attacker["atk"], defender["def"], s["power"], pierce)
+            d = dmg_calc(skatk, defender["def"], s["power"], pierce)
             amt, line = _deal(state, attacker, defender, d)
             total += amt
         state["log"].append(f"{pre}{s['emoji']} {attacker['name']} の【{s['name']}】！ 計{total}ダメージ")
     elif t == "dot":
-        d = dmg_calc(attacker["atk"], defender["def"], s["power"])
+        d = dmg_calc(skatk, defender["def"], s["power"])
         amt, line = _deal(state, attacker, defender, d)
-        dd = max(1, round(attacker["atk"] * s.get("dot_power", 0.3)))
+        dd = max(1, round(skatk * s.get("dot_power", 0.3)))
         defender["dots"].append({"dmg": dd, "turns": s.get("dot_turns", 3), "name": s["name"]})
         state["log"].append(f"{s['emoji']} {attacker['name']} の【{s['name']}】！{line}（出血{s.get('dot_turns',3)}T）")
     elif t == "heal":
@@ -261,10 +272,6 @@ def take_turn(state, ally_action):
     """味方の行動を解決し、敵が生きていれば敵も行動、ラウンドを締める。"""
     state["log"] = []   # このターンのログだけ保持
     resolve_action(state, "ally", ally_action)
-    # 双剣の追撃（白兵のみ・武器power分＝レベル抜き）
-    if (not state["over"] and state["phase"] == "board"
-            and state["ally"].get("offhand_power")):
-        _offhand_strike(state)
     if not state["over"]:
         resolve_action(state, "enemy", enemy_action(state))
     if not state["over"]:
