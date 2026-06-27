@@ -46,6 +46,45 @@ ENCOUNTER_WEIGHTS = {
     "calm":    12,
 }
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🗺️ エリア進行システム ── 探索を重ねて奥へ進む（4エリア）。奥ほど高リスク高リターン。
+#   🔍探索 を同じエリアで10回 → ⛵進む が解禁 → 次エリアへ（探索カウント0に戻る）。
+#   ⚓引き返す で1エリア手前へ（エリア1で引き返す＝港へ入金）。
+#   エリア4(最深部)だけは、エリア3で「光る羅針盤のカケラ」3個が追加条件。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AREA_MAX = 4
+EXPLORE_TO_ADVANCE = 10               # 同エリアで探索N回 → 進む解禁
+AREA_NAMES  = {1: "浅瀬", 2: "沖合", 3: "深海", 4: "最深部"}
+AREA_EMOJI  = {1: "🏖️", 2: "🌊", 3: "🌑", 4: "🌟"}
+AREA_MULT   = {1: 1.0, 2: 1.6, 3: 2.6, 4: 4.0}   # 敵強さ・報酬に掛けるエリア倍率
+
+# エリアごとの遭遇テーブル（探索時）。奥ほど海賊・固有遭遇が増える。
+AREA_ENCOUNTERS = {
+    1: {"fish": 46, "island": 16, "pirate": 24, "calm": 14},
+    2: {"fish": 40, "island": 16, "pirate": 32, "calm": 12},
+    3: {"fish": 30, "island": 12, "pirate": 38, "calm": 6,  "boss": 4,  "maelstrom": 10},
+    4: {"fish": 22, "island": 10, "pirate": 34, "calm": 4,  "boss": 12, "abyss": 18},
+}
+
+# 🧭 光る羅針盤のカケラ（エリア3でのみ拾える）。3個でエリア4が開く。
+SHARD_NAME   = "🧭 光る羅針盤のカケラ"
+SHARD_NEEDED = 3
+SHARD_DROP = {            # エリア3の各結果での "薄い" ドロップ確率
+    "fish": 0.04, "island": 0.07, "pirate_win": 0.12,
+    "explore": 0.16, "boss": 1.0, "maelstrom": 0.5,
+}
+
+# エリア3/4で出る固有ボス（海戦→白兵の2層。エリア倍率が掛かる）
+AREA_BOSS = {
+    3: {"name": "深海の主", "emoji": "🐙", "sea_power": 120, "crew_power": 95,  "reward_mult": 2.0},
+    4: {"name": "海淵の古龍", "emoji": "🐲", "sea_power": 240, "crew_power": 190, "reward_mult": 3.0},
+}
+
+# 🔍探索の小宝・固有報酬
+EXPLORE_TREASURE = {"base_min": 3000, "base_max": 11000}
+ABYSS_TREASURE   = {"base_min": 8000, "base_max": 22000}   # エリア4の海淵
+MAELSTROM_REWARD = {"base_min": 2000, "base_max": 7000}    # エリア3の渦潮
+
 # ── 釣果（船倉に貯まる海産物。海のval_multで増える）──
 #   base_value × val_mult をベースに ±振れ。rare枠は低確率で高額。
 FISH_HAUL = {
@@ -104,40 +143,47 @@ BOARD_DURA_COST = 6           # 白兵に発展した場合、船本体(hull)か
 SAIL_DURA_COST  = 1           # 「進む」1回ごとの航海消耗（軽い）
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 船の装備（3スロット）。tierを上げるほど強い・高い・(一部)解放鍵。
-#   power=戦闘力 / dura=耐久 / price=購入額（ガチャ/マーケットでも入手可・Phase2+）
-#   cannon=砲(海戦攻撃) / armor=装甲(被害軽減＋海戦少々) / hull=船体(戦闘力＋海の解放鍵＋耐久)
+# 🚢 船システム（船本体＋部位スロット）── 個人装備と同じ思想
+#   船本体：☆レア度・基礎HP・基礎防御・部位スロット・技スロット・海の解放グレード。
+#   部位（砲/装甲/艤装）に船装備を1個ずつ挿す。各船装備も☆レア度＆技スロット持ち。
+#   装着制限：船のrank+2 までの装備しか挿せない（☆2船→☆4装備までOK）。
+#   艤装は今は枠だけ（ソナー等の探索装備を後で）。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SHIP_EQUIP = {
-    "cannon": {
-        "name":"砲", "emoji":"💥", "role":"海戦の攻撃力",
-        "tiers":[
-            {"t":1, "name":"木製砲",   "power":8,   "dura":50,  "price":15_000},
-            {"t":2, "name":"鉄製砲",   "power":22,  "dura":70,  "price":55_000},
-            {"t":3, "name":"鋼鉄砲",   "power":50,  "dura":95,  "price":180_000},
-            {"t":4, "name":"重連装砲", "power":105, "dura":125, "price":480_000},
-            {"t":5, "name":"竜骨砲",   "power":210, "dura":160, "price":1_200_000},
-        ],
+RARITY_ENGRAVE_GAP = 2        # 船rank+2 まで の装備を挿せる
+
+SHIP_PART_ORDER = ["cannon", "armor", "rigging"]
+SHIP_PART_META = {
+    "cannon":  {"name": "砲",   "emoji": "🔫", "role": "海戦の攻撃力"},
+    "armor":   {"name": "装甲", "emoji": "🛡️", "role": "海戦の防御力"},
+    "rigging": {"name": "艤装", "emoji": "🧭", "role": "探索装備（ソナー等・今後）"},
+}
+
+# 船本体カタログ（☆1は存在しない。最初の船は☆2）
+SHIPS = {
+    "frigate": {
+        "name": "帆船", "emoji": "🚢", "rank": 2,
+        "base_hp": 300, "base_def": 15,
+        "parts": ["cannon", "armor", "rigging"],   # 使える部位スロット
+        "skill_slots": 1,                          # 船本体に刻める技数
+        "sea_unlock": 1,                           # 解放できる海グレード（1=大海原）
+        "price": 200_000,
+        "desc": "外洋に出られる最初の一隻（☆2）。砲・装甲・艤装を積んで戦う。",
     },
-    "armor": {
-        "name":"装甲", "emoji":"🛡️", "role":"被害軽減＋海戦少々",
-        "tiers":[
-            {"t":1, "name":"木甲",     "power":3,  "dura":60,  "price":12_000},
-            {"t":2, "name":"鉄甲",     "power":8,  "dura":85,  "price":45_000},
-            {"t":3, "name":"鋼鉄装甲", "power":18, "dura":115, "price":150_000},
-            {"t":4, "name":"重装甲",   "power":40, "dura":150, "price":420_000},
-            {"t":5, "name":"竜鱗装甲", "power":80, "dura":200, "price":1_050_000},
-        ],
-    },
-    "hull": {
-        "name":"船体", "emoji":"⛵", "role":"戦闘力＋奥の海の解放鍵＋耐久",
-        "tiers":[
-            {"t":1, "name":"小型船体",   "power":5,   "dura":120, "price":0},         # 船購入時に標準装備
-            {"t":2, "name":"補強船体",   "power":25,  "dura":180, "price":120_000},   # 🧊解放
-            {"t":3, "name":"鋼鉄船体",   "power":65,  "dura":260, "price":400_000},   # 🔥解放
-            {"t":4, "name":"古代船体",   "power":140, "dura":380, "price":1_100_000}, # 🏛️解放
-        ],
-    },
+}
+
+# 船装備カタログ（部位別・☆レア度・技スロット・耐久）
+SHIP_PARTS = {
+    "cannon": {"name": "砲", "emoji": "🔫", "items": {
+        "iron_cannon": {"name": "鉄製砲", "power": 45, "rank": 1, "slots": 1,
+                        "dura": 90, "price": 90_000,
+                        "desc": "標準的な鉄の艦砲。海戦の主力。"},
+    }},
+    "armor": {"name": "装甲", "emoji": "🛡️", "items": {
+        "iron_plate": {"name": "鉄装甲", "power": 22, "rank": 1, "slots": 1,
+                       "dura": 110, "price": 80_000,
+                       "desc": "船体を覆う鉄板。被ダメを抑える。"},
+    }},
+    "rigging": {"name": "艤装", "emoji": "🧭", "items": {}},   # 枠だけ（ソナー等は今後）
 }
 
 # ── 個人の装備（白兵）＆レベル ──

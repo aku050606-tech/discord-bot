@@ -58,6 +58,31 @@ SKILLS = {
         "acc": 1.0, "charge": 0, "reduce": 0.7, "price": 5000,
         "desc": "1ターン構える。受けるダメージを70%カット。",
     },
+    # ── 船技（海戦）── 船の部位に刻める ──
+    "seisha": {
+        "name": "斉射", "emoji": "💥", "phase": "naval", "slot": "ship_cannon",
+        "type": "attack", "power": 1.4, "hits": 1, "cost": 0, "cooldown": 0,
+        "acc": 0.95, "charge": 0, "price": 8000,
+        "desc": "全砲門の一斉射撃。船力の1.4倍を敵船に。【砲】",
+    },
+    "tekkoudan": {
+        "name": "徹甲弾", "emoji": "🎯", "phase": "naval", "slot": "ship_cannon",
+        "type": "pierce", "power": 1.1, "hits": 1, "cost": 0, "cooldown": 1,
+        "acc": 0.9, "charge": 0, "pierce": 0.6, "price": 12000,
+        "desc": "装甲を貫く徹甲弾。敵防御の60%を無視。【砲】",
+    },
+    "enmaku": {
+        "name": "煙幕", "emoji": "🌫️", "phase": "naval", "slot": "ship_armor",
+        "type": "defend", "power": 0.0, "hits": 0, "cost": 0, "cooldown": 2,
+        "acc": 1.0, "charge": 0, "reduce": 0.5, "price": 7000,
+        "desc": "煙幕を展開。1ターン敵砲撃の被弾を50%軽減。【装甲】",
+    },
+    "zenshin": {
+        "name": "全速前進", "emoji": "🌊", "phase": "naval", "slot": "ship_body",
+        "type": "defend", "power": 0.0, "hits": 0, "cost": 0, "cooldown": 2,
+        "acc": 1.0, "charge": 0, "reduce": 0.4, "counter": 0.3, "price": 9000,
+        "desc": "舵を切って回避機動。被弾を抑えつつ次の砲撃で反撃。【船本体】",
+    },
 }
 
 # ── ある武器に、その技を刻めるか（武器種別で判定）──
