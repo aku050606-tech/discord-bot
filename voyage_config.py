@@ -467,42 +467,42 @@ def rarity_stars(rank):
 # 武器カタログ（全部 rank1=★1・Lv1）。slots=技スロット数。
 WEAPONS = {
     # ⚔️ 剣（バランス・一撃中）
-    "cutlass":         {"name": "カトラス",   "wtype": "sword", "power": 35, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 8_000,  "desc": "扱いやすい片手剣。一撃の重さが持ち味。"},
-    "corsair_blade":   {"name": "海賊刀",     "wtype": "sword", "power": 49, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 24_000, "desc": "歴戦の海賊が振るう片手剣。"},
-    "admiral_sword":   {"name": "提督の長剣", "wtype": "sword", "power": 68, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 60_000, "desc": "艦隊提督の佩刀。技を2つ刻める。"},
+    "cutlass":         {"name": "カトラス",   "wtype": "sword", "power": 35, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 34000,  "desc": "扱いやすい片手剣。一撃の重さが持ち味。"},
+    "corsair_blade":   {"name": "海賊刀",     "wtype": "sword", "power": 49, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 85000, "desc": "歴戦の海賊が振るう片手剣。"},
+    "admiral_sword":   {"name": "提督の長剣", "wtype": "sword", "power": 68, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 200000, "desc": "艦隊提督の佩刀。技を2つ刻める。"},
     # 🗡️ 双剣（手数・1発軽い／後半暴れないようpower低め）
-    "twinblade":       {"name": "双剣",       "wtype": "twin",  "power": 12, "hits": 3, "slots": 1, "rank": 1, "req_lv": 1,  "price": 12_000, "desc": "二刀の手数型。1発は軽いが三連で押す。"},
-    "twin_fang":       {"name": "双牙",       "wtype": "twin",  "power": 17, "hits": 3, "slots": 1, "rank": 2, "req_lv": 8,  "price": 30_000, "desc": "鋭く噛みつく二刀。"},
-    "storm_twin":      {"name": "嵐の双刃",   "wtype": "twin",  "power": 24, "hits": 3, "slots": 2, "rank": 3, "req_lv": 15, "price": 68_000, "desc": "嵐のように斬り刻む双刃。技を2つ刻める。"},
+    "twinblade":       {"name": "双剣",       "wtype": "twin",  "power": 12, "hits": 3, "slots": 1, "rank": 1, "req_lv": 1,  "price": 26000, "desc": "二刀の手数型。1発は軽いが三連で押す。"},
+    "twin_fang":       {"name": "双牙",       "wtype": "twin",  "power": 17, "hits": 3, "slots": 1, "rank": 2, "req_lv": 8,  "price": 65000, "desc": "鋭く噛みつく二刀。"},
+    "storm_twin":      {"name": "嵐の双刃",   "wtype": "twin",  "power": 24, "hits": 3, "slots": 2, "rank": 3, "req_lv": 15, "price": 152000, "desc": "嵐のように斬り刻む双刃。技を2つ刻める。"},
     # 🪄 杖（補助・回復）
-    "staff":           {"name": "司祭の錫杖", "wtype": "staff", "power": 28, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 10_000, "desc": "回復技を扱えるヒーラー兼アタッカー。"},
-    "sea_staff":       {"name": "海神の杖",   "wtype": "staff", "power": 40, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 28_000, "desc": "海神の加護を宿す杖。"},
-    "abyss_staff":     {"name": "深海の宝杖", "wtype": "staff", "power": 55, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 64_000, "desc": "深海の秘宝。技を2つ刻める。"},
+    "staff":           {"name": "司祭の錫杖", "wtype": "staff", "power": 28, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 29000, "desc": "回復技を扱えるヒーラー兼アタッカー。"},
+    "sea_staff":       {"name": "海神の杖",   "wtype": "staff", "power": 40, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 72000, "desc": "海神の加護を宿す杖。"},
+    "abyss_staff":     {"name": "深海の宝杖", "wtype": "staff", "power": 55, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 170000, "desc": "深海の秘宝。技を2つ刻める。"},
     # 🏹 弓（中手数・安定）
-    "pirate_bow":      {"name": "海賊の弓",   "wtype": "bow",   "power": 18, "hits": 2, "slots": 1, "rank": 1, "req_lv": 1,  "price": 11_000, "desc": "二の矢で押す手数の弓。"},
-    "strong_bow":      {"name": "強弓",       "wtype": "bow",   "power": 26, "hits": 2, "slots": 1, "rank": 2, "req_lv": 8,  "price": 29_000, "desc": "張りの強い弓。"},
-    "storm_bow":       {"name": "嵐弓",       "wtype": "bow",   "power": 35, "hits": 2, "slots": 2, "rank": 3, "req_lv": 15, "price": 66_000, "desc": "矢継ぎ早に射る嵐の弓。技を2つ刻める。"},
+    "pirate_bow":      {"name": "海賊の弓",   "wtype": "bow",   "power": 18, "hits": 2, "slots": 1, "rank": 1, "req_lv": 1,  "price": 30000, "desc": "二の矢で押す手数の弓。"},
+    "strong_bow":      {"name": "強弓",       "wtype": "bow",   "power": 26, "hits": 2, "slots": 1, "rank": 2, "req_lv": 8,  "price": 75000, "desc": "張りの強い弓。"},
+    "storm_bow":       {"name": "嵐弓",       "wtype": "bow",   "power": 35, "hits": 2, "slots": 2, "rank": 3, "req_lv": 15, "price": 176000, "desc": "矢継ぎ早に射る嵐の弓。技を2つ刻める。"},
     # 🔫 銃（一撃・貫通技と好相性）
-    "matchlock":       {"name": "火縄銃",     "wtype": "gun",   "power": 35, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 13_000, "desc": "一撃は重いが、扱いに癖がある。"},
-    "repeater":        {"name": "連発銃",     "wtype": "gun",   "power": 50, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 31_000, "desc": "連射の効く実弾銃。"},
-    "admiral_gun":     {"name": "提督の銃",   "wtype": "gun",   "power": 68, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 70_000, "desc": "提督の象徴たる銃。技を2つ刻める。"},
+    "matchlock":       {"name": "火縄銃",     "wtype": "gun",   "power": 35, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 33000, "desc": "一撃は重いが、扱いに癖がある。"},
+    "repeater":        {"name": "連発銃",     "wtype": "gun",   "power": 50, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 82000, "desc": "連射の効く実弾銃。"},
+    "admiral_gun":     {"name": "提督の銃",   "wtype": "gun",   "power": 68, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 194000, "desc": "提督の象徴たる銃。技を2つ刻める。"},
     # 🗡️ 大剣（重い一撃・硬い敵を断つ）
-    "greatsword":      {"name": "大剣",       "wtype": "greatsword", "power": 42, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 14_000, "desc": "重い一撃で硬い敵を断つ。"},
-    "iron_greatsword": {"name": "鉄塊の大剣", "wtype": "greatsword", "power": 59, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 33_000, "desc": "鉄塊のごとき大剣。"},
-    "sea_cleaver":     {"name": "海割の大剣", "wtype": "greatsword", "power": 82, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 74_000, "desc": "海をも断つ大剣。技を2つ刻める。"},
+    "greatsword":      {"name": "大剣",       "wtype": "greatsword", "power": 42, "hits": 1, "slots": 1, "rank": 1, "req_lv": 1,  "price": 28000, "desc": "重い一撃で硬い敵を断つ。"},
+    "iron_greatsword": {"name": "鉄塊の大剣", "wtype": "greatsword", "power": 59, "hits": 1, "slots": 1, "rank": 2, "req_lv": 8,  "price": 70000, "desc": "鉄塊のごとき大剣。"},
+    "sea_cleaver":     {"name": "海割の大剣", "wtype": "greatsword", "power": 82, "hits": 1, "slots": 2, "rank": 3, "req_lv": 15, "price": 164000, "desc": "海をも断つ大剣。技を2つ刻める。"},
 }
 
 # 防具カタログ（部位制：胴/脚。今後 足/腕 を追加予定）。全部 rank1=★1・Lv1。
 ARMOR_PARTS = {
     "torso": {"name": "胴", "emoji": "🦺", "items": {
-        "leather_vest": {"name": "革の胴鎧",     "power": 12, "slots": 1, "rank": 1, "req_lv": 1,  "price": 7_000,  "desc": "胴を守る革鎧。防御の要。"},
-        "chainmail":    {"name": "鎖帷子",       "power": 20, "slots": 1, "rank": 2, "req_lv": 8,  "price": 22_000, "desc": "鎖を編んだ胴鎧。斬撃に強い。"},
-        "plate_armor":  {"name": "鋼鉄の胸当て", "power": 30, "slots": 1, "rank": 3, "req_lv": 15, "price": 56_000, "desc": "鋼鉄の重鎧。最高の守り。"},
+        "leather_vest": {"name": "革の胴鎧",     "power": 12, "slots": 1, "rank": 1, "req_lv": 1,  "price": 19_000, "desc": "胴を守る革鎧。防御の要。"},
+        "chainmail":    {"name": "鎖帷子",       "power": 20, "slots": 1, "rank": 2, "req_lv": 8,  "price": 47_000, "desc": "鎖を編んだ胴鎧。斬撃に強い。"},
+        "plate_armor":  {"name": "鋼鉄の胸当て", "power": 30, "slots": 1, "rank": 3, "req_lv": 15, "price": 110_000,"desc": "鋼鉄の重鎧。最高の守り。"},
     }},
     "legs": {"name": "脚", "emoji": "🦵", "items": {
-        "leather_greaves": {"name": "革のすね当て",   "power": 8,  "slots": 1, "rank": 1, "req_lv": 1,  "price": 5_000,  "desc": "脚を守るすね当て。軽い守り。"},
-        "chain_greaves":   {"name": "鎖の脚甲",       "power": 14, "slots": 1, "rank": 2, "req_lv": 8,  "price": 18_000, "desc": "鎖で編んだ脚甲。"},
-        "plate_greaves":   {"name": "鋼鉄のグリーブ", "power": 22, "slots": 1, "rank": 3, "req_lv": 15, "price": 48_000, "desc": "鋼鉄の脚甲。重いが頑強。"},
+        "leather_greaves": {"name": "革のすね当て",   "power": 8,  "slots": 1, "rank": 1, "req_lv": 1,  "price": 15_000, "desc": "脚を守るすね当て。軽い守り。"},
+        "chain_greaves":   {"name": "鎖の脚甲",       "power": 14, "slots": 1, "rank": 2, "req_lv": 8,  "price": 38_000, "desc": "鎖で編んだ脚甲。"},
+        "plate_greaves":   {"name": "鋼鉄のグリーブ", "power": 22, "slots": 1, "rank": 3, "req_lv": 15, "price": 90_000, "desc": "鋼鉄の脚甲。重いが頑強。"},
     }},
 }
 ARMOR_PART_ORDER = ["torso", "legs"]
