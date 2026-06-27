@@ -22,7 +22,7 @@ WEATHER = {
     "rain":      {"name":"雨","emoji":"🌧️","weight":8,"gate":None,"limited":True},
     "fog":       {"name":"霧","emoji":"🌫️","weight":8,"gate":None,"limited":True},
     "glow":      {"name":"朝焼け/夕焼け","emoji":"🌅","weight":7,"gate":"glow","limited":True},
-    "storm":     {"name":"嵐","emoji":"⛈️","weight":6,"gate":None,"limited":True,"chest":True},
+    "storm":     {"name":"嵐","emoji":"⛈️","weight":3,"gate":None,"limited":True,"chest":True},
     "blood_moon":{"name":"赤い月","emoji":"🩸","weight":4,"gate":"night","limited":True,"boss":True},
 }
 WEATHER_UPDATE_MINUTES = 60
