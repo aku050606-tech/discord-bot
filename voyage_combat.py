@@ -17,8 +17,9 @@ def make_combatant(name, emoji, hp, atk, defense, skills, ai_tier=0):
         "skills": list(skills),   # 刻まれた技ID
         "cd": {},                 # {sid: 残ターン}
         "charging": None,         # 溜め中の技ID
-        "guard": 0.0,             # 次の被ダメ軽減率（自ターンまで）
-        "counter": 0.0,           # 反撃ダメージ率（被弾時に返す）
+        "guard": 0.0,             # 被ダメ軽減率
+        "guard_turns": 0,         # ガード残り持続ターン（0=今ターンのみ）
+        "counter": 0.0,           # 反撃ダメージ率（被弾時に返す・そのターンのみ）
         "dots": [],               # [{"dmg":int,"turns":int,"name":str}]
         "ai_tier": ai_tier,
     }
@@ -87,7 +88,11 @@ def usable_skills(c):
 # 行動の解決
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def _begin_turn(c):
-    c["guard"] = 0.0
+    # ガードは持続ターン管理（煙幕=次ターンまで等）。反撃は常にそのターンのみ。
+    if c.get("guard_turns", 0) > 0:
+        c["guard_turns"] -= 1
+    else:
+        c["guard"] = 0.0
     c["counter"] = 0.0
 
 
@@ -155,6 +160,7 @@ def _fire_skill(state, attacker, defender, sid, released=False):
         state["log"].append(f"{s['emoji']} {attacker['name']} は【{s['name']}】で {heal} 回復")
     elif t == "defend":
         attacker["guard"] = s.get("reduce", 0.5)
+        attacker["guard_turns"] = s.get("duration", 1) - 1   # duration=総ターン数（1=今のみ,2=次まで）
         if s.get("counter", 0) > 0:
             attacker["counter"] = s["counter"]
         state["log"].append(f"{s['emoji']} {attacker['name']} は【{s['name']}】で身構えた")

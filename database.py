@@ -923,6 +923,8 @@ class Database:
             "learned_skills": {},
             "unequip_kits": 0,
             "special_items": [],       # 全損しても持ち帰れる特殊アイテム（救済枠）
+            "shards": 0,               # 🧭 羅針盤のカケラ（特殊ポーチ・永続・全損でもロストしない・航海をまたいで蓄積）
+            "karma": 20,               # ⚖️ カルマ（20=やや善寄りスタート・永続・選択で±に振れる）
             "voyage": None,
         }
 
@@ -973,6 +975,12 @@ class Database:
         d.setdefault("ship_hp_cur", 0)
         d.setdefault("ship", None)
         d.setdefault("special_items", [])
+        # ── 🧭 カケラを永続枠へ：旧 voyage内shards をトップレベル(特殊ポーチ)へ移行 ──
+        d.setdefault("shards", 0)
+        d.setdefault("karma", 20)  # ⚖️ カルマ（20=やや善寄りスタート・永続）
+        vy = d.get("voyage")
+        if isinstance(vy, dict) and "shards" in vy:
+            d["shards"] = max(d.get("shards", 0), vy.pop("shards"))
         return d
 
     def save_voyage(self, user_id, data):
