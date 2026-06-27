@@ -165,6 +165,12 @@ class PhoneHomeView(discord.ui.View):
             embed=view.status_embed(), view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
+    @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.primary, row=2)
+    async def inventory(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.voyage import open_inventory
+        await open_inventory(interaction, self.user_id, back="town")
+
     @discord.ui.button(label="❌ 閉じる", style=discord.ButtonStyle.secondary, row=2)
     async def close(self, interaction, button):
         if not await self._check(interaction): return

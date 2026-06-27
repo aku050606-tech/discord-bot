@@ -909,15 +909,20 @@ class Database:
     def _default_voyage(self):
         return {
             "has_ship": False,
-            "ship_equip": {            # 船装備：tier と現在耐久
-                "cannon": None,        # {"t":int, "dura":int} or None
-                "armor":  None,
-                "hull":   None,        # 船購入時に tier1 が入る
+            "ship_equip": {            # 船装備：tier と現在耐久（港でいじる）
+                "cannon": None, "armor": None, "hull": None,
             },
-            "hull_dura": 0,            # 船本体の耐久
-            "personal": {"weapon": 0, "armor": 0},  # 所持最高tier（0=未所持）
-            "level": 1, "xp": 0,
-            "voyage": None,            # 航海中: {"sea":str,"leg":int,"hold":int,"log":[...]}
+            "hull_dura": 0,
+            # ── 個人インベントリ（部位別・枠上限：武器5/胴3/脚3）──
+            #   各要素 = {"item": item_id, "skills": [刻んだ技id...]}  ← 技が装備について回る(X)
+            "inventory": {"weapon": [], "torso": [], "legs": []},
+            # 装備中＝inventory[part] の何番目か（None=未装備）
+            "equipped": {"weapon": None, "torso": None, "legs": None},
+            "level": 1, "xp": 0, "cur_hp": 100,
+            # ── 未刻印の技（最大5枠）＆消耗品（無限）──
+            "learned_skills": {},      # {skill_id: 個数}
+            "unequip_kits": 0,         # 技外しキット（消耗品・無限所持）
+            "voyage": None,            # 航海中: {"sea":str,"leg":int,"hold":int}
         }
 
     def get_voyage(self, user_id):
@@ -929,14 +934,34 @@ class Database:
             self.save_voyage(user_id, d)
             return d
         d = json.loads(row[0])
-        # 後方互換：欠けたキーを補完
         base = self._default_voyage()
+        # 欠けたトップレベルキーを補完
         for k, v in base.items():
             if k not in d: d[k] = v
         for k, v in base["ship_equip"].items():
             if k not in d["ship_equip"]: d["ship_equip"][k] = v
-        for k, v in base["personal"].items():
-            if k not in d["personal"]: d["personal"][k] = v
+        # ── 旧構造（personal/slot_skills）→ 新インベントリ構造へ移行 ──
+        if "inventory" not in d or "personal" in d or "slot_skills" in d:
+            inv = {"weapon": [], "torso": [], "legs": []}
+            eq = {"weapon": None, "torso": None, "legs": None}
+            old_p = d.get("personal", {})
+            old_ss = d.get("slot_skills", {}) if isinstance(d.get("slot_skills"), dict) else {}
+            for part in ("weapon", "torso", "legs"):
+                item = old_p.get(part)
+                if isinstance(item, str):   # 旧：装備中アイテムID
+                    sk = old_ss.get(part if part != "torso" else "torso", [])
+                    sk = sk if isinstance(sk, list) else []
+                    inv[part].append({"item": item, "skills": list(sk)})
+                    eq[part] = 0
+            d["inventory"] = inv
+            d["equipped"] = eq
+            d.pop("personal", None)
+            d.pop("slot_skills", None)
+        # インベントリ各部位の存在保証
+        for part in ("weapon", "torso", "legs"):
+            d["inventory"].setdefault(part, [])
+            d["equipped"].setdefault(part, None)
+        if "cur_hp" not in d: d["cur_hp"] = 100
         return d
 
     def save_voyage(self, user_id, data):

@@ -140,31 +140,56 @@ SHIP_EQUIP = {
     },
 }
 
-# ── 個人の装備（白兵2スロット）＆レベル ──
-#   個人戦闘力 = レベル微ベース ＋ 武器(攻) ＋ 防具(守)。
-#   レベルは「強さそのもの」より「高tier装備を装備できる鍵」が主。差は控えめ。
-PERSONAL_EQUIP = {
-    "weapon": {
-        "name":"武器", "emoji":"⚔️", "role":"白兵の攻撃力",
-        "tiers":[
-            {"t":1, "name":"錆びたカトラス", "power":6,   "req_lv":1,  "price":8_000},
-            {"t":2, "name":"鋼のサーベル",   "power":18,  "req_lv":5,  "price":35_000},
-            {"t":3, "name":"双剣",           "power":42,  "req_lv":12, "price":130_000},
-            {"t":4, "name":"業物の大刀",     "power":95,  "req_lv":22, "price":400_000},
-            {"t":5, "name":"古王の剣",       "power":190, "req_lv":35, "price":1_000_000},
-        ],
-    },
-    "armor": {
-        "name":"防具", "emoji":"🥼", "role":"白兵の防御力",
-        "tiers":[
-            {"t":1, "name":"革鎧",       "power":5,   "req_lv":1,  "price":7_000},
-            {"t":2, "name":"鎖帷子",     "power":15,  "req_lv":5,  "price":30_000},
-            {"t":3, "name":"板金鎧",     "power":36,  "req_lv":12, "price":120_000},
-            {"t":4, "name":"竜革の鎧",   "power":80,  "req_lv":22, "price":380_000},
-            {"t":5, "name":"古代の護鎧", "power":160, "req_lv":35, "price":950_000},
-        ],
-    },
+# ── 個人の装備（白兵）＆レベル ──
+#   武器は「種別(剣/双剣/杖…)」を持つカタログ。技は武器種別で装着制限される。
+#   防具は部位制（胴/脚。今後 足/腕 を追加予定）。装備に技スロット(slots)を持つ。
+#   ★レアリティ(rank)で表示。今は全部 rank1=★1。上位は金星・黒星で青天井。
+
+# 武器種別（6枠。今は剣/双剣/杖だけ実物あり。弓/刀/銃は枠のみ）
+WEAPON_TYPES = {
+    "bow":    {"name": "弓",   "emoji": "🏹"},
+    "sword":  {"name": "剣",   "emoji": "⚔️"},
+    "katana": {"name": "刀",   "emoji": "🗡️"},
+    "staff":  {"name": "杖",   "emoji": "🪄"},
+    "twin":   {"name": "双剣", "emoji": "⚔️"},
+    "gun":    {"name": "銃",   "emoji": "🔫"},
 }
+
+# ★レアリティ表示：rank(1始まり) → 星。5刻みで星種が繰り上がる（青天井）。
+RARITY_STAR_BANDS = ["★", "🌟", "⭐", "✦"]  # 1-5=★ / 6-10=🌟 / 11-15=⭐ / 16-20=✦ …
+def rarity_stars(rank):
+    band = (rank - 1) // 5
+    pos = (rank - 1) % 5 + 1
+    star = RARITY_STAR_BANDS[band] if band < len(RARITY_STAR_BANDS) else "✧"
+    return star * pos
+
+# 武器カタログ（全部 rank1=★1・Lv1）。slots=技スロット数。
+WEAPONS = {
+    "cutlass":   {"name": "カトラス",   "wtype": "sword", "power": 15, "slots": 2,
+                  "rank": 1, "req_lv": 1, "price": 8_000,
+                  "desc": "扱いやすい片手剣。技を2つ刻める拡張性が魅力。"},
+    "twinblade": {"name": "双剣",       "wtype": "twin",  "power": 28, "slots": 1,
+                  "rank": 1, "req_lv": 1, "price": 12_000,
+                  "desc": "二刀の手数型。連撃と好相性。"},
+    "staff":     {"name": "司祭の錫杖", "wtype": "staff", "power": 18, "slots": 1,
+                  "rank": 1, "req_lv": 1, "price": 10_000,
+                  "desc": "回復技を扱えるヒーラー兼アタッカー。攻撃も多少こなす。"},
+}
+
+# 防具カタログ（部位制：胴/脚。今後 足/腕 を追加予定）。全部 rank1=★1・Lv1。
+ARMOR_PARTS = {
+    "torso": {"name": "胴", "emoji": "🦺", "items": {
+        "leather_vest": {"name": "革の胴鎧", "power": 12, "slots": 1,
+                         "rank": 1, "req_lv": 1, "price": 7_000,
+                         "desc": "胴を守る革鎧。防御の要。"},
+    }},
+    "legs": {"name": "脚", "emoji": "🦵", "items": {
+        "leather_greaves": {"name": "革のすね当て", "power": 8, "slots": 1,
+                            "rank": 1, "req_lv": 1, "price": 5_000,
+                            "desc": "脚を守るすね当て。軽い守り。"},
+    }},
+}
+ARMOR_PART_ORDER = ["torso", "legs"]
 
 # ── 個人レベル ──
 LEVEL_BASE_POWER = 2          # Lvごとの個人戦闘力ベース加算（控えめ＝装備が主役）

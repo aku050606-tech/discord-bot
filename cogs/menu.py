@@ -4,7 +4,7 @@ from discord import app_commands
 from database import Database
 from datetime import date, datetime, timezone, timedelta
 import random
-from config import DAILY_AMOUNT, DAILY_SEND_LIMIT, jst_today_str
+from config import DAILY_AMOUNT, DAILY_SEND_LIMIT, jst_today_str, ADMIN_USER_IDS
 from quest_tracker import record as quest_record
 import quest_tracker as QT
 
@@ -281,6 +281,13 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
 
         daily_txt = (f"{E}[1;32m受取可能 ●{E}[0m" if claimable_daily
                      else f"{E}[1;30m受取済み{E}[0m")
+        try:
+            import voyage_config as _V
+            _vp = db.get_voyage(uid)
+            _lv = _vp.get("level", 1); _xp = _vp.get("xp", 0); _nxt = _V.xp_to_next(_lv)
+            adv_txt = f"{E}[1;36mLv.{_lv}（XP {_xp}/{_nxt}）{E}[0m"
+        except Exception:
+            adv_txt = f"{E}[1;36mLv.1{E}[0m"
         quest_txt = f"{E}[1;36m{q_done} / {q_total} 達成{E}[0m"
         if q_claim:
             quest_txt += f"  {E}[1;33m🎁 受取可能{E}[0m"
@@ -291,6 +298,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
             f"{E}[0;33m💰 残高　　{E}[1;37m {bal:,} ナトコイン{E}[0m\n"
             f"{E}[0;33m🎁 デイリー{E}[0m {daily_txt}\n"
             f"{E}[0;33m📜 クエスト{E}[0m {quest_txt}\n"
+            f"{E}[0;33m🗺️ 冒険者　{E}[0m {adv_txt}\n"
             f"{E}[1;30m──────────────────────────────{E}[0m\n"
             "```"
         )
@@ -363,7 +371,11 @@ class MainMenuView(discord.ui.View):
     @discord.ui.button(label="⚔️ 装備屋", style=discord.ButtonStyle.secondary, row=1)
     async def equip_shop(self, interaction, button):
         if not await self._check(interaction): return
-        await _coming_soon(interaction, "装備屋")
+        if str(interaction.user.id) not in ADMIN_USER_IDS:
+            await _coming_soon(interaction, "装備屋")
+            return
+        from cogs.voyage import open_equip_shop
+        await open_equip_shop(interaction, str(interaction.user.id))
 
     @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
     async def gacha(self, interaction, button):
@@ -396,6 +408,12 @@ class MainMenuView(discord.ui.View):
         await interaction.response.send_message(
             embed=build_phone_embed(interaction.user, interaction.guild),
             view=PhoneHomeView(uid), ephemeral=True)
+
+    @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.primary, row=3)
+    async def inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check(interaction): return
+        from cogs.voyage import open_inventory
+        await open_inventory(interaction, str(interaction.user.id), back="town")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
