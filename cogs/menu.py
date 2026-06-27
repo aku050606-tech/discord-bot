@@ -393,6 +393,11 @@ class MainMenuView(discord.ui.View):
         if not await self._check(interaction): return
         await _coming_soon(interaction, "街道")
 
+    @discord.ui.button(label="🏠", style=discord.ButtonStyle.secondary, row=2)
+    async def house(self, interaction, button):
+        if not await self._check(interaction): return
+        await _coming_soon(interaction, "家")
+
     # ── 4段目：カジノ・スマホ ──
     @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.success, row=3)
     async def casino(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -812,14 +817,6 @@ class FishMenuView(discord.ui.View):
         from cogs.shop import ShopView
         embed = discord.Embed(title="🏪 釣具屋", description="カテゴリを選んでください！", color=discord.Color.green())
         await interaction.response.edit_message(embed=embed, view=ShopView())
-
-    @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.secondary, row=2)
-    async def zukan(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check(interaction): return
-        from cogs.zukan import ZukanCategoryView, build_category_embed
-        await interaction.response.edit_message(
-            embed=build_category_embed(self.user_id),
-            view=ZukanCategoryView(self.user_id))
 
     @discord.ui.button(label="🗺️ 宝の地図を使う", style=discord.ButtonStyle.primary, row=2)
     async def treasure(self, interaction: discord.Interaction, button: discord.ui.Button):

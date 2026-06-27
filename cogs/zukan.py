@@ -117,12 +117,48 @@ class ZukanCategoryView(discord.ui.View):
         view = ZukanTreasureView(self.user_id)
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
 
-    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
-    async def back(self, interaction, button):
-        from cogs.menu import MainMenuView, build_menu_embed
+    @discord.ui.button(label="⚔️ 敵対図鑑", style=discord.ButtonStyle.danger, row=1)
+    async def enemy(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True)
+            return
+        from cogs.voyage import build_enemy_zukan_embed, EnemyZukanView
         await interaction.response.edit_message(
-            embed=build_menu_embed(interaction.user, str(interaction.guild.id)),
-            view=MainMenuView(str(interaction.user.id), str(interaction.guild.id)))
+            embed=build_enemy_zukan_embed(self.user_id),
+            view=EnemyZukanView(self.user_id, str(interaction.guild.id)))
+
+    @discord.ui.button(label="🗡️ 武器", style=discord.ButtonStyle.secondary, row=1)
+    async def weapon(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.voyage import build_weapon_zukan_embed, SimpleZukanView
+        await interaction.response.edit_message(embed=build_weapon_zukan_embed(), view=SimpleZukanView(self.user_id))
+
+    @discord.ui.button(label="🛡️ 防具", style=discord.ButtonStyle.secondary, row=1)
+    async def armor(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.voyage import build_armor_zukan_embed, SimpleZukanView
+        await interaction.response.edit_message(embed=build_armor_zukan_embed(), view=SimpleZukanView(self.user_id))
+
+    @discord.ui.button(label="📜 技", style=discord.ButtonStyle.secondary, row=2)
+    async def skill(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.voyage import build_skill_zukan_embed, SimpleZukanView
+        await interaction.response.edit_message(embed=build_skill_zukan_embed(), view=SimpleZukanView(self.user_id))
+
+    @discord.ui.button(label="🎒 アイテム", style=discord.ButtonStyle.secondary, row=2)
+    async def item(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.voyage import build_item_zukan_embed, SimpleZukanView
+        await interaction.response.edit_message(embed=build_item_zukan_embed(self.user_id), view=SimpleZukanView(self.user_id))
+
+    @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=3)
+    async def back(self, interaction, button):
+        from cogs.phone import open_phone
+        await open_phone(interaction, str(interaction.user.id))
 
 
 class ZukanAreaView(discord.ui.View):

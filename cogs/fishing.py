@@ -264,25 +264,30 @@ async def _do_fish_impl(interaction: discord.Interaction, area: str, spot: int =
     quest_record(uid, guild_id, "fish")   # 釣りクエスト（1キャスト=1）
 
     # 装備使用回数を減らす（竿は耐久制：竿×エリアで消費が変わる）
+    broke = []   # ⚠️ 切れた消耗品の報告
     dura_cost = get_rod_dura_cost(gear["rod_id"], area)
     if gear["rod_uses"] < 999999:
         gear["rod_uses"] -= dura_cost
         if gear["rod_uses"] <= 0:
             # 竿切れ→次の竿に切り替え or 竹竿に戻る
+            old_name = FISHING_RODS[gear["rod_id"]]["name"]
             inv = gear["rod_inventory"]
             inv.pop(gear["rod_id"], None)
             if inv:
                 next_rod = max(inv.keys(), key=lambda r: FISHING_RODS[r]["price"])
                 gear["rod_id"] = next_rod
                 gear["rod_uses"] = inv[next_rod]
+                broke.append(f"🎣 **{old_name}** が折れた！→「{FISHING_RODS[next_rod]['name']}」に持ち替えた")
             else:
                 gear["rod_id"] = "bamboo"
                 gear["rod_uses"] = 999999
                 gear["rod_inventory"] = {"bamboo": 999999}
+                broke.append(f"🎣 **{old_name}** が折れた！→竹竿に戻った")
 
     if gear["reel_uses"] < 999999:
         gear["reel_uses"] -= 1
         if gear["reel_uses"] <= 0:
+            broke.append("🎛️ **リール**が寿命を迎えた…→標準リールに戻った")
             gear["reel_id"] = "spinning"
             gear["reel_uses"] = 999999
             gear["reel_inventory"] = {"spinning": 999999}
@@ -290,6 +295,7 @@ async def _do_fish_impl(interaction: discord.Interaction, area: str, spot: int =
     if gear["line_uses"] < 999999:
         gear["line_uses"] -= 1
         if gear["line_uses"] <= 0:
+            broke.append("🧵 **ライン**が切れた…→標準ラインに戻った")
             gear["line_id"] = "nylon"
             gear["line_uses"] = 999999
             gear["line_inventory"] = {"nylon": 999999}
@@ -512,6 +518,9 @@ async def _do_fish_impl(interaction: discord.Interaction, area: str, spot: int =
 
     if bonus_msg:
         desc += bonus_msg
+    # ⚠️ 消耗品が切れたら報告（竿/リール/ライン）
+    if broke:
+        desc += "\n\n" + "\n".join(broke)
 
     # 装備残り回数表示
     rod_name = FISHING_RODS[gear["rod_id"]]["name"]

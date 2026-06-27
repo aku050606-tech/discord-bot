@@ -171,6 +171,14 @@ class PhoneHomeView(discord.ui.View):
         from cogs.voyage import open_inventory
         await open_inventory(interaction, self.user_id, back="town")
 
+    @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.primary, row=3)
+    async def zukan(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.zukan import ZukanCategoryView, build_category_embed
+        await interaction.response.edit_message(
+            embed=build_category_embed(self.user_id),
+            view=ZukanCategoryView(self.user_id))
+
     @discord.ui.button(label="❌ 閉じる", style=discord.ButtonStyle.secondary, row=2)
     async def close(self, interaction, button):
         if not await self._check(interaction): return
