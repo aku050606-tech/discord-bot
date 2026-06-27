@@ -34,7 +34,7 @@ def new_battle(phase, ally, enemy):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ダメージ計算（攻撃力 vs 防御力）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-DMG_VARIANCE = 0.10   # ダメージ乱数の幅（±10%）。大きいほどバラつく。
+DMG_VARIANCE = 0.15   # ダメージ乱数の幅（±15%）。崖を緩め五分の勝負を成立させる。
 
 def dmg_calc(atk, defn, mult, pierce=0.0, variance=True):
     eff_def = max(0.0, defn * (1.0 - pierce))

@@ -293,12 +293,15 @@ def roll_explore(vp):
         val = _scaled(V.ABYSS_TREASURE, vm); v["hold"] += val
         return ("text", f"🕳️ 光る海淵を覗き込む…吸い寄せられた財宝 **+{val:,}**")
     if enc == "boss":
-        boss = dict(V.AREA_BOSS[area])
-        boss["is_boss"] = True
-        boss["tier"] = V.BOSS_TIER.get(area, 4)
-        return ("combat", boss, scale, vm, True)
-    pr = random.choices(V.PIRATE_RANKS, weights=V.pirate_weights(sea, area))[0]
-    return ("combat", dict(pr), scale, vm, False)
+        spec = V.pick_boss(area)
+        if spec is None:   # フォールバック（旧AREA_BOSS）
+            spec = dict(V.AREA_BOSS[area]); spec["is_boss"] = True; spec["tier"] = V.BOSS_TIER.get(area, 4)
+        return ("combat", spec, scale, vm, True)
+    # pirate枠＝エリアの敵プールから抽選（海賊・海獣・アンデッド・軍船・激レア）
+    spec = V.pick_enemy(area)
+    if spec is None:   # フォールバック（旧PIRATE_RANKS）
+        spec = dict(random.choices(V.PIRATE_RANKS, weights=V.pirate_weights(sea, area))[0])
+    return ("combat", spec, scale, vm, spec.get("is_boss", False))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Embed ビルダー
@@ -617,10 +620,10 @@ class VoyageView(discord.ui.View):
                 db.save_voyage(uid, vp)
                 if combat:
                     v = vp.get("voyage") or {}; area = area_of(v); sea = v["sea"]
-                    spec = dict(random.choice(V.PIRATE_RANKS))
+                    spec = V.make_enemy_spec(combat, area) or dict(random.choice(V.PIRATE_RANKS))
                     scale = V.SEAS[sea]["danger"] * V.AREA_MULT[area]
                     cvm = V.SEAS[sea]["val_mult"] * V.AREA_MULT[area]
-                    enc = NavalEncounter(uid, gid, spec, scale, cvm, False)
+                    enc = NavalEncounter(uid, gid, spec, scale, cvm, spec.get("is_boss", False))
                     await enc.start(interaction); return
                 head = f"{d['emoji']} **{d['name']}**"
                 flav = d.get("flavor", "")
@@ -747,12 +750,12 @@ class ChoiceButton(discord.ui.Button):
         text, combat = apply_event_effects(vp, ch["effects"], view.vm)
         db.save_voyage(uid, vp)
         if combat:
-            # 戦闘に接続（今は海賊戦スペックで代用。専用スペックは後で）
+            # combatキー(ghost/ambush/merchant_raid等)→専用の敵スペック
             v = vp.get("voyage") or {}; area = area_of(v); sea = v["sea"]
-            spec = dict(random.choice(V.PIRATE_RANKS))
+            spec = V.make_enemy_spec(combat, area) or dict(random.choice(V.PIRATE_RANKS))
             scale = V.SEAS[sea]["danger"] * V.AREA_MULT[area]
             vm = V.SEAS[sea]["val_mult"] * V.AREA_MULT[area]
-            enc = NavalEncounter(uid, gid, spec, scale, vm, False)
+            enc = NavalEncounter(uid, gid, spec, scale, vm, spec.get("is_boss", False))
             await enc.start(interaction)
             return
         await interaction.response.edit_message(
@@ -1696,12 +1699,13 @@ def make_board_enemy(spec, scale, defense=False):
     # 乗り込む側(攻)=敵全員で強い／乗り込まれる側(防衛)=敵一部で弱い
     mult = V.BOARD_DEFENSE_CREW_MULT if defense else 1.0
     Cw = spec["crew_power"] * V.combat_scale(scale) * mult
-    hp = max(1, round(Cw * V.BOARD_E_HP_MULT))
-    atk = max(1, round(Cw * V.BOARD_E_ATK_MULT))
+    hp = max(1, round(Cw * V.BOARD_E_HP_MULT * spec.get("hp_mult", 1.0)))
+    atk = max(1, round(Cw * V.BOARD_E_ATK_MULT * spec.get("atk_mult", 1.0)))
     dfn = max(0, round(Cw * V.BOARD_E_DEF_MULT))
     tier = spec.get("tier", 3)
+    skills = spec.get("skills") or _ENEMY_SKILLS.get(tier, [])
     return C.make_combatant(spec["name"], spec["emoji"], hp, atk, dfn,
-                            skills=_ENEMY_SKILLS.get(tier, []), ai_tier=tier)
+                            skills=skills, ai_tier=tier)
 
 def build_combat_embed(state):
     a = state["ally"]; e = state["enemy"]
@@ -1849,7 +1853,8 @@ class NavalEncounter:
                           flee_cb=(self.on_flee if V.NAVAL_ALLOW_FLEE else None),
                           flee_pct=(self._flee_pct(vp) if V.NAVAL_ALLOW_FLEE else None))
         emb = build_combat_embed(state)
-        head = f"{self.spec['emoji']} **{self.spec['name']}**"
+        stars = "★" * int(self.spec.get("stars", 1))
+        head = f"{self.spec['emoji']} **{self.spec['name']}** {stars}"
         head += "（この海域の主）！" if self.is_boss else " が現れた！"
         emb.description = f"{head}（白兵力 {int(self.crew_eff)}）\n斬り合いだ！"
         await interaction.response.edit_message(embed=emb, view=view)
