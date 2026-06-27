@@ -271,6 +271,17 @@ def _offhand_strike(state):
 def take_turn(state, ally_action):
     """味方の行動を解決し、敵が生きていれば敵も行動、ラウンドを締める。"""
     state["log"] = []   # このターンのログだけ保持
+    # ⚠️ 伏兵の先制：戦闘開始の最初の1回だけ、敵が不意打ちで先に殴る（その回は敵の通常行動はなし＝行動順入れ替え）
+    if not state.get("_first_done") and state["enemy"].get("first_strike"):
+        state["_first_done"] = True
+        state["log"].append(f"⚠️ 不意を突かれた！ {state['enemy']['name']} の先制攻撃！")
+        resolve_action(state, "enemy", {"kind": "attack"})
+        if state["over"]:
+            return state
+        resolve_action(state, "ally", ally_action)
+        if not state["over"]:
+            end_round(state)
+        return state
     resolve_action(state, "ally", ally_action)
     if not state["over"]:
         resolve_action(state, "enemy", enemy_action(state))
