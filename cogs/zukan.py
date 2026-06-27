@@ -155,6 +155,15 @@ class ZukanCategoryView(discord.ui.View):
         from cogs.voyage import build_item_zukan_embed, SimpleZukanView
         await interaction.response.edit_message(embed=build_item_zukan_embed(self.user_id), view=SimpleZukanView(self.user_id))
 
+    @discord.ui.button(label="🎣 海の幸", style=discord.ButtonStyle.primary, row=2)
+    async def voyage_fish(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.voyage import build_voyage_fish_zukan_embed, VoyageFishZukanView
+        await interaction.response.edit_message(
+            embed=build_voyage_fish_zukan_embed(self.user_id, 1),
+            view=VoyageFishZukanView(self.user_id, 1))
+
     @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=3)
     async def back(self, interaction, button):
         from cogs.phone import open_phone
