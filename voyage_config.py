@@ -240,7 +240,7 @@ PIRATE_BASE_REWARD = {"base_min":5000, "base_max":12000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 20, 2: 38, 3: 64, 4: 110}   # エリア別の標準crew_power（E1/E2は実測調整済・E3/E4は★3実装後に再調整）
+AREA_ENEMY_BASE = {1: 20, 2: 38, 3: 37, 4: 110}   # エリア別の標準crew_power（E1/E2は実測調整済・E3/E4は★3実装後に再調整）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
