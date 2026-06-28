@@ -26,12 +26,12 @@ LAND_AREAS = {
         "intro": ("見渡すかぎりの草原。風が膝丈の草を撫でていく。\n"
                   "弱い魔物がぽつぽつと現れる――腕慣らしには、ちょうどいい。\n"
                   "……ふと、草の向こうで何かが動いた気がした。気のせいか。")},
-    2: {"name": "森", "emoji": "🌲", "req_lv": 8,  "base": 18, "scale": 1.6,
+    2: {"name": "森", "emoji": "🌲", "req_lv": 8,  "base": 30, "scale": 1.8,
         "xp": [6, 10],   "coin": [450, 1100],
         "intro": ("木々が空を覆い、足元は薄暗い。獣の気配が、あちこちに。\n"
                   "平原より、ずっと手強い――ちゃんと武器と防具を整えてこい。\n"
                   "奥には、人の手が入った痕跡。誰かが、この森を“管理”している。")},
-    3: {"name": "山", "emoji": "⛰️", "req_lv": 15, "base": 20, "scale": 2.6,
+    3: {"name": "山", "emoji": "⛰️", "req_lv": 15, "base": 36, "scale": 2.8,
         "xp": [10, 14],  "coin": [900, 2000],
         "intro": ("切り立った岩肌と、薄い空気。棲むものは、どれも一筋縄ではいかない。\n"
                   "尾根の向こうに、ぽつんと立つ塔の影。\n"
@@ -68,7 +68,7 @@ LAND_ENEMIES = {
         {"name": "はぐれゴブリン",   "emoji": "👺",  "ratio": 1.45, "hp_mult": 1.90, "atk_mult": 1.32, "tier": 1, "stars": 1},
         {"name": "イノシシ",         "emoji": "🐗",  "ratio": 1.55, "hp_mult": 2.05, "atk_mult": 1.42, "tier": 1, "stars": 1},
     ],
-    2: [  # 🌲 森 ☆2：海E2くらいの手応え。HP/DEFは厚いが攻撃は低め。装備で“倒す速さ”が効く。
+    2: [  # 🌲 森：Lv15＋☆1フル装備を基準。雑魚は勝てるが、強い個体はしっかり削る。
         {"name": "森オオカミ",       "emoji": "🐺",  "ratio": 0.95, "hp_mult": 1.10, "atk_mult": 0.48, "tier": 2, "stars": 2},
         {"name": "コボルト",         "emoji": "🦎",  "ratio": 1.00, "hp_mult": 1.12, "atk_mult": 0.46, "tier": 2, "stars": 2},
         {"name": "大グモ",           "emoji": "🕷️",  "ratio": 1.05, "hp_mult": 1.08, "atk_mult": 0.48, "tier": 2, "stars": 2},
@@ -78,7 +78,7 @@ LAND_ENEMIES = {
         {"name": "塔の番犬",         "emoji": "🐕‍🦺", "ratio": 1.15, "hp_mult": 1.18, "atk_mult": 0.48, "tier": 2, "stars": 2},
         {"name": "森の熊",           "emoji": "🐻",  "ratio": 1.20, "hp_mult": 1.28, "atk_mult": 0.50, "tier": 2, "stars": 2},
     ],
-    3: [  # ⛰️ 山 ☆3：海E3くらいの手応え。さらに厚く、tier3で技も使う。攻撃は中の下。
+    3: [  # ⛰️ 山：Lv25＋☆2フル装備を基準。雑魚でも手応え、中ボスは明確な危険枠。
         {"name": "岩トカゲ",         "emoji": "🦎",  "ratio": 0.90, "hp_mult": 1.10, "atk_mult": 0.40, "tier": 3, "stars": 3},
         {"name": "山賊",             "emoji": "🪓",  "ratio": 1.00, "hp_mult": 1.00, "atk_mult": 0.44, "tier": 3, "stars": 3},
         {"name": "ハーピー",         "emoji": "🦅",  "ratio": 1.00, "hp_mult": 0.95, "atk_mult": 0.46, "tier": 3, "stars": 3},
@@ -157,6 +157,33 @@ LAND_MIDRARES = {
     ],
 }
 MIDRARE_SPAWN_RATE = 0.05   # 戦闘のうち中レアに化ける確率（5%）
+
+# 🔥 熱いイベント経由の強敵用ドロップ。
+# ☆3装備はバランス崩壊を避けるため出さない。
+# 通常の中ボスと同じく「3%で装備抽選」だが、当たった場合は☆1/☆2のみ。
+HOT_EVENT_EQUIP_DROP = [("dist", 0.03, [(1, 0.70), (2, 0.30)])]
+
+
+
+# ── 💎 経験値逃走モンスター v17 ──
+# 戦闘枠の中で低確率。装備/アイテムの平均ドロップ率を変えないため、ドロップは無し。
+# 通常版：約1% / キング版：約0.05%。毎ターン50%で逃げる。
+XP_RUNNER_RATE = 0.01
+XP_RUNNER_KING_RATE = 0.0005
+XP_RUNNERS = {
+    1: {
+        "normal": {"name":"黄金スライム", "emoji":"💎", "ratio":2.8, "hp_mult":2.8, "atk_mult":0.35, "def_mult":7.0, "tier":1, "stars":2, "xp_mult":20, "coin_mult":0.25},
+        "king":   {"name":"黄金キングスライム", "emoji":"👑", "ratio":4.2, "hp_mult":4.0, "atk_mult":0.45, "def_mult":9.0, "tier":2, "stars":4, "xp_mult":100, "coin_mult":0.50},
+    },
+    2: {
+        "normal": {"name":"翡翠の妖精虫", "emoji":"💎", "ratio":1.8, "hp_mult":2.4, "atk_mult":0.34, "def_mult":7.5, "tier":2, "stars":3, "xp_mult":20, "coin_mult":0.25},
+        "king":   {"name":"翡翠の女王虫", "emoji":"👑", "ratio":2.8, "hp_mult":3.6, "atk_mult":0.44, "def_mult":9.5, "tier":3, "stars":4, "xp_mult":100, "coin_mult":0.50},
+    },
+    3: {
+        "normal": {"name":"結晶岩ゴーレム", "emoji":"💎", "ratio":1.6, "hp_mult":2.2, "atk_mult":0.34, "def_mult":8.0, "tier":3, "stars":3, "xp_mult":20, "coin_mult":0.25},
+        "king":   {"name":"水晶巨人", "emoji":"👑", "ratio":2.5, "hp_mult":3.4, "atk_mult":0.46, "def_mult":10.0, "tier":4, "stars":4, "xp_mult":100, "coin_mult":0.50},
+    },
+}
 
 # ── 採取（戦闘なし・小コイン＋雰囲気）──
 LAND_GATHER = {
@@ -544,11 +571,27 @@ LAND_RANDOM_EVENTS = {
 
 def make_land_enemy(area, force=None, buffs=None):
     """make_board_enemy(spec, scale) が食える敵スペックを返す。
-    force: rare / midrare / combat を指定できる。lucky_charm時はレア系が少し出やすい。"""
+    force: rare / midrare / hot_midrare / combat を指定できる。lucky_charm時はレア系が少し出やすい。"""
     a = LAND_AREAS[area]
     buffs = buffs or {}
     rare_rate = RARE_SPAWN_RATE * (2.0 if buffs.get("lucky_charm") else 1.0)
     mid_rate = MIDRARE_SPAWN_RATE * (1.5 if buffs.get("lucky_charm") else 1.0)
+    runner_roll = random.random()
+    # 💎 経験値逃走モンスター（ドロップ無し・XP専用）
+    runner_pack = XP_RUNNERS.get(area, {})
+    if force in ("xprunner", "kingrunner") or (force is None and runner_pack and runner_roll < (XP_RUNNER_RATE + XP_RUNNER_KING_RATE)):
+        kind = "king" if force == "kingrunner" or (force is None and runner_roll < XP_RUNNER_KING_RATE) else "normal"
+        e = runner_pack.get(kind) or runner_pack.get("normal")
+        return {
+            "name": e["name"], "emoji": e["emoji"], "key": f"landrunner{area}_{e['name']}",
+            "crew_power": max(1, round(a["base"] * e["ratio"])),
+            "hp_mult": e.get("hp_mult", 1.0), "atk_mult": e.get("atk_mult", 1.0), "def_mult": e.get("def_mult", 1.0),
+            "tier": e.get("tier", 1), "stars": e.get("stars", 2),
+            "is_boss": False, "is_rare": False, "is_midrare": False,
+            "is_xp_runner": True, "is_king_runner": kind == "king",
+            "escape_chance": 0.50, "no_item_drop": True, "drop_table": [],
+            "xp_mult": e.get("xp_mult", 20), "coin_mult": e.get("coin_mult", 0.25),
+        }
     roll = random.random()
     # ✨ 激レア（全エリア共通ボス）
     if (force == "rare" or (force is None and roll < rare_rate)) and LAND_RARES.get(area):
@@ -565,7 +608,7 @@ def make_land_enemy(area, force=None, buffs=None):
             "rare_story": e.get("story", ""), "rare_intro": e.get("rare_intro", ""),
         }
     # 🔸 中レア
-    if (force == "midrare" or (force is None and roll < rare_rate + mid_rate)) and LAND_MIDRARES.get(area):
+    if (force in ("midrare", "hot_midrare") or (force is None and roll < rare_rate + mid_rate)) and LAND_MIDRARES.get(area):
         e = random.choice(LAND_MIDRARES[area])
         return {
             "name": e["name"], "emoji": e["emoji"], "key": f"landmid{area}_{e['name']}",
@@ -574,7 +617,8 @@ def make_land_enemy(area, force=None, buffs=None):
             "tier": e.get("tier", 1), "stars": e.get("stars", 2),
             "is_boss": False, "is_rare": False, "is_midrare": True,
             "mid_xp": e.get("xp"), "mid_coin": e.get("coin"),
-            "drop_table": e.get("drop"),
+            "drop_table": HOT_EVENT_EQUIP_DROP if force == "hot_midrare" else e.get("drop"),
+            "hot_event_enemy": force == "hot_midrare",
         }
     # 通常の雑魚
     e = random.choice(LAND_ENEMIES[area])
@@ -609,9 +653,21 @@ def pick_land_item(area=None):
     keys = [x[0] for x in LAND_ITEM_EVENT_DROPS]; wts = [x[1] for x in LAND_ITEM_EVENT_DROPS]
     return random.choices(keys, weights=wts)[0]
 
+def pick_hot_land_item(area=None):
+    # 熱いイベント専用：出現率は変えず、当たった時の中身だけ少し夢寄りにする。
+    # 平均ドロップ率そのものは変更しない。
+    table = [("bandage", 20), ("smoke_bomb", 20), ("lucky_charm", 18), ("old_map", 18),
+             ("lantern", 14), ("gold_compass", 7), ("decoy_doll", 2.5), ("guardian_feather", 0.5)]
+    keys = [x[0] for x in table]; wts = [x[1] for x in table]
+    return random.choices(keys, weights=wts)[0]
+
 def pick_random_event(area):
     pool = LAND_RANDOM_EVENTS.get(area, []) or LAND_EVENTS.get(area, [])
-    return random.choice(pool) if pool else None
+    if not pool:
+        return None
+    # v15: イベントにもweightを持たせる。通常は1.0、熱いイベントは0.15〜0.35で薄く出す。
+    weights = [max(0.01, float(e.get("weight", 1.0))) for e in pool]
+    return random.choices(pool, weights=weights)[0]
 
 
 def pick_story(area):
@@ -769,6 +825,56 @@ LAND_RANDOM_EVENT_PACK_V9 = {
          ]},
     ],
 }
+
+
+# ── 🔥 熱い低確率イベント v15 ──
+# 出現率はイベント枠の中でさらに薄め。出たらアイテム/コイン/強敵など良い意味で荒れる。
+LAND_HOT_EVENT_PACK_V15 = {
+    1: [
+        {"id":"v15_plain_sealed_chest", "weight":0.25, "hot":True, "risk_mult":5, "reward_mult":5, "prelude":["風が止んだ。","草の奥で、封印布だけが不自然に揺れている。","開ければ、何かが変わる気がする。"], "type":"choice", "emoji":"📦", "title":"封印された木箱", "flavor":"草原の石陰に、古い封印布で縛られた木箱がある。普通の落とし物ではない。",
+         "choices":[
+          {"label":"🗝️ 封印を解く", "result":"布をほどくと、箱の中から淡い光が漏れた。", "outcomes":[("item",48),("coin",18),("combat",22),("damage",8),("nothing",4)]},
+          {"label":"🪤 罠を調べる", "result":"底板に細い針金が仕込まれていた。危ないところだった。", "outcomes":[("item",36),("xp",20),("coin",16),("nothing",20),("combat",8)]},
+         ]},
+        {"id":"v15_plain_tower_patrol", "weight":0.22, "hot":True, "risk_mult":5, "reward_mult":5, "prelude":["遠くで鎧の音がした。","塔の旗が、風もないのに震えている。","見つかれば、ただでは済まない。"], "type":"choice", "emoji":"🚩", "title":"塔の巡回旗", "flavor":"丘の向こうに、塔の旗を掲げた小隊が見える。こちらにはまだ気付いていない。",
+         "choices":[
+          {"label":"👀 様子を見る", "result":"兵たちは何かを探している。足跡は森の方へ続いていた。", "outcomes":[("story",38),("xp",22),("item",16),("combat",18),("nothing",6)]},
+          {"label":"🎒 補給袋を狙う", "result":"一瞬の隙をついて、置かれた袋に手を伸ばす。", "outcomes":[("item",42),("coin",18),("combat",32),("damage",6),("nothing",2)]},
+         ]},
+    ],
+    2: [
+        {"id":"v15_forest_silver_cache", "weight":0.24, "hot":True, "risk_mult":5, "reward_mult":5, "prelude":["森が静まり返る。","根の下で、銀色の箱が脈打つように光った。","触れれば、森の主に気づかれる。"], "type":"choice", "emoji":"✨", "title":"銀色の隠し箱", "flavor":"根の絡まった大樹の下に、銀色の小箱が埋まっている。森番の印が刻まれていた。",
+         "choices":[
+          {"label":"📦 開ける", "result":"蓋が開いた瞬間、森の奥で獣が吠えた。", "outcomes":[("item",50),("combat",28),("coin",14),("damage",6),("nothing",2)]},
+          {"label":"🌲 印を読む", "result":"印は道順のようにも、警告のようにも見える。", "outcomes":[("story",34),("item",30),("xp",20),("combat",12),("nothing",4)]},
+         ]},
+        {"id":"v15_forest_hunter_whistle", "weight":0.18, "hot":True, "risk_mult":5, "reward_mult":5, "prelude":["笛が、勝手に鳴った。","音は森の奥へ沈み、足音だけが返ってくる。","呼んではいけないものを呼んだのかもしれない。"], "type":"choice", "emoji":"🪈", "title":"狩人の笛", "flavor":"枝に吊られた小さな笛。触れる前から、低い音が鳴っている。",
+         "choices":[
+          {"label":"🪈 吹く", "result":"森のあちこちから、足音が返ってきた。", "outcomes":[("combat",48),("item",26),("xp",16),("damage",8),("nothing",2)]},
+          {"label":"🎒 持ち去る", "result":"笛は指先に吸い付くように冷たい。", "outcomes":[("item",46),("story",20),("combat",24),("nothing",10)]},
+         ]},
+    ],
+    3: [
+        {"id":"v15_mountain_black_reliquary", "weight":0.20, "hot":True, "risk_mult":5, "reward_mult":5, "prelude":["山の空気が急に重くなる。","黒い箱の周りだけ、雪が消えている。","鎖を外すなら、覚悟がいる。"], "type":"choice", "emoji":"🖤", "title":"黒い聖遺箱", "flavor":"崩れた石段の奥に、黒い箱が鎖で固定されている。箱の周囲だけ、雪が積もらない。",
+         "choices":[
+          {"label":"⛓️ 鎖を外す", "result":"鎖が外れると同時に、山道の空気が重くなった。", "outcomes":[("item",54),("combat",30),("damage",10),("story",4),("nothing",2)]},
+          {"label":"📖 刻印を読む", "result":"刻印には『塔へ返せ』とだけ記されている。", "outcomes":[("story",42),("xp",22),("item",22),("combat",12),("nothing",2)]},
+         ]},
+        {"id":"v15_mountain_fallen_banner", "weight":0.22, "hot":True, "risk_mult":5, "reward_mult":5, "prelude":["崖の向こうで、獣が吠えた。","折れた軍旗は、まだ誰かを待っている。","ここは敗走の跡だ。勝利の跡ではない。"], "type":"choice", "emoji":"🏴", "title":"折れた軍旗", "flavor":"崖の縁に、塔の軍旗が折れて刺さっている。旗布には大きな爪痕が残っていた。",
+         "choices":[
+          {"label":"🏴 引き抜く", "result":"旗を抜いた瞬間、遠くで何かが吠えた。", "outcomes":[("combat",46),("item",26),("coin",14),("damage",10),("nothing",4)]},
+          {"label":"🔍 周囲を探す", "result":"岩陰に、撤退時に捨てられた補給品が残っている。", "outcomes":[("item",44),("coin",22),("combat",20),("nothing",14)]},
+         ]},
+    ],
+}
+
+for _area, _events in LAND_HOT_EVENT_PACK_V15.items():
+    LAND_RANDOM_EVENTS.setdefault(_area, [])
+    _seen = {e.get("id") for e in LAND_RANDOM_EVENTS[_area]}
+    for _ev in _events:
+        if _ev.get("id") not in _seen:
+            LAND_RANDOM_EVENTS[_area].append(_ev)
+            _seen.add(_ev.get("id"))
 
 for _area, _events in LAND_RANDOM_EVENT_PACK_V9.items():
     LAND_RANDOM_EVENTS.setdefault(_area, [])

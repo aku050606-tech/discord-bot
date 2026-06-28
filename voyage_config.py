@@ -429,7 +429,7 @@ PIRATE_BASE_REWARD = {"base_min":6500, "base_max":16000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 105, 2: 70, 3: 48, 4: 130}   # エリア別の標準crew_power（E1/E2は実測調整済・E3/E4は★3実装後に再調整）
+AREA_ENEMY_BASE = {1: 105, 2: 50, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2は実測調整済・E3/E4は★3実装後に再調整）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
@@ -437,30 +437,30 @@ ENEMY_TYPES = {
     "pirate_drifter":{"name":"流れ者の海賊",     "emoji":"🏴‍☠️","ratio":0.75,"hp_mult":0.9, "atk_mult":0.95,"reward":0.85,"tier_add":0,  "stars":1},
     "pirate_washout":{"name":"海賊くずれ",       "emoji":"🏴‍☠️","ratio":0.9, "hp_mult":1.0, "atk_mult":1.0, "reward":0.95,"tier_add":0,  "stars":2},
     "pirate_rogue":  {"name":"ならず者の海賊",   "emoji":"🏴‍☠️","ratio":1.0, "hp_mult":1.0, "atk_mult":1.0, "reward":1.0, "tier_add":0,  "stars":2},
-    "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.5, "hp_mult":1.2, "atk_mult":1.1, "reward":1.7, "tier_add":1,  "stars":3},
+    "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3},
     "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True},
     # ── 🪖 軍 ──
-    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":2.0, "hp_mult":1.4, "atk_mult":1.2, "reward":0.8, "tier_add":1,  "stars":4, "karma_react":True},
+    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True},
     # ── 🧟 アンデッド系 ──
     "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True},
     "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True},
     "hands":         {"name":"無数の手",         "emoji":"🖐️","ratio":0.6, "hp_mult":2.2, "atk_mult":0.7, "reward":0.4, "tier_add":0,  "stars":2, "undead":True},
-    "ghost":         {"name":"幽霊船の亡霊船員", "emoji":"👻", "ratio":1.3, "hp_mult":1.5, "atk_mult":1.0, "reward":1.4, "tier_add":1,  "stars":3, "undead":True, "shard_hint":True},
+    "ghost":         {"name":"幽霊船の亡霊船員", "emoji":"👻", "ratio":1.1, "hp_mult":1.3, "atk_mult":0.9, "reward":1.4, "tier_add":1,  "stars":3, "undead":True, "shard_hint":True},
     "admiral":       {"name":"呑まれた提督",     "emoji":"☠️", "ratio":2.6, "hp_mult":1.8, "atk_mult":1.3, "reward":2.8, "tier_add":2,  "stars":5, "undead":True, "legendary":True},
     # ── 🦈 海獣系 ──
     "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.45,"hp_mult":0.65,"atk_mult":1.35,"reward":0.6, "tier_add":-1, "stars":1},  # 群れ・紙・速攻
     "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.55,"hp_mult":0.7, "atk_mult":1.4, "reward":0.8, "tier_add":-1, "stars":1},
     "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3},  # 出血特化
-    "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.4, "hp_mult":1.3, "atk_mult":1.1, "reward":1.3, "tier_add":0,  "stars":3},
+    "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3},
     # ── 🐙🐲 ボス級 ──
-    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.9, "hp_mult":1.8, "atk_mult":1.1, "reward":2.2, "tier_add":1,  "stars":4, "boss":True},
+    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True},
     "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True},
     # ── 🪦 難破者 ──
     "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.5, "hp_mult":0.9, "atk_mult":0.85,"reward":0.6, "tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
     # ── ⚔️ イベント専用 ──
     "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True},
     "merchant_raid": {"name":"商船の護衛",       "emoji":"⛵", "ratio":1.4, "hp_mult":1.4, "atk_mult":1.25,"reward":1.8, "tier_add":1,  "stars":3},   # 護衛が固い・襲撃は基本失敗(<10%)
-    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.5, "hp_mult":1.5, "atk_mult":0.9, "reward":2.6, "tier_add":1,  "stars":4},
+    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4},
     # 🖤 クラーケンの影（特殊戦闘・手順④で専用実装）
     "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":1.6, "hp_mult":2.0, "atk_mult":1.0, "reward":0.0, "tier_add":1,  "stars":5, "special":"kraken_shadow"},
 }

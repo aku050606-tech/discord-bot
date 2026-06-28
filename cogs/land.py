@@ -695,10 +695,12 @@ class LandAreaView(discord.ui.View):
                 embed=build_area_embed(vp, self.area, random.choice(L.LAND_CALM)),
                 view=LandResultView(self.uid, self.gid, self.area)); return
         head = f"## {ev['emoji']} {ev['title']}\n\n"
-        col = LAND_COL_EVENT if ev.get("id", "").startswith("e_") else LAND_COL_STORY
+        prelude = ev.get("prelude") or []
+        prelude_txt = ("\n".join(f"> {x}" for x in prelude) + "\n\n") if prelude else ""
+        col = LAND_COL_RARE if ev.get("hot") else (LAND_COL_EVENT if ev.get("id", "").startswith("e_") else LAND_COL_STORY)
         if ev.get("type", "choice") == "choice":
             await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, head + ev["flavor"], col),
+                embed=build_area_embed(vp, self.area, head + prelude_txt + ev["flavor"], col),
                 view=LandStoryView(self.uid, self.gid, self.area, ev))
         else:  # text
             await interaction.edit_original_response(
@@ -759,7 +761,20 @@ def _build_fight(uid, gid, area, spec):
     state = C.new_battle("board", ally, enemy)
     st = "★" * int(spec.get("stars", 1))
     emb = build_combat_embed(state)
-    if spec.get("is_rare"):
+    if spec.get("is_xp_runner"):
+        if spec.get("is_king_runner"):
+            emb.description = (
+                f"## 👑💎 伝説級の経験値モンスター！\n"
+                f"**{spec['emoji']} {spec['name']}** {st} が現れた！\n"
+                "逃げ足が異常に速い。倒せば莫大な経験値だ。"
+            )
+        else:
+            emb.description = (
+                f"## 💎 強い生命反応！\n"
+                f"**{spec['emoji']} {spec['name']}** {st} が現れた！\n"
+                "逃げ足が非常に速い。3ターン以内に仕留めたい。"
+            )
+    elif spec.get("is_rare"):
         emb.description = f"✨ **{spec['emoji']} {spec['name']}** {st} との戦い！"
     elif spec.get("is_midrare"):
         emb.description = f"🔸 **{spec['emoji']} {spec['name']}** {st} ── 強そうな個体だ！"
@@ -830,33 +845,41 @@ def _choice_outcome(ch):
     keys = [x[0] for x in outs]; wts = [x[1] for x in outs]
     return random.choices(keys, weights=wts)[0]
 
-def _apply_event_outcome(uid, gid, vp, area, outcome):
+def _apply_event_outcome(uid, gid, vp, area, outcome, event=None, choice=None):
     lines = []
     start_combat = None
+    event = event or {}
+    reward_mult = int(event.get("reward_mult", 1) or 1)
+    risk_mult = int(event.get("risk_mult", 1) or 1)
+    is_hot = bool(event.get("hot"))
     if not outcome or outcome == "nothing":
         lines.append("何も見つからなかった。けれど、空気だけは少し重い。")
     elif outcome == "coin":
-        coin = random.randint(*L.LAND_COIN_EVENT.get(area, [300,1000]))
+        coin = random.randint(*L.LAND_COIN_EVENT.get(area, [300,1000])) * reward_mult
         coin, boosted = _apply_coin_buff(vp, coin)
         _run_add_coin(vp, coin)
         lines.append(f"## 💰 +{coin:,}" + ("\n🧭 羅針盤が反応した。" if boosted else ""))
     elif outcome == "item":
-        iid = L.pick_land_item(area); got = _add_land_item(uid, vp, iid, 1)
+        if is_hot and hasattr(L, "pick_hot_land_item"):
+            iid = L.pick_hot_land_item(area)
+        else:
+            iid = L.pick_land_item(area)
+        got = _add_land_item(uid, vp, iid, 1)
         lines.append(f"## 🎁 {got} を手に入れた！")
     elif outcome == "xp":
-        xp = random.randint(2, 6) if area == 1 else random.randint(5, 12) if area == 2 else random.randint(8, 18)
+        xp = (random.randint(2, 6) if area == 1 else random.randint(5, 12) if area == 2 else random.randint(8, 18)) * reward_mult
         xp = _land_xp_amount(vp, area, xp)
         leveled = add_xp(vp, xp); lines.append(f"## ✨ XP +{xp}")
         if leveled: lines.append(f"## 🎉 レベルアップ！ → Lv{vp['level']}")
     elif outcome == "heal":
-        mh=max_hp(vp); cur=_cur_hp(vp); heal=int(mh*(0.15+0.05*area)); vp["cur_hp"]=min(mh, cur+heal)
+        mh=max_hp(vp); cur=_cur_hp(vp); heal=int(mh*(0.15+0.05*area)*reward_mult); vp["cur_hp"]=min(mh, cur+heal)
         lines.append(f"## ❤️ HP +{vp['cur_hp']-cur}（{vp['cur_hp']}/{mh}）")
     elif outcome == "damage":
-        mh=max_hp(vp); cur=_cur_hp(vp); dmg=random.randint(5, 12) if area == 1 else random.randint(10, 22) if area == 2 else random.randint(16, 34)
+        mh=max_hp(vp); cur=_cur_hp(vp); dmg=(random.randint(5, 12) if area == 1 else random.randint(10, 22) if area == 2 else random.randint(16, 34)) * risk_mult
         vp["cur_hp"] = max(1, cur-dmg); lines.append(f"## 💢 罠で -{cur-vp['cur_hp']}（{vp['cur_hp']}/{mh}）")
     elif outcome == "combat":
         lines.append("## ⚔️ 物音がした……\nイベントの気配に釣られて、敵が飛び出してきた！")
-        start_combat = L.make_land_enemy(area, force="combat", buffs=vp.get("land_buffs", {}))
+        start_combat = L.make_land_enemy(area, force=("hot_midrare" if is_hot else "combat"), buffs=vp.get("land_buffs", {}))
     elif outcome == "mid_hint":
         lines.append("## 🔸 強い気配\n普通の獣ではない足跡を見つけた。今日は深入りしない方がいいかもしれない。")
     elif outcome == "story":
@@ -891,13 +914,19 @@ class _StoryChoiceBtn(discord.ui.Button):
         view: LandStoryView = self.view
         ch = view.ev["choices"][self.idx]
         vp = db.get_voyage(view.uid)
-        lines = [f"## {view.ev['emoji']} {view.ev['title']}", "", ch["result"]]
+        prelude = view.ev.get("prelude") or []
+        lines = [f"## {view.ev['emoji']} {view.ev['title']}"]
+        if prelude:
+            lines += ["", *[f"> {x}" for x in prelude]]
+        lines += ["", ch["result"]]
+        hot_reward_mult = int(view.ev.get("reward_mult", 1) or 1)
+        hot_risk_mult = int(view.ev.get("risk_mult", 1) or 1)
         if ch.get("coin"):
-            coin = random.randint(*ch["coin"])
+            coin = random.randint(*ch["coin"]) * hot_reward_mult
             _run_add_coin(vp, coin)
             lines.append(f"## 💰 +{coin:,}")
         if ch.get("xp"):
-            xp = random.randint(*ch["xp"])
+            xp = random.randint(*ch["xp"]) * hot_reward_mult
             xp = _land_xp_amount(vp, view.area, xp)
             leveled = add_xp(vp, xp)
             lines.append(f"## ✨ XP +{xp}")
@@ -905,12 +934,12 @@ class _StoryChoiceBtn(discord.ui.Button):
                 lines.append(f"## 🎉 レベルアップ！ → Lv{vp['level']}")
         if ch.get("heal"):
             mh = max_hp(vp); cur = _cur_hp(vp)
-            heal = int(mh * ch["heal"]); before = cur
+            heal = int(mh * ch["heal"] * hot_reward_mult); before = cur
             vp["cur_hp"] = min(mh, cur + heal)
             lines.append(f"## ❤️ HP +{vp['cur_hp']-before}（{vp['cur_hp']}/{mh}）")
         if ch.get("dmg"):
             mh = max_hp(vp); cur = _cur_hp(vp)
-            vp["cur_hp"] = max(1, cur - int(ch["dmg"]))
+            vp["cur_hp"] = max(1, cur - int(ch["dmg"] * hot_risk_mult))
             lines.append(f"## 💢 -{cur-vp['cur_hp']}（{vp['cur_hp']}/{mh}）")
         if ch.get("food"):
             fid = ch["food"]
@@ -926,7 +955,7 @@ class _StoryChoiceBtn(discord.ui.Button):
                 db.update_balance(view.uid, view.gid, -pay)
                 lines.append(f"💸 -{pay:,} コイン")
         out = _choice_outcome(ch)
-        extra, start_combat = _apply_event_outcome(view.uid, view.gid, vp, view.area, out)
+        extra, start_combat = _apply_event_outcome(view.uid, view.gid, vp, view.area, out, view.ev, ch)
         if extra:
             lines.append(""); lines.extend(extra)
         db.save_voyage(view.uid, vp)
@@ -951,11 +980,19 @@ def land_on_end(uid, gid, area, spec):
         vp["cur_hp"] = max(0, state["ally"]["hp"])
         a = L.LAND_AREAS[area]
         emb = build_combat_embed(state)
+        if state.get("result") == "escaped":
+            db.save_voyage(uid, vp)
+            emb.description = f"## 💨 {spec.get('emoji','')} {spec.get('name','敵')} は逃げ去った！\n\n光の粒だけが、空気に残っている。\n**報酬は得られなかった。**"
+            await interaction.response.edit_message(embed=emb, view=LandResultView(uid, gid, area))
+            return
         if state["result"] == "win":
             # 📖 図鑑（討伐の証）
             if spec.get("key"):
                 db.add_zukan(uid, "enemy_kill", spec["key"])
-            if spec.get("is_rare"):
+            if spec.get("is_xp_runner"):
+                xp = random.randint(*a["xp"]) * int(spec.get("xp_mult", 20))
+                coin = max(0, int(random.randint(*a["coin"]) * float(spec.get("coin_mult", 0.25))))
+            elif spec.get("is_rare"):
                 xp = random.randint(*(spec.get("rare_xp") or a["xp"]))
                 coin = random.randint(*(spec.get("rare_coin") or a["coin"]))
             elif spec.get("is_midrare"):
@@ -966,11 +1003,13 @@ def land_on_end(uid, gid, area, spec):
             xp = _land_xp_amount(vp, area, xp)
             leveled = add_xp(vp, xp)
             _run_add_coin(vp, coin)                 # 💰 収穫に貯める（タウン帰還で確定／死ぬと半分失う）
-            drop = _run_add_drop(uid, vp, area, spec)   # 🎁 装備ドロップ（中レアは高確率）
+            drop = None if spec.get("no_item_drop") else _run_add_drop(uid, vp, area, spec)   # 🎁 装備ドロップ（中レアは高確率）
             tier = "rare" if spec.get("is_rare") else "mid" if spec.get("is_midrare") else "zako"
-            item_drops = _roll_land_item_drop(uid, vp, tier)
+            item_drops = [] if spec.get("no_item_drop") else _roll_land_item_drop(uid, vp, tier)
             db.save_voyage(uid, vp)
-            if spec.get("is_rare"):
+            if spec.get("is_xp_runner"):
+                head = f"## {'👑' if spec.get('is_king_runner') else '💎'}🏆 {spec['emoji']} {spec['name']} を逃がさず仕留めた！"
+            elif spec.get("is_rare"):
                 head = f"## ✨🏆 レアな {spec['emoji']} {spec['name']} を討ち取った！"
             elif spec.get("is_midrare"):
                 head = f"## 🔸🏆 {spec['emoji']} {spec['name']} を討ち取った！"

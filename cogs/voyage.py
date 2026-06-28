@@ -3008,12 +3008,15 @@ def make_board_enemy(spec, scale, defense=False):
     Cw = spec["crew_power"] * V.combat_scale(scale) * mult
     hp = max(1, round(Cw * V.BOARD_E_HP_MULT * spec.get("hp_mult", 1.0)))
     atk = max(1, round(Cw * V.BOARD_E_ATK_MULT * spec.get("atk_mult", 1.0)))
-    dfn = max(0, round(Cw * V.BOARD_E_DEF_MULT))
+    dfn = max(0, round(Cw * V.BOARD_E_DEF_MULT * spec.get("def_mult", 1.0)))
     tier = spec.get("tier", 3)
     skills = spec.get("skills") or _ENEMY_SKILLS.get(tier, [])
     c = C.make_combatant(spec["name"], spec["emoji"], hp, atk, dfn,
                          skills=skills, ai_tier=tier)
     c["first_strike"] = spec.get("first_strike", False)   # 伏兵＝先制攻撃
+    if spec.get("escape_chance"):
+        c["escape_chance"] = float(spec.get("escape_chance", 0))
+        c["escape_name"] = spec.get("name", c.get("name", "敵"))
     return c
 
 def build_combat_embed(state):
@@ -3044,6 +3047,14 @@ async def _advance(interaction, holder, action):
     """味方行動を解決して再描画。終了なら on_end に委譲（遷移/精算はそこで）。"""
     state = holder.state
     C.take_turn(state, action)
+    # 💎 経験値逃走モンスター：ターン終了ごとに確率で逃走。
+    # 勝敗ではないので land_on_end 側で専用処理する。
+    if not state.get("over") and state.get("enemy", {}).get("escape_chance"):
+        import random as _random
+        if _random.random() < float(state["enemy"].get("escape_chance", 0)):
+            state["over"] = True
+            state["result"] = "escaped"
+            state.setdefault("log", []).append(f"💨 {state['enemy'].get('escape_name', state['enemy'].get('name','敵'))} は光を散らして逃げ去った！")
     if state["over"]:
         await holder.on_end(interaction, state)
     else:
