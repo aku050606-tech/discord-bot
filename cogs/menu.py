@@ -312,7 +312,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
         value=(
             "🎣　**釣り**　　　── 湖・川・海で大物を狙う\n"
             "⚓　**さびれた港**── 船で大海原へ。航海・白兵戦・財宝\n"
-            "🛒　**商店街**　　── 船・道具・装備・ガチャ\n"
+            "🛒　**商店街**　　── 道具屋・装備屋・鍛冶屋・ガチャ\n"
             "🏛️　**ギルド**　　── 討伐クエストで稼ぐ（準備中）\n"
             "🛤️　**街道**　　　── 平原・森・山を徒歩で冒険\n"
             "🃏　**カジノ**　　── スロット＆テーブルで一攫千金\n"
@@ -324,6 +324,72 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
     if user is not None and guild_id is not None:
         embed.set_footer(text=_pick_footer(user, guild_id))
     return embed
+
+
+def build_shopping_street_embed():
+    return discord.Embed(
+        title="🛒 商店街",
+        color=0xe67e22,
+        description=(
+            "ナトタウンの店が並ぶ通り。\n"
+            "必要なものを買ったり、素材を持ち込んで装備を作ったりできる。"
+        ),
+    ).add_field(
+        name="店一覧",
+        value=(
+            "🛒 **道具屋** ── 食料・街道用アイテム\n"
+            "⚔️ **装備屋** ── 基本装備・技・刻印\n"
+            "⚒️ **鍛冶屋** ── 素材から特別な装備を作成\n"
+            "🎰 **ガチャ屋** ── 技や装備を狙う"
+        ),
+        inline=False,
+    )
+
+
+class ShoppingStreetView(discord.ui.View):
+    def __init__(self, user_id: str, guild_id: str):
+        super().__init__(timeout=900)
+        self.user_id = str(user_id)
+        self.guild_id = str(guild_id)
+
+    async def _check(self, interaction):
+        return await check_user(interaction, self.user_id)
+
+    @discord.ui.button(label="🛒 道具屋", style=discord.ButtonStyle.secondary, row=0)
+    async def item_shop(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.voyage import open_item_shop
+        await open_item_shop(interaction, self.user_id)
+
+    @discord.ui.button(label="⚔️ 装備屋", style=discord.ButtonStyle.secondary, row=0)
+    async def equip_shop(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.voyage import open_equip_shop
+        await open_equip_shop(interaction, self.user_id)
+
+    @discord.ui.button(label="⚒️ 鍛冶屋", style=discord.ButtonStyle.secondary, row=0)
+    async def blacksmith(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.blacksmith import open_blacksmith
+        await open_blacksmith(interaction, self.user_id)
+
+    @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
+    async def gacha(self, interaction, button):
+        if not await self._check(interaction): return
+        from cogs.voyage import open_skill_gacha
+        await open_skill_gacha(interaction, self.user_id)
+
+    @discord.ui.button(label="🏠 メニューへ戻る", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, interaction, button):
+        if not await self._check(interaction): return
+        await go_home(interaction, self.user_id)
+
+
+async def open_shopping_street(interaction, user_id: str, guild_id: str):
+    await interaction.response.edit_message(
+        embed=build_shopping_street_embed(),
+        view=ShoppingStreetView(user_id, guild_id),
+    )
 
 
 class MainMenuView(discord.ui.View):
@@ -359,23 +425,11 @@ class MainMenuView(discord.ui.View):
         from cogs.fund import open_port
         await open_port(interaction, str(interaction.user.id), "danger_zone")
 
-    # ── 2段目：商店街（船・道具・装備・ガチャ）──
-    @discord.ui.button(label="🚢 船屋", style=discord.ButtonStyle.secondary, row=1)
-    async def shipwright(self, interaction, button):
+    # ── 2段目：商店街 ──
+    @discord.ui.button(label="🛒 商店街", style=discord.ButtonStyle.secondary, row=1)
+    async def shopping_street(self, interaction, button):
         if not await self._check(interaction): return
-        await _coming_soon(interaction, "船屋")
-
-    @discord.ui.button(label="🛒 道具屋", style=discord.ButtonStyle.secondary, row=1)
-    async def item_shop(self, interaction, button):
-        if not await self._check(interaction): return
-        from cogs.voyage import open_item_shop
-        await open_item_shop(interaction, str(interaction.user.id))
-
-    @discord.ui.button(label="⚔️ 装備屋", style=discord.ButtonStyle.secondary, row=1)
-    async def equip_shop(self, interaction, button):
-        if not await self._check(interaction): return
-        from cogs.voyage import open_equip_shop
-        await open_equip_shop(interaction, str(interaction.user.id))
+        await open_shopping_street(interaction, str(interaction.user.id), str(interaction.guild.id))
 
     @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
     async def gacha(self, interaction, button):
@@ -384,11 +438,6 @@ class MainMenuView(discord.ui.View):
         await open_skill_gacha(interaction, str(interaction.user.id))
 
     # ── 3段目：冒険（ギルド・街道）──
-    @discord.ui.button(label="🏛️ ギルド", style=discord.ButtonStyle.secondary, row=2)
-    async def guild(self, interaction, button):
-        if not await self._check(interaction): return
-        await _coming_soon(interaction, "ギルド")
-
     @discord.ui.button(label="🛤️ 街道", style=discord.ButtonStyle.secondary, row=2)
     async def road(self, interaction, button):
         if not await self._check(interaction): return

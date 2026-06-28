@@ -486,6 +486,19 @@ def _roll_land_item_drop(uid, vp, tier="zako"):
             if name: got.append(name)
     return got
 
+def _add_craft_material(uid, vp, mat_id, n=1):
+    if mat_id not in getattr(V, "MATERIALS", {}):
+        return None
+    mats = vp.setdefault("materials", {})
+    mats[mat_id] = mats.get(mat_id, 0) + int(n)
+    db.add_zukan(uid, "item_seen", mat_id)
+    m = V.MATERIALS[mat_id]
+    return f"{m['emoji']} **{m['name']}**（素材）"
+
+def _roll_land_craft_material(uid, vp, area, bonus=1.0):
+    mat = V.roll_craft_material("land", int(area), bonus=bonus) if hasattr(V, "roll_craft_material") else None
+    return _add_craft_material(uid, vp, mat, 1) if mat else None
+
 def _has_land_items(uid):
     vp = db.get_voyage(uid)
     return any(n > 0 for n in vp.get("land_items", {}).values())
@@ -638,9 +651,12 @@ class LandAreaView(discord.ui.View):
             await self._show_narrative(interaction, vp, ev or L.pick_random_event(self.area))
         elif kind == "item":
             _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
-            iid = L.pick_land_item(self.area); got = _add_land_item(self.uid, vp, iid, 1); db.save_voyage(self.uid, vp)
+            iid = L.pick_land_item(self.area); got = _add_land_item(self.uid, vp, iid, 1)
+            mat_got = _roll_land_craft_material(self.uid, vp, self.area, bonus=1.2)
+            db.save_voyage(self.uid, vp)
+            extra = f"\nさらに {mat_got} も拾った。" if mat_got else ""
             await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, f"## 🎁 道端の発見\n草陰から **{got}** を見つけた。\n価値があるかどうかは、使う時になってわかる。", LAND_COL_EVENT),
+                embed=build_area_embed(vp, self.area, f"## 🎁 道端の発見\n草陰から **{got}** を見つけた。{extra}\n価値があるかどうかは、使う時になってわかる。", LAND_COL_EVENT),
                 view=LandResultView(self.uid, self.gid, self.area))
         elif kind == "coin":
             coin = random.randint(*L.LAND_COIN_EVENT.get(self.area, [300, 1000]))
@@ -655,11 +671,22 @@ class LandAreaView(discord.ui.View):
             coin = random.randint(*L.LAND_GATHER_COIN[self.area])
             coin, boosted = _apply_coin_buff(vp, coin)
             _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
+            mat_got = _roll_land_craft_material(self.uid, vp, self.area, bonus=1.35)
+            # まれに大量採取。1000周想定でも「進んでる感」を作る。
+            bonus_line = ""
+            if random.random() < 0.06:
+                extra = []
+                for _ in range(random.randint(2, 4)):
+                    g = _roll_land_craft_material(self.uid, vp, self.area, bonus=1.0)
+                    if g: extra.append(g)
+                if extra:
+                    bonus_line = "\n✨ 大量採取！ " + " / ".join(extra)
             _run_add_coin(vp, coin); db.save_voyage(self.uid, vp)
             flav = random.choice(L.LAND_GATHER[self.area])
             plus = "\n🧭 羅針盤が反応した。" if boosted else ""
+            mat_line = f"\n{mat_got} を手に入れた。" if mat_got else ""
             await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, f"## 🌿 採取\n{flav}{plus}\n**💰 +{coin:,}**", LAND_COL_GATHER),
+                embed=build_area_embed(vp, self.area, f"## 🌿 採取\n{flav}{plus}{mat_line}{bonus_line}\n**💰 +{coin:,}**", LAND_COL_GATHER),
                 view=LandResultView(self.uid, self.gid, self.area))
         else:  # calm
             _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
@@ -1006,6 +1033,7 @@ def land_on_end(uid, gid, area, spec):
             drop = None if spec.get("no_item_drop") else _run_add_drop(uid, vp, area, spec)   # 🎁 装備ドロップ（中レアは高確率）
             tier = "rare" if spec.get("is_rare") else "mid" if spec.get("is_midrare") else "zako"
             item_drops = [] if spec.get("no_item_drop") else _roll_land_item_drop(uid, vp, tier)
+            craft_mat = None if spec.get("no_item_drop") else _roll_land_craft_material(uid, vp, area, bonus=(1.5 if tier != "zako" else 1.0))
             db.save_voyage(uid, vp)
             if spec.get("is_xp_runner"):
                 head = f"## {'👑' if spec.get('is_king_runner') else '💎'}🏆 {spec['emoji']} {spec['name']} を逃がさず仕留めた！"
@@ -1022,6 +1050,8 @@ def land_on_end(uid, gid, area, spec):
                 lines.append(f"## 🎁 {drop} を手に入れた！")
             for got_item in item_drops:
                 lines.append(f"## 🎒 {got_item} を手に入れた！")
+            if craft_mat:
+                lines.append(f"## 💎 {craft_mat} を手に入れた！")
             if spec.get("is_rare") and spec.get("rare_story"):
                 lines.append("")
                 lines.append(f"> {spec['rare_story']}")

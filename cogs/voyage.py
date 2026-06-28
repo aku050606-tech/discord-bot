@@ -78,13 +78,20 @@ def equipped_inst(vp, part):
         return None
     return lst[idx]
 
+def _level_stat_bonus(level):
+    """Lv10以降は成長を緩やかにして、装備更新の価値を上げる。
+    Lv1〜9: +2/Lv、Lv10以降: +1/Lv。
+    """
+    lv = max(1, int(level or 1))
+    return 2 * lv if lv <= 9 else 18 + (lv - 9)
+
 def attack_power(vp):
     w = equipped_inst(vp, "weapon")
     base = V.WEAPONS[w["item"]]["power"] if (w and w["item"] in V.WEAPONS) else 0
-    return V.LEVEL_BASE_POWER * vp["level"] + base
+    return _level_stat_bonus(vp.get("level", 1)) + base
 
 def defense_power(vp):
-    d = V.LEVEL_BASE_DEF * vp["level"]   # 防御もレベルで +2/Lv（攻撃と同じ伸び）
+    d = _level_stat_bonus(vp.get("level", 1))
     for part in ("torso", "legs"):
         it = equipped_inst(vp, part)
         if it and it["item"] in V.ARMOR_PARTS[part]["items"]:
@@ -2029,11 +2036,11 @@ class EquipShopView(discord.ui.View):
     async def inv(self, it, b):
         if not await self.guard(it): return
         await open_inventory(it, self.user_id, back="equip")
-    @discord.ui.button(label="◀ タウンへ", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="◀ 商店街へ", style=discord.ButtonStyle.secondary, row=2)
     async def back(self, it, b):
         if not await self.guard(it): return
-        from cogs.menu import go_town
-        await go_town(it, self.user_id)
+        from cogs.menu import open_shopping_street
+        await open_shopping_street(it, self.user_id, self.gid)
 
 # ── 装備購入（武器/防具）。満杯なら入れ替え ──
 class BuyView(discord.ui.View):
@@ -2641,13 +2648,13 @@ class ItemLandItemBuySelect(discord.ui.Select):
 
 class ItemShopBackButton(discord.ui.Button):
     def __init__(self, uid, gid):
-        super().__init__(label="◀ メニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(label="◀ 商店街へ戻る", style=discord.ButtonStyle.secondary, row=2)
         self.uid = str(uid); self.gid = str(gid)
     async def callback(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        from cogs.menu import go_town
-        await go_town(it, self.uid)
+        from cogs.menu import open_shopping_street
+        await open_shopping_street(it, self.uid, self.gid)
 
 class ItemFoodBuySelect(discord.ui.Select):
     def __init__(self, uid, gid):
@@ -2853,11 +2860,11 @@ class SkillGachaView(discord.ui.View):
     async def inv(self, it, b):
         if not await self.guard(it): return
         await open_inventory(it, self.user_id, back="town")
-    @discord.ui.button(label="◀ タウンへ", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="◀ 商店街へ", style=discord.ButtonStyle.secondary, row=2)
     async def back(self, it, b):
         if not await self.guard(it): return
-        from cogs.menu import go_town
-        await go_town(it, self.user_id)
+        from cogs.menu import open_shopping_street
+        await open_shopping_street(it, self.user_id, self.gid)
 
 def build_gacha_exchange_embed(uid: str):
     vp = db.get_voyage(uid)
@@ -2991,7 +2998,7 @@ def make_board_ally(vp):
     技ダメージは武器powerに依存せず、レベル+武器☆の基礎値で決まる（A案＝武器種で技は横並び）。"""
     c = C.make_combatant("あなた", "🧑", max_hp(vp),
                          attack_power(vp), defense_power(vp), board_skills(vp))
-    lv_atk = V.LEVEL_BASE_POWER * vp["level"]
+    lv_atk = _level_stat_bonus(vp.get("level", 1))
     w = equipped_inst(vp, "weapon")
     if w and w["item"] in V.WEAPONS:
         wd = V.WEAPONS[w["item"]]
@@ -3179,6 +3186,15 @@ def grant_random_equip(uid, vp, star):
     db.add_zukan(uid, "equip_seen", ikey)
     return f"{label}（★{star}）"
 
+def _add_craft_material(uid, vp, mat_id, n=1):
+    if mat_id not in getattr(V, "MATERIALS", {}):
+        return None
+    vp.setdefault("materials", {})
+    vp["materials"][mat_id] = vp["materials"].get(mat_id, 0) + int(n)
+    db.add_zukan(uid, "item_seen", mat_id)
+    m = V.MATERIALS[mat_id]
+    return f"{m['emoji']} **{m['name']}**（素材）"
+
 def drop_loot(uid, vp, spec):
     """敵撃破時のドロップ（素材＋食料＋装備）。インベントリに加算し図鑑も記録。戻り値=表示行リスト。"""
     out = []
@@ -3191,6 +3207,13 @@ def drop_loot(uid, vp, spec):
         vp.setdefault("materials", {}); vp["materials"][mat] = vp["materials"].get(mat, 0) + 1
         db.add_zukan(uid, "item_seen", mat)
         out.append(f"{m['emoji']} **{m['name']}**（素材）")
+    # ⚒️ 鍛冶素材（海洋エリア素材。☆4ボス素材とは別枠）
+    if hasattr(V, "roll_craft_material"):
+        area = int(spec.get("area", 1) or 1)
+        cmid = V.roll_craft_material("voyage", area, bonus=(1.4 if stars >= 3 else 1.0))
+        got_cm = _add_craft_material(uid, vp, cmid, 1) if cmid else None
+        if got_cm:
+            out.append(got_cm)
     # 🍖 食料
     if random.random() < V.FOOD_DROP_RATE:
         food = random.choice(list(V.FOODS.keys())); f = V.FOODS[food]
@@ -3208,21 +3231,38 @@ def drop_loot(uid, vp, spec):
     return out
 
 def _discover_drop(uid, vp, kind):
-    """発見系のドロップ：島→食料／渦・海淵→燃料樽（その場で燃料補給）。"""
+    """発見系のドロップ：島→食料／渦・海淵→燃料樽＋海洋クラフト素材。"""
     v = vp["voyage"]
+    lines = []
+    area = int(v.get("area", 1) or 1)
+    # ⚒️ 海洋素材：発見イベントでも手に入る。浅瀬は約300周目標の一部。
+    if hasattr(V, "roll_craft_material"):
+        bonus = 1.35 if kind in ("island", "maelstrom", "abyss") else 1.0
+        cmid = V.roll_craft_material("voyage", area, bonus=bonus)
+        got_cm = _add_craft_material(uid, vp, cmid, 1) if cmid else None
+        if got_cm:
+            lines.append(f"\n🌊 {got_cm} を見つけた。")
+        if random.random() < 0.05:
+            extras = []
+            for _ in range(random.randint(1, 3)):
+                emid = V.roll_craft_material("voyage", area, bonus=1.0)
+                g = _add_craft_material(uid, vp, emid, 1) if emid else None
+                if g: extras.append(g)
+            if extras:
+                lines.append("\n✨ 漂着物が多い！ " + " / ".join(extras))
     if kind == "island" and random.random() < V.FOOD_DROP_RATE:
         food = random.choice(list(V.FOODS.keys())); f = V.FOODS[food]
         vp.setdefault("foods", {}); vp["foods"][food] = vp["foods"].get(food, 0) + 1
         db.add_zukan(uid, "item_seen", food)
-        return f"\n🍖 {f['emoji']} **{f['name']}** も見つけた！（食料）"
+        lines.append(f"\n🍖 {f['emoji']} **{f['name']}** も見つけた！（食料）")
     if kind in ("maelstrom", "abyss") and random.random() < V.BARREL_DROP_RATE:
         b = V.FUEL_BARREL
         before = v.get("fuel", 0)
         v["fuel"] = min(ship_max_fuel(vp), before + b["fuel"])
         gained = v["fuel"] - before
         db.add_zukan(uid, "item_seen", "fuel_barrel")
-        return f"\n🛢️ **{b['name']}** を回収！ その場で燃料 **+{gained:,}**"
-    return ""
+        lines.append(f"\n🛢️ **{b['name']}** を回収！ その場で燃料 **+{gained:,}**")
+    return "".join(lines)
 
 def shadow_intro(spec):
     """段階1：正体を伏せた前口上。☆が高いほど物々しく、海の意思が滲む。"""
@@ -3799,10 +3839,25 @@ def build_item_zukan_embed(uid=None):
     emb.add_field(name="⛽ 補給品", value=barrel, inline=False)
     # 💎 素材（未取得=❔）
     got = len([m for m in V.MATERIALS if m in seen])
-    mat_lines = [f"{m['emoji']} {m['name']}" if mid in seen else "❔"
-                 for mid, m in V.MATERIALS.items()]
-    emb.add_field(name=f"💎 素材（{got}/{len(V.MATERIALS)}）",
-                  value="　".join(mat_lines), inline=False)
+    mat_lines = []
+    for mid, m in V.MATERIALS.items():
+        if mid in seen:
+            hint = m.get("hint")
+            mat_lines.append(f"{m['emoji']} **{m['name']}**" + (f" … {hint}" if hint else ""))
+        else:
+            mat_lines.append("❔ ？？？")
+    # Discordのfield上限対策で分割
+    chunks = []
+    cur = ""
+    for line in mat_lines:
+        if len(cur) + len(line) + 1 > 950:
+            chunks.append(cur); cur = line
+        else:
+            cur = line if not cur else cur + "\n" + line
+    if cur: chunks.append(cur)
+    for i, chunk in enumerate(chunks[:4], 1):
+        emb.add_field(name=f"💎 素材（{got}/{len(V.MATERIALS)}）" + (f" {i}" if len(chunks)>1 else ""),
+                      value=chunk, inline=False)
     # 🛤️ 街道アイテム（LAND_ITEMS）
     land_lines = []
     for iid, it in getattr(L, "LAND_ITEMS", {}).items():
