@@ -4,6 +4,7 @@ from discord import app_commands
 from database import Database
 from datetime import date, datetime, timezone, timedelta
 import random
+import time
 from config import DAILY_AMOUNT, DAILY_SEND_LIMIT, jst_today_str, ADMIN_USER_IDS
 from quest_tracker import record as quest_record
 import quest_tracker as QT
@@ -309,13 +310,14 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
     embed.add_field(
         name="〔　Ｍ Ｅ Ｎ Ｕ　〕",
         value=(
-            "🎣　**釣り**　　　── 湖から大海原まで大物を狙え！\n"
-            "⚓　**さびれた港**── 海へ繰り出す遠征の拠点\n"
-            "🛒　**商店街**　　── 船・道具・装備・ガチャ\n"
-            "🏛️　**ギルド**　　── 討伐クエストを請け負って稼ぐ\n"
-            "🛤️　**街道**　　　── 森・山・砂漠へ徒歩で冒険\n"
+            "🎣　**釣り**　　　── 湖・川・海で大物を狙う\n"
+            "⚓　**さびれた港**── 船で大海原へ。航海・白兵戦・財宝\n"
+            "🛒　**商店街**　　── 船・道具・装備・ガチャ（準備中）\n"
+            "🏛️　**ギルド**　　── 討伐クエストで稼ぐ（準備中）\n"
+            "🛤️　**街道**　　　── 平原・森・山を徒歩で冒険\n"
             "🃏　**カジノ**　　── スロット＆テーブルで一攫千金\n"
-            "📱　**スマホ**　　── 銀行・デイリー・クエスト・募集"
+            "📱　**スマホ**　　── 銀行・デイリー・クエスト・募集\n"
+            "🏠　**家**　　　　── 休んでHPを全快（10分ごと）"
         ),
         inline=False,
     )
@@ -388,15 +390,38 @@ class MainMenuView(discord.ui.View):
         if not await self._check(interaction): return
         await _coming_soon(interaction, "ギルド")
 
-    @discord.ui.button(label="🛤️ 街道（陸の冒険）", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="🛤️ 街道", style=discord.ButtonStyle.secondary, row=2)
     async def road(self, interaction, button):
         if not await self._check(interaction): return
-        await _coming_soon(interaction, "街道")
+        if str(interaction.user.id) not in ADMIN_USER_IDS:
+            await _coming_soon(interaction, "街道"); return
+        from cogs.land import open_land
+        await open_land(interaction, str(interaction.user.id))
 
     @discord.ui.button(label="🏠", style=discord.ButtonStyle.secondary, row=2)
     async def house(self, interaction, button):
         if not await self._check(interaction): return
-        await _coming_soon(interaction, "家")
+        uid = str(interaction.user.id)
+        gid = str(interaction.guild.id)
+        vp = db.get_voyage(uid)
+        HOME_HEAL_CD = 600   # 10分
+        last = vp.get("last_home_heal", 0)
+        left = HOME_HEAL_CD - (time.time() - last)
+        mh = 100 + (vp.get("level", 1) - 1) * 10
+        if left > 0:
+            m, s = divmod(int(left) + 1, 60)
+            await interaction.response.send_message(
+                f"🏠 まだ休めない。次に休めるまで **あと {m}分{s}秒**。", ephemeral=True); return
+        if vp.get("cur_hp", mh) >= mh:
+            # 満タンでもCDは消費しない（無駄打ち防止）。一応知らせる。
+            await interaction.response.send_message(
+                "🏠 もうHPは満タンだ。よく休めている。", ephemeral=True); return
+        vp["cur_hp"] = mh
+        vp["last_home_heal"] = time.time()
+        db.save_voyage(uid, vp)
+        await interaction.response.send_message(
+            f"🏠 家でゆっくり休んだ。**HPが全快した！**（{mh}/{mh}）\n"
+            f"次に休めるのは10分後。", ephemeral=True)
 
     # ── 4段目：カジノ・スマホ ──
     @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.success, row=3)

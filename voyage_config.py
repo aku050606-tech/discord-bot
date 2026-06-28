@@ -56,16 +56,18 @@ ENCOUNTER_WEIGHTS = {
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AREA_MAX = 4
 EXPLORE_TO_ADVANCE = 10               # 同エリアで探索N回 → 進む解禁
-AREA_NAMES  = {1: "浅瀬", 2: "沖合", 3: "深海", 4: "最深部"}
+AREA_NAMES  = {1: "浅瀬", 2: "大洋", 3: "暗い海", 4: "虚海"}   # E4 虚海（うつろうみ）＝最深部の固有名
 AREA_EMOJI  = {1: "🏖️", 2: "🌊", 3: "🌑", 4: "🌟"}
 AREA_MULT   = {1: 1.0, 2: 1.6, 3: 2.6, 4: 4.0}   # 敵強さ・報酬に掛けるエリア倍率
 
 # エリアごとの遭遇テーブル（探索時）。奥ほど海賊・固有遭遇が増える。
+#   ※「何もなし(平穏)」は EVENT_DEFS の "nothing"(凪いだ海) に一本化（組込calmは廃止）。
+#     fish=魚影 は出すぎ→減量、減らした分は island(宝) に寄せて脅威%は据え置き。
 AREA_ENCOUNTERS = {
-    1: {"fish": 50, "island": 20, "calm": 14, "maelstrom": 6, "pirate": 10},  # ☆1雑魚が少し（全部倒せる・装備の練習）
-    2: {"fish": 50, "island": 18, "calm": 16, "pirate": 40},                 # 脅威~2割（イベントと合算後）
-    3: {"fish": 34, "island": 12, "pirate": 55, "calm": 6,  "boss": 13, "maelstrom": 20},  # 脅威~3割強
-    4: {"fish": 24, "island": 10, "pirate": 53, "calm": 4,  "boss": 26, "abyss": 22},      # 脅威~4割・最深部
+    1: {"fish": 20, "island": 36, "maelstrom": 6, "pirate": 10},  # ☆1雑魚が少し（全部倒せる・装備の練習）
+    2: {"fish": 22, "island": 34, "pirate": 40},                 # 脅威~2割（イベントと合算後）
+    3: {"fish": 16, "island": 24, "pirate": 55, "boss": 13, "maelstrom": 20},  # 脅威~3割強
+    4: {"fish": 14, "island": 18, "pirate": 53, "boss": 26, "abyss": 22},      # 脅威~4割・最深部
 }
 
 # 🧭 光る羅針盤のカケラ（エリア3でのみ拾える）。3個でエリア4が開く。
@@ -118,14 +120,200 @@ EXPLORE_TREASURE = {"base_min": 3000, "base_max": 11000}
 ABYSS_TREASURE   = {"base_min": 8000, "base_max": 22000}   # エリア4の海淵
 MAELSTROM_REWARD = {"base_min": 2000, "base_max": 7000}    # エリア3の渦潮
 
-# ── 釣果（船倉に貯まる海産物。海のval_multで増える）──
-#   base_value × val_mult をベースに ±振れ。rare枠は低確率で高額。
+# ── 釣果（旧プレースホルダ：コイン額のティア抽選）。
+#   VOYAGE_FISH_BY_AREA に移行済み。フォールバック用に残置。
 FISH_HAUL = {
     "common":  {"weight":62, "base_min":1200,  "base_max":2600},
     "good":    {"weight":28, "base_min":3000,  "base_max":6500},
     "rare":    {"weight":8,  "base_min":9000,  "base_max":18000},
     "legend":  {"weight":2,  "base_min":28000, "base_max":60000},
 }
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🎣 海の魚カタログ（4エリア専用）── 陸の釣り(FISH_BY_AREA)と同じ構造を航海に
+#   レア度は「竿」(config.FISHING_RARITY) が決め、エリアが「どの魚が／いくらで」。
+#   売値は陸の海(SEA_FISH legend上限3万)を大きく超える高設定。船倉(hold)に貯まる。
+#   奥に行くほど「魚らしさ」が壊れていく＝世界観（観測者/カケラ/古代の伏線）。
+#   ※数値・名前はバランス用ダイヤル。ここを書き換えるだけで調整できる。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VOYAGE_FISH_BY_AREA = {
+    # ── 🏖️ E1 浅瀬（入口の海・実在の大物）──
+    1: [
+        {"name":"流れ着いた木箱",     "rarity":"trash", "value":0,   "emoji":"📦"},
+        {"name":"ちぎれた漁網",       "rarity":"trash", "value":0,   "emoji":"🕸️"},
+        {"name":"空のラム酒瓶",       "rarity":"trash", "value":0,   "emoji":"🍾"},
+        {"name":"漂着した宝箱の欠片", "rarity":"trash", "value":350, "emoji":"🪙"},
+        {"name":"トビウオ",       "rarity":"common", "value":250, "emoji":"🐟"},
+        {"name":"カツオ",         "rarity":"common", "value":360, "emoji":"🐟"},
+        {"name":"カンパチ",       "rarity":"common", "value":460, "emoji":"🐟"},
+        {"name":"アオリイカ",     "rarity":"common", "value":650, "emoji":"🦑"},
+        {"name":"キハダマグロ",   "rarity":"uncommon", "value":850,  "emoji":"🐟"},
+        {"name":"大マダイ",       "rarity":"uncommon", "value":1200, "emoji":"🐟"},
+        {"name":"座布団ヒラメ",   "rarity":"uncommon", "value":1450, "emoji":"🐟"},
+        {"name":"ランカーシーバス","rarity":"uncommon","value":1600, "emoji":"🐟"},
+        {"name":"クエ",           "rarity":"rare", "value":2600, "emoji":"🐟"},
+        {"name":"イシナギ",       "rarity":"rare", "value":3400, "emoji":"🐟"},
+        {"name":"バショウカジキ", "rarity":"rare", "value":4000, "emoji":"🐟"},
+        {"name":"若クロマグロ",   "rarity":"rare", "value":4800, "emoji":"🐟"},
+        {"name":"本マグロ",       "rarity":"super_rare", "value":8000,  "emoji":"🐟"},
+        {"name":"ロウニンアジ",   "rarity":"super_rare", "value":11000, "emoji":"🐟"},
+        {"name":"大ウミガメ",     "rarity":"super_rare", "value":13000, "emoji":"🐢"},
+        {"name":"黄金の本マグロ", "rarity":"legend", "value":35000, "emoji":"👑"},
+        {"name":"浅瀬の主・大鯨", "rarity":"legend", "value":52000, "emoji":"🐋"},
+    ],
+    # ── 🌊 E2 大洋（外洋の巨獣）──
+    2: [
+        {"name":"難破船の船板",   "rarity":"trash", "value":0,   "emoji":"🪵"},
+        {"name":"錆びた錨",       "rarity":"trash", "value":0,   "emoji":"⚓"},
+        {"name":"破れた海賊旗",   "rarity":"trash", "value":0,   "emoji":"🏴‍☠️"},
+        {"name":"ガラスの浮き玉", "rarity":"trash", "value":600, "emoji":"🔮"},
+        {"name":"マンボウ",       "rarity":"common", "value":600,  "emoji":"🐡"},
+        {"name":"オナガザメ",     "rarity":"common", "value":800,  "emoji":"🦈"},
+        {"name":"ヨゴレ",         "rarity":"common", "value":1000, "emoji":"🦈"},
+        {"name":"寒サワラ",       "rarity":"common", "value":1250, "emoji":"🐟"},
+        {"name":"メカジキ",       "rarity":"uncommon", "value":1800, "emoji":"🐟"},
+        {"name":"シュモクザメ",   "rarity":"uncommon", "value":2300, "emoji":"🦈"},
+        {"name":"イトマキエイ",   "rarity":"uncommon", "value":2800, "emoji":"🐟"},
+        {"name":"ミナミマグロ",   "rarity":"uncommon", "value":3300, "emoji":"🐟"},
+        {"name":"クロカワカジキ", "rarity":"rare", "value":5200, "emoji":"🐟"},
+        {"name":"イタチザメ",     "rarity":"rare", "value":6500, "emoji":"🦈"},
+        {"name":"オキゴンドウ",   "rarity":"rare", "value":7800, "emoji":"🐬"},
+        {"name":"銀のマカジキ",   "rarity":"rare", "value":9300, "emoji":"✨"},
+        {"name":"ホホジロザメ",   "rarity":"super_rare", "value":15000, "emoji":"🦈"},
+        {"name":"ダイオウイカ",   "rarity":"super_rare", "value":20000, "emoji":"🦑"},
+        {"name":"シャチ",         "rarity":"super_rare", "value":24000, "emoji":"🐳"},
+        {"name":"白鯨",           "rarity":"legend", "value":62000, "emoji":"🐋"},
+        {"name":"海を統べる古き鯱","rarity":"legend", "value":92000, "emoji":"🐳"},
+    ],
+    # ── 🌑 E3 暗い海（深海の異形）──
+    3: [
+        {"name":"黒ずんだ骨",       "rarity":"trash", "value":0,   "emoji":"🦴"},
+        {"name":"沈没船の錆びた鎖", "rarity":"trash", "value":0,   "emoji":"⛓️"},
+        {"name":"濡れた古びた人形", "rarity":"trash", "value":0,   "emoji":"🎎"},
+        {"name":"光らない深海の石", "rarity":"trash", "value":900, "emoji":"🪨"},
+        {"name":"チョウチンアンコウ","rarity":"common", "value":1400, "emoji":"🎣"},
+        {"name":"ミツクリザメ",     "rarity":"common", "value":1800, "emoji":"🦈"},
+        {"name":"オニキンメ",       "rarity":"common", "value":2200, "emoji":"🐟"},
+        {"name":"ホウライエソ",     "rarity":"common", "value":2700, "emoji":"🐟"},
+        {"name":"ラブカ",           "rarity":"uncommon", "value":3800, "emoji":"🦈"},
+        {"name":"ダイオウグソクムシ","rarity":"uncommon", "value":4600, "emoji":"🦐"},
+        {"name":"メンダコ",         "rarity":"uncommon", "value":5400, "emoji":"🐙"},
+        {"name":"リュウグウノツカイ","rarity":"uncommon", "value":6500, "emoji":"🐉"},
+        {"name":"シーラカンス",         "rarity":"rare", "value":9800,  "emoji":"🐟"},
+        {"name":"ダイオウホウズキイカ", "rarity":"rare", "value":12000, "emoji":"🦑"},
+        {"name":"巨大ミズウオ",         "rarity":"rare", "value":14500, "emoji":"🐟"},
+        {"name":"燐光を放つ深海魚",     "rarity":"rare", "value":18000, "emoji":"✨"},
+        {"name":"深海の主の眷属",   "rarity":"super_rare", "value":28000, "emoji":"🐙"},
+        {"name":"光を喰らう鮟鱇",   "rarity":"super_rare", "value":36000, "emoji":"🕯️"},
+        {"name":"メガロドンの末裔", "rarity":"super_rare", "value":45000, "emoji":"🦈"},
+        {"name":"古き海龍の落とし子",   "rarity":"legend", "value":110000, "emoji":"🐉"},
+        {"name":"深海の王・盲いた巨鯨", "rarity":"legend", "value":165000, "emoji":"🐋"},
+    ],
+    # ── 🕳️ E4 虚海（うつろうみ）── 魚ですらない・観測者/古代の気配 ──
+    4: [
+        {"name":"沈黙の海の砂",     "rarity":"trash", "value":0,    "emoji":"⏳"},
+        {"name":"何も映さない鏡",   "rarity":"trash", "value":0,    "emoji":"🪞"},
+        {"name":"古代文字の石板",   "rarity":"trash", "value":0,    "emoji":"🪨"},
+        {"name":"視線を感じる貝殻", "rarity":"trash", "value":1500, "emoji":"🐚"},
+        {"name":"透き通った魚",     "rarity":"common", "value":3000, "emoji":"🫧"},
+        {"name":"目のない魚",       "rarity":"common", "value":3600, "emoji":"🐟"},
+        {"name":"影だけの魚",       "rarity":"common", "value":4300, "emoji":"🌑"},
+        {"name":"静寂を纏う魚",     "rarity":"common", "value":5500, "emoji":"🤍"},
+        {"name":"骨だけで泳ぐ魚",   "rarity":"uncommon", "value":8000,  "emoji":"🦴"},
+        {"name":"二つの顔を持つ魚", "rarity":"uncommon", "value":10500, "emoji":"🎭"},
+        {"name":"囁く貝の群れ",     "rarity":"uncommon", "value":12500, "emoji":"🐚"},
+        {"name":"海の記憶を喰う魚", "rarity":"uncommon", "value":14500, "emoji":"🌀"},
+        {"name":"原初の魚",         "rarity":"rare", "value":21000, "emoji":"🐟"},
+        {"name":"光るカケラを宿す魚","rarity":"rare", "value":26000, "emoji":"🧭"},
+        {"name":"漆黒を泳ぐ巨影",   "rarity":"rare", "value":33000, "emoji":"🌑"},
+        {"name":"観る者の落とし物", "rarity":"rare", "value":38000, "emoji":"👁️"},
+        {"name":"世界の裂け目から来た魚", "rarity":"super_rare", "value":70000, "emoji":"🌀"},
+        {"name":"観測者の欠片を呑んだ魚", "rarity":"super_rare", "value":85000, "emoji":"👁️"},
+        {"name":"深淵の女王",             "rarity":"super_rare", "value":98000, "emoji":"👑"},
+        {"name":"古き海龍ヨルムンの仔",     "rarity":"legend", "value":200000, "emoji":"🐲"},
+        {"name":"世界を視ていた一つ目の魚", "rarity":"legend", "value":300000, "emoji":"👁️"},
+    ],
+}
+
+def voyage_fish_pool(area, rarity):
+    """そのエリア・そのレア度の魚プール（無ければcommonにフォールバック）。"""
+    lst = VOYAGE_FISH_BY_AREA.get(area, VOYAGE_FISH_BY_AREA[1])
+    pool = [f for f in lst if f["rarity"] == rarity]
+    if not pool:
+        pool = [f for f in lst if f["rarity"] == "common"]
+    return pool
+
+# ━━━ 🎣 海の釣り：レア度（全エリア一律）━━━
+#   伝説の竿でしか釣れない仕様＋値段がエリアで段違いなので、レア度は全エリア共通の一律に。
+#   legend 0.1% / super_rare 1% / rare 5% を固定。残りを trash/common/uncommon に配分。合計＝1.0。
+VOYAGE_FISH_RARITY_FLAT = {
+    "trash":0.24, "common":0.42, "uncommon":0.279, "rare":0.05, "super_rare":0.01, "legend":0.001,
+}
+# 🌈 伝説の魚の噂モード：レジェンドが格段に出やすい特別な釣り（L率5%）。合計=1.0。
+VOYAGE_FISH_RARITY_RUMOR = {
+    "trash":0.08, "common":0.27, "uncommon":0.30, "rare":0.25, "super_rare":0.05, "legend":0.05,
+}
+# 🐟 大物の魚影モード：通常からSR+1%・レジェンド+1%だけ上げた1回限りの釣り。合計=1.0。
+VOYAGE_FISH_RARITY_SHADOW = {
+    "trash":0.23, "common":0.41, "uncommon":0.279, "rare":0.05, "super_rare":0.02, "legend":0.011,
+}
+# 互換：エリア別に引く呼び出しに対応（全エリア同じテーブルを返す）
+VOYAGE_FISH_RARITY = {a: VOYAGE_FISH_RARITY_FLAT for a in (1, 2, 3, 4)}
+
+def voyage_fish_rarity_pick(area=None, mode="normal"):
+    """レア度を1つ抽選。mode='rumor'で伝説出やすい／'shadow'でSR・L+1%。"""
+    table = {"rumor": VOYAGE_FISH_RARITY_RUMOR,
+             "shadow": VOYAGE_FISH_RARITY_SHADOW}.get(mode, VOYAGE_FISH_RARITY_FLAT)
+    r = random.random(); acc = 0.0
+    for rar, p in table.items():
+        acc += p
+        if r < acc:
+            return rar
+    return "common"
+
+# 🎣 魚を釣れる演出（魚影）1回ごとに釣れる回数（演出ごとの回数制限）。エリアで調整可。
+FISH_SCHOOL_CASTS = {1: 3, 2: 3, 3: 3, 4: 3}
+
+def fish_school_casts(area):
+    return FISH_SCHOOL_CASTS.get(area, 3)
+
+# 🎣 海の釣りに必要な竿（これ以外では釣れない）
+VOYAGE_FISH_ROD = "legend"   # 伝説の釣り竿
+
+# 🎣 航海専用の釣り竿（ドックで購入・永久・船に付ける）。これが無いと海では釣れない。
+#   リール/ラインは航海の釣りでは無効（金冠なし）＝陸の釣りと切り離す。
+VOYAGE_ROD_NAME  = "🎣 航海の釣り竿"
+VOYAGE_ROD_PRICE = 100000
+
+# 🏆 海の幸図鑑コンプリート報酬（エリアの非ごみ魚を全種そろえると一度だけ貰える）
+VOYAGE_FISH_COMPLETE_REWARD = {1: 100000, 2: 200000, 3: 300000, 4: 400000}
+
+# ⚔️ 魚影演出で「実は怪物だった」＝戦闘になる確率（エリア依存・奥ほど危険／E1は安全）
+FISH_CUE_COMBAT_RATE = {1: 0.00, 2: 0.10, 3: 0.18, 4: 0.28}
+# 魚影から襲ってくる海獣（エリア別。keyはENEMY_TYPES。エリア基準値で自動スケール）
+FISH_CUE_BEASTS = {
+    1: ["shark", "piranha"],
+    2: ["shark", "serpent"],
+    3: ["serpent", "venom_serpent"],
+    4: ["serpent", "venom_serpent"],
+}
+
+def fish_cue_combat_roll(area):
+    """魚影が実は怪物だった＝戦闘になるか判定。"""
+    return random.random() < FISH_CUE_COMBAT_RATE.get(area, 0.0)
+
+def pick_fish_cue_beast(area):
+    """魚影から襲う海獣specを返す。"""
+    keys = FISH_CUE_BEASTS.get(area, ["shark"])
+    return make_enemy_spec(random.choice(keys), area)
+
+def voyage_fish_total(area):
+    """そのエリアの非ごみ魚の総数（コンプ判定用）。"""
+    return len([f for f in VOYAGE_FISH_BY_AREA.get(area, []) if f["rarity"] != "trash"])
+
+def voyage_fish_names(area):
+    """そのエリアの非ごみ魚の名前集合（コンプ判定用）。"""
+    return {f["name"] for f in VOYAGE_FISH_BY_AREA.get(area, []) if f["rarity"] != "trash"}
 
 # ── 上陸（無人島）：宝 or ハズレ ──
 ISLAND_TREASURE_RATE = 0.62      # 上陸して宝が見つかる確率
@@ -134,9 +322,9 @@ ISLAND_TREASURE = {"base_min":4000, "base_max":14000}
 # ━━━ 🎒 アイテム（食料・燃料樽・素材）━━━
 # 🍖 食料：HPを割合回復。ドロップ＋ドックで購入。
 FOODS = {
-    "hardtack": {"name": "乾パン",     "emoji": "🥖", "heal_pct": 0.30, "price": 300,  "stars": 1},
-    "jerky":    {"name": "干し肉",     "emoji": "🍖", "heal_pct": 0.50, "price": 700,  "stars": 1},
-    "feast":    {"name": "船員の宴",   "emoji": "🍲", "heal_pct": 1.00, "price": 1500, "stars": 2},
+    "hardtack": {"name": "乾パン",     "emoji": "🥖", "heal_pct": 0.30, "price": 2000, "stars": 1},
+    "jerky":    {"name": "干し肉",     "emoji": "🍖", "heal_pct": 0.50, "price": 4000, "stars": 1},
+    "feast":    {"name": "船員の宴",   "emoji": "🍲", "heal_pct": 1.00, "price": 7000, "stars": 2},
 }
 # ⛽ 燃料樽：拾うとその場で燃料補給（即時消費）
 FUEL_BARREL = {"name": "燃料樽", "emoji": "🛢️", "fuel": 3000}

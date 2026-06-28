@@ -67,6 +67,24 @@ def _resolve_channel(interaction):
     return play_channel
 
 
+# ━━━ ゲーム別の告知閾値 ━━━
+# 告知を出すのは3種だけ：スロット(3万+)・釣り(5万+)・航海(10万+)。これ以外は告知しない。
+_ANNOUNCE_RULES = [
+    ("航海",     100000),   # 1回の航海で10万コイン以上持ち帰ったとき
+    ("スロット",  30000),   # スロットのAT/一撃が3万コイン超
+    ("釣り",      50000),   # 釣り（嵐の宝箱・ヌシ含む）が5万コイン超
+    ("宝の地図",  50000),   # 宝の地図の報酬も釣り扱いで5万超
+]
+
+def _announce_threshold(game: str):
+    """ゲーム名から告知閾値を返す。対象外なら None（＝告知しない）。"""
+    g = game or ""
+    for key, thr in _ANNOUNCE_RULES:
+        if g.startswith(key) or key in g:
+            return thr
+    return None
+
+
 async def announce_big_win(interaction, member, game: str, amount: int,
                            balance=None, detail: str | None = None,
                            force: bool = False):
@@ -83,7 +101,11 @@ async def announce_big_win(interaction, member, game: str, amount: int,
     try:
         if amount is None:
             return
-        if not force and amount < BIG_WIN_ANNOUNCE:
+        # 📣 告知対象は3種のみ：スロット(3万+)・釣り(5万+)・航海(10万+)。それ以外は告知しない。
+        thr = _announce_threshold(game)
+        if thr is None:
+            return
+        if amount < thr:
             return
         channel = _resolve_channel(interaction)
         if channel is None:

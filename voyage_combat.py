@@ -120,7 +120,7 @@ def resolve_action(state, side, action):
             amt, line = _deal(state, attacker, defender, d)
             total += amt
             if defender["hp"] <= 0: break
-        htxt = f"（{base_hits}連撃）" if base_hits > 1 else ""
+        htxt = f"（{base_hits}段攻撃）" if base_hits > 1 else ""
         state["log"].append(f"{attacker['emoji']} {attacker['name']} の攻撃{htxt}！ 計{total}ダメージ")
     elif kind == "defend":
         attacker["guard"] = 0.5
@@ -150,15 +150,22 @@ def _fire_skill(state, attacker, defender, sid, released=False):
     if t in ("attack", "pierce"):
         hits = s.get("hits", 1)
         pierce = s.get("pierce", 0.0)
-        total = 0
+        total = 0; hit_n = 0; miss_n = 0
         for _ in range(hits):
             if random.random() > s.get("acc", 1.0):
-                state["log"].append(f"{attacker['emoji']} {s['name']} … 外した！")
+                miss_n += 1
                 continue
             d = dmg_calc(skatk, defender["def"], s["power"], pierce)
             amt, line = _deal(state, attacker, defender, d)
-            total += amt
-        state["log"].append(f"{pre}{s['emoji']} {attacker['name']} の【{s['name']}】！ 計{total}ダメージ")
+            total += amt; hit_n += 1
+        if hit_n == 0:
+            state["log"].append(f"💨 {pre}{attacker['name']} の【{s['name']}】は すべて外した！")
+        elif miss_n == 0:
+            state["log"].append(f"{pre}{s['emoji']} {attacker['name']} の【{s['name']}】！ 計{total}ダメージ")
+        else:
+            state["log"].append(
+                f"{pre}{s['emoji']} {attacker['name']} の【{s['name']}】！ "
+                f"{hit_n}ヒット（{miss_n}回外し）・計{total}ダメージ")
     elif t == "dot":
         d = dmg_calc(skatk, defender["def"], s["power"])
         amt, line = _deal(state, attacker, defender, d)

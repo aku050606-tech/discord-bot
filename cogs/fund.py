@@ -17,9 +17,6 @@ def _has_port_access(guild, user, goal_key):
         return True
     return str(user.id) in ADMIN_USER_IDS
 
-# 遠征先の正式名（かっこいい名前。釣り人はこれをぼかして語る）
-COOL_SEAS = "🧊 **氷獄海（ひょうごくかい）**　／　🔥 **煉獄海（れんごくかい）**"
-
 # 伝説の釣り人（未解放時。海の名はぼかす）
 LEGEND_FISHER_LINES = (
     "……おう、よく来たな、若いの。\n"
@@ -75,16 +72,9 @@ def build_locked_port_embed(guild, user, goal_key=DEFAULT_GOAL):
 
 
 def build_port_hub_embed(guild, goal_key=DEFAULT_GOAL):
+    # ⚓ 再興ハブは廃止（解放済みは open_port → open_voyage で母港へ直行）。互換のため最小限残置。
     total, _ = db.get_fund(str(guild.id), goal_key)
-    embed = discord.Embed(
-        title="⚓ さびれた港 ── 再興！",
-        description=("みんなの支援で港がよみがえった！\n"
-                     f"遥か先の二つの海――{COOL_SEAS} への遠征が可能だ。\n\n"
-                     "🌊 **危険水域**：船と専用竿を仕立てて遠征へ。\n"
-                     "🏪 **総合ショップ**：船・専用竿の購入。"),
-        color=0x16a085)
-    embed.set_footer(text=f"再興達成額: {total:,} ナトコイン｜支援に感謝🙏")
-    return embed
+    return discord.Embed(title="⚓ さびれた港", description="母港へ。", color=0x16a085)
 
 
 # ── 未解放：支援するボタンのみ ──
@@ -104,12 +94,13 @@ class LockedPortView(discord.ui.View):
             return
         await interaction.response.send_modal(ContributeModal(self.user_id, self.goal_key))
 
-    @discord.ui.button(label="🚪 立ち去る", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="🏘️ タウンに戻る", style=discord.ButtonStyle.secondary)
     async def leave(self, interaction, button):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
             return
-        await interaction.response.edit_message(content="港を後にした。", embed=None, view=None)
+        from cogs.menu import go_town
+        await go_town(interaction, self.user_id)
 
 
 # ── 解放後：港ハブ（危険水域 / ショップ）──
@@ -176,8 +167,12 @@ class ContributeModal(discord.ui.Modal):
             db.set_fund_unlocked(gid, self.goal_key)
 
         if just_unlocked:
-            embed = build_port_hub_embed(interaction.guild, self.goal_key)
-            await interaction.response.edit_message(embed=embed, view=PortHubView(uid, self.goal_key))
+            done = discord.Embed(
+                title="🎉 さびれた港 ── 再興！",
+                description=("みんなの支援で港がよみがえった！\n"
+                             "もう一度 **⚓ さびれた港** を開けば、母港から航海に出られる。"),
+                color=discord.Color.gold())
+            await interaction.response.edit_message(embed=done, view=None)
         else:
             embed = build_locked_port_embed(interaction.guild, interaction.user, self.goal_key)
             await interaction.response.edit_message(embed=embed, view=LockedPortView(uid, self.goal_key))
@@ -197,18 +192,24 @@ class ContributeModal(discord.ui.Modal):
 
 
 async def open_port(interaction: discord.Interaction, user_id: str = None, goal_key=DEFAULT_GOAL):
-    """さびれた港を開く（本人専用ephemeral）。解放状態で表示を分岐。"""
+    """さびれた港を開く。メニューと同じメッセージを編集して表示（別メッセージにしない）。
+    解放済みは母港（航海中なら航海画面）へ直行。未解放は支援ページ。"""
     uid = user_id or str(interaction.user.id)
+    gid = str(interaction.guild.id)
     if _has_port_access(interaction.guild, interaction.user, goal_key):
-        embed = build_port_hub_embed(interaction.guild, goal_key)
-        view = PortHubView(uid, goal_key)
+        from cogs.voyage import build_port_embed, build_voyage_embed, PortView, VoyageView
+        vp = db.get_voyage(uid)
+        if vp.get("voyage"):
+            embed = build_voyage_embed(vp, "⛵ 航海の続きだ。"); view = VoyageView(uid, gid)
+        else:
+            embed = build_port_embed(vp); view = PortView(uid, gid)
     else:
         embed = build_locked_port_embed(interaction.guild, interaction.user, goal_key)
         view = LockedPortView(uid, goal_key)
     if interaction.response.is_done():
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(embed=embed, view=view)
     else:
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.edit_message(embed=embed, view=view)
 
 
 class Fund(commands.Cog):

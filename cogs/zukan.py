@@ -146,7 +146,7 @@ class ZukanCategoryView(discord.ui.View):
         if not self._check(interaction):
             await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
         from cogs.voyage import build_skill_zukan_embed, SimpleZukanView
-        await interaction.response.edit_message(embed=build_skill_zukan_embed(), view=SimpleZukanView(self.user_id))
+        await interaction.response.edit_message(embed=build_skill_zukan_embed(self.user_id), view=SimpleZukanView(self.user_id))
 
     @discord.ui.button(label="🎒 アイテム", style=discord.ButtonStyle.secondary, row=2)
     async def item(self, interaction, button):
@@ -154,6 +154,24 @@ class ZukanCategoryView(discord.ui.View):
             await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
         from cogs.voyage import build_item_zukan_embed, SimpleZukanView
         await interaction.response.edit_message(embed=build_item_zukan_embed(self.user_id), view=SimpleZukanView(self.user_id))
+
+    @discord.ui.button(label="🎣 海洋", style=discord.ButtonStyle.primary, row=2)
+    async def voyage_fish(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.voyage import build_voyage_fish_zukan_embed, VoyageFishZukanView
+        await interaction.response.edit_message(
+            embed=build_voyage_fish_zukan_embed(self.user_id, 1),
+            view=VoyageFishZukanView(self.user_id, 1))
+
+    @discord.ui.button(label="🛤️ 街道", style=discord.ButtonStyle.primary, row=2)
+    async def land(self, interaction, button):
+        if not self._check(interaction):
+            await interaction.response.send_message("あなたの図鑑ではありません", ephemeral=True); return
+        from cogs.land import build_land_zukan_embed, LandZukanView
+        await interaction.response.edit_message(
+            embed=build_land_zukan_embed(self.user_id, 1),
+            view=LandZukanView(self.user_id, 1))
 
     @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=3)
     async def back(self, interaction, button):
