@@ -433,31 +433,77 @@ def roll_explore(vp):
 # Embed ビルダー
 
 # ── 🔍 発見→選択→結果 の演出フロー ──
+VOYAGE_COL_NORMAL = 0x0f766e   # 通常航海（青緑）
+VOYAGE_COL_CALM   = 0x4b5563   # 何もない・静か（鈍い灰）
+VOYAGE_COL_EVENT  = 0xd4a017   # 発見・イベント（金）
+VOYAGE_COL_FISH   = 0x1f6f8b   # 魚影（水色）
+VOYAGE_COL_COMBAT = 0xd97706   # 戦闘気配（橙）
+VOYAGE_COL_RARE   = 0xb91c1c   # ボス・危険（赤）
+VOYAGE_COL_STORY  = 0x7c3aed   # 不穏・物語（紫）
+VOYAGE_COL_MOVE   = 0x1e3a8a   # 海域移動（深青）
+
+def _pad_voyage_note(note, min_lines=5):
+    """航海UIの高さブレを抑えるため、本文行数をだいたい固定する。"""
+    text = str(note or "")
+    lines = text.splitlines() if text else []
+    while len(lines) < min_lines:
+        lines.append("\u200b")
+    return "\n".join(lines)
+
 def _emph(text):
-    """航海の演出テキストを目立たせる：先頭行を見出し（大きい字）にして連打を防ぐ。"""
+    """航海の演出テキストを目立たせる：先頭行を見出し（大きい字）にする。"""
     if not text:
         return text
-    parts = text.split("\n", 1)
-    head = f"## {parts[0]}"
+    parts = str(text).split("\n", 1)
+    head = parts[0]
+    if not head.startswith("## "):
+        head = f"## {head}"
     return head + ("\n" + parts[1] if len(parts) > 1 else "")
 
+def _voyage_theater_note(kind):
+    table = {
+        "calm":   (VOYAGE_COL_CALM,   "… 静かな海", "波は低く、帆だけが小さく鳴っている。\n今のところ、異変はない。"),
+        "event":  (VOYAGE_COL_EVENT,  "## ✦ 何かを見つけた……", "水平線の向こうに、妙な影が見える。\n船を寄せるか、通り過ぎるか。"),
+        "fish":   (VOYAGE_COL_FISH,   "## 🎣 水面がざわめく……", "船の下を、いくつもの魚影が横切った。\n竿先がかすかに震える。"),
+        "combat": (VOYAGE_COL_COMBAT, "## ⚔️ 何かが近づいている……", "波音に紛れて、別の音が混じった。\n甲板に、緊張が走る。"),
+        "rare":   (VOYAGE_COL_RARE,   "## ⚠️ 海が、重い。", "風が止んだ。\n水面の奥で、巨大な影が向きを変える。\n逃げるなら、今しかない。"),
+        "story":  (VOYAGE_COL_STORY,  "## 🌑 不穏な気配", "海の匂いが、少し変わった。\nこの先に、ただの漂流物ではない何かがある。"),
+        "move":   (VOYAGE_COL_MOVE,   "## ⛵ 船は進む……", "帆が風を孕み、船首が深い海へ向く。\n戻る海の色が、少しずつ遠ざかっていく。"),
+        "reveal": (VOYAGE_COL_COMBAT, "## 🌊 息を殺す……", "揺れる影の輪郭を、じっと見極める。\n次の波で、正体が見える。"),
+    }
+    col, head, body = table.get(kind, table["event"])
+    return col, _pad_voyage_note(f"{head}\n{body}", 5)
+
+def _voyage_kind_for_result(res):
+    try:
+        if not res:
+            return "event"
+        if res[0] == "combat":
+            spec = res[1]
+            return "rare" if spec.get("is_boss") or int(spec.get("stars", 1)) >= 4 else "combat"
+        if res[0] == "fish_cue":
+            return "fish"
+        if res[0] in ("choice", "discover"):
+            return "event"
+        return "calm"
+    except Exception:
+        return "event"
+
 def build_discover_embed(vp, payload):
-    """『何かを見つけた』段階。どうするか選ばせる。"""
-    v = vp.get("voyage") or {}
-    e = discord.Embed(title=f"{payload['emoji']} {payload['title']}",
-                      description=_emph(payload["flavor"]), color=0xe67e22)
-    e.add_field(name="📦 船倉（未確定）", value=f"**{v.get('hold',0):,}**", inline=True)
-    e.add_field(name="⛽ 燃料", value=f"{v.get('fuel',0):,}/{ship_max_fuel(vp):,}", inline=True)
-    e.set_footer(text="さあ、どうする？")
-    return e
+    """『何かを見つけた』段階。航海中と同じ固定情報枠で見せる。"""
+    return build_voyage_embed(
+        vp, _emph(payload["flavor"]),
+        title=f"{payload['emoji']} {payload['title']}",
+        color=VOYAGE_COL_EVENT,
+        footer="さあ、どうする？")
 
 def build_result_embed(vp, body, title="🌊 結果"):
-    """報酬確定の『結果』段階。別枠で見せる。"""
-    v = vp.get("voyage") or {}
-    e = discord.Embed(title=title, description=_emph(body), color=0xf1c40f)
-    e.add_field(name="📦 船倉（未確定）", value=f"**{v.get('hold',0):,}**", inline=True)
-    e.add_field(name="⛽ 燃料", value=f"{v.get('fuel',0):,}/{ship_max_fuel(vp):,}", inline=True)
-    return e
+    """報酬確定の『結果』段階。航海中と同じ固定情報枠で見せる。"""
+    return build_voyage_embed(vp, _emph(body), title=title, color=0xf1c40f)
+
+def build_voyage_theater_embed(vp, kind):
+    col, note = _voyage_theater_note(kind)
+    return build_voyage_embed(vp, note, color=col)
 
 class DiscoverView(discord.ui.View):
     """発見に対して『漁る／無視』を選ばせる。選んで初めて報酬が確定。"""
@@ -544,16 +590,13 @@ class FishingSchoolView(discord.ui.View):
         from config import SUSPENSE_COLOR, FISHING_WAIT_NORMAL, FISHING_WAIT_SUPER
         from cogs import fish_assets as FA
         roll = roll_voyage_fish(self.uid, self.area, self.mode)
-        # 当たり待ち：陸の釣りと同じく情景画像を見せる（画像が無い時だけテキスト）
+        # 当たり待ち：航海と同じ固定情報枠で、魚影だけ水色演出にする
         wait = FISHING_WAIT_SUPER if roll["rarity"] in ("super_rare", "legend") else FISHING_WAIT_NORMAL
-        susp = discord.Embed(color=SUSPENSE_COLOR)
-        susp.set_footer(text=f"{V.AREA_EMOJI[self.area]} {V.AREA_NAMES[self.area]} ・残り{self.remaining}回")
-        scene = FA.scene_url(roll["effect_key"])
-        if scene:
-            susp.set_image(url=scene)
-        else:
-            susp.description = roll["effect_text"]
-        await it.response.edit_message(embed=susp, view=None)
+        vp_wait = db.get_voyage(self.uid)
+        fish_note = _emph(roll.get("effect_text") or "🎣 糸を垂らす……")
+        await it.response.edit_message(
+            embed=build_voyage_embed(vp_wait, fish_note, title="🎣 魚影を追う", color=VOYAGE_COL_FISH),
+            view=VoyageTheaterView(self.uid, self.gid))
         await asyncio.sleep(wait)
         # 結果確定
         vp = db.get_voyage(self.uid); v = vp["voyage"]
@@ -663,12 +706,13 @@ def build_port_embed(vp):
         e.add_field(name="🔧 修理見積", value=f"満タンまで **{rc:,}** ナトコイン", inline=False)
     return e
 
-def build_voyage_embed(vp, last_msg=None):
+def build_voyage_embed(vp, last_msg=None, title=None, color=None, footer=None):
     v = vp["voyage"]; s = V.SEAS[v["sea"]]
     area = area_of(v); ex = explores_done(v)
+    desc = _pad_voyage_note(last_msg or s["flavor"], 5)
     e = discord.Embed(
-        title=f"{s['name']} ── 航海中",
-        description=last_msg or s["flavor"], color=discord.Color.dark_teal())
+        title=title or f"{s['name']} ── 航海中",
+        description=desc, color=color if color is not None else VOYAGE_COL_NORMAL)
     e.add_field(name="🗺️ エリア",
                 value=f"{V.AREA_EMOJI[area]} **{area} {V.AREA_NAMES[area]}**", inline=True)
     prog = min(ex, V.EXPLORE_TO_ADVANCE)
@@ -704,7 +748,7 @@ def build_voyage_embed(vp, last_msg=None):
     e.add_field(name="❤️ HP",
                 value=f"{max(0,curhp)}/{mxhp}\n{hp_bar(curhp, mxhp, 10)}", inline=True)
     e.add_field(name="⚖️ カルマ", value=karma_badge(vp), inline=True)
-    e.set_footer(text="🔍探索＝その場を探る／⛵進む＝奥のエリアへ(探索10回)／⚓引き返す＝1つ手前へ")
+    e.set_footer(text=footer or "🔍探索＝その場を探る／⛵進む＝奥のエリアへ(探索10回)／⚓引き返す＝1つ手前へ")
     return e
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1200,6 +1244,18 @@ class SeaButton(discord.ui.Button):
             view=VoyageView(uid, gid))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 演出中の固定UI（ボタンを消さず無効化して高さブレを防ぐ）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+class VoyageTheaterView(discord.ui.View):
+    def __init__(self, user_id, gid):
+        super().__init__(timeout=30)
+        self.user_id = str(user_id); self.gid = str(gid)
+        self.add_item(discord.ui.Button(label="🔍 探索中…", style=discord.ButtonStyle.secondary, disabled=True, row=0))
+        self.add_item(discord.ui.Button(label="⛵ 進む", style=discord.ButtonStyle.secondary, disabled=True, row=0))
+        self.add_item(discord.ui.Button(label="🏕️ 停泊", style=discord.ButtonStyle.secondary, disabled=True, row=0))
+        self.add_item(discord.ui.Button(label="⚓ 引き返す", style=discord.ButtonStyle.secondary, disabled=True, row=0))
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # View: 航海中
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 class VoyageView(discord.ui.View):
@@ -1247,9 +1303,11 @@ class VoyageView(discord.ui.View):
         v["fuel"] -= cost   # ⛽ タンクから探索ぶん消費
         res = roll_explore(vp)
         db.save_voyage(uid, vp)   # 探索カウント／航海消耗／非戦闘の獲得を確定
-        # 🔍 探索ウェイト演出（2秒・文面はランダム）
+        # 🔍 探索ウェイト演出（種類別の色・見出し／UI高さは固定）
+        theater_kind = _voyage_kind_for_result(res)
         await interaction.response.edit_message(
-            embed=build_wait_embed(explore_wait_text()), view=None)
+            embed=build_voyage_theater_embed(vp, theater_kind),
+            view=VoyageTheaterView(uid, gid))
         await asyncio.sleep(2)
         if res[0] == "combat":
             _, spec, scale, vm, is_boss = res
@@ -1365,8 +1423,8 @@ class VoyageView(discord.ui.View):
         body = f"**{nm}** に到達した。\n\n{trans}"
         db.save_voyage(uid, vp)
         await interaction.response.edit_message(
-            embed=build_wait_embed("⛵ 船は新たな海域へと航路を進めていく……",
-                                   color=discord.Color.dark_blue()), view=None)
+            embed=build_voyage_theater_embed(vp, "move"),
+            view=VoyageTheaterView(uid, gid))
         await asyncio.sleep(5)
         await interaction.edit_original_response(
             embed=build_result_embed(vp, body, title=f"⛵ {nm} へ"),
@@ -2822,9 +2880,10 @@ class ShipApproachView(discord.ui.View):
         ek = self.spec.get("key")
         if ek and cat != "boss":   # ボスは挑むまで図鑑に伏せる
             db.add_zukan(self.uid, "enemy_seen", ek)
-        # 🌊 遭遇ウェイト演出（3秒）
+        # 🌊 遭遇ウェイト演出（3秒・固定UI）
         await it.response.edit_message(
-            embed=build_wait_embed("🌊 息を殺して、影の正体を見極める……"), view=None)
+            embed=build_voyage_theater_embed(vp, "reveal"),
+            view=VoyageTheaterView(self.uid, self.gid))
         await asyncio.sleep(3)
         await it.edit_original_response(
             embed=build_reveal_embed(vp, self.spec, cat),

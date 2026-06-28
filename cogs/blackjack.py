@@ -10,6 +10,11 @@ _ping = discord.AllowedMentions(users=True)
 SUITS = ["♠️", "♥️", "♦️", "♣️"]
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 
+# 経済保護：ブラックジャックはダブルダウン込みの総賭け額をここで止める
+# 例）50,000賭けならダブル可、60,000賭けならダブル不可。
+BLACKJACK_MAX_BET = 100_000
+BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE = 100_000
+
 def make_deck():
     return [{"suit": s, "rank": r} for s in SUITS for r in RANKS]
 
@@ -167,7 +172,11 @@ class PvPPrivateActView(discord.ui.View):
         allow_dd = False
         if room and room.get(pkey):
             me = room[pkey]
-            if len(me["hand"]) == 2 and db.get_balance(me["id"], room["guild_id"]) >= room["bet"]:
+            if (
+                len(me["hand"]) == 2
+                and room["bet"] * 2 <= BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE
+                and db.get_balance(me["id"], room["guild_id"]) >= room["bet"]
+            ):
                 allow_dd = True
         if not allow_dd:
             for item in list(self.children):
@@ -266,6 +275,11 @@ class PvPPrivateActView(discord.ui.View):
             await interaction.response.send_message("ダブルダウンは最初の2枚のときだけです", ephemeral=True)
             return
         bal = db.get_balance(me["id"], room["guild_id"])
+        if room["bet"] * 2 > BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE:
+            await interaction.response.send_message(
+                f"ダブルダウン上限です（総賭け額は最大 {BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE:,} ナトコインまで）",
+                ephemeral=True)
+            return
         if bal < room["bet"]:
             await interaction.response.send_message("ダブルダウンに必要なナトコインが足りません", ephemeral=True)
             return
@@ -351,6 +365,25 @@ class BlackjackAIView(discord.ui.View):
         super().__init__(timeout=900)
         self.user_id = user_id
         self.guild_id = guild_id
+        self._sync_double_button()
+
+    def _sync_double_button(self):
+        """ダブルダウンは初手2枚・1回だけ・総賭け上限内のときだけ押せる。"""
+        game = active_games.get(self.user_id)
+        allow = False
+        if game:
+            try:
+                allow = (
+                    game.get("can_double", True)
+                    and len(game.get("player", [])) == 2
+                    and game.get("bet", 0) * 2 <= BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE
+                    and db.get_balance(self.user_id, self.guild_id) >= game.get("bet", 0)
+                )
+            except Exception:
+                allow = False
+        for item in self.children:
+            if getattr(item, "label", "") == "ダブルダウン":
+                item.disabled = not allow
 
     async def update_embed(self, interaction: discord.Interaction, ended=False):
         game = active_games.get(self.user_id)
@@ -388,7 +421,8 @@ class BlackjackAIView(discord.ui.View):
                                        net, balance=new_bal)
         else:
             embed.add_field(name="ディーラーの手札", value=hand_str(game["dealer"], hide_second=True), inline=False)
-            embed.set_footer(text=f"賭け: {bet:,} ナトコイン")
+            embed.set_footer(text=f"賭け: {bet:,} ナトコイン | ダブルダウン上限: 総額 {BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE:,}")
+            self._sync_double_button()
             end_view = self
         await interaction.response.edit_message(embed=embed, view=end_view)
 
@@ -400,6 +434,7 @@ class BlackjackAIView(discord.ui.View):
         game = active_games.get(self.user_id)
         if not game:
             return
+        game["can_double"] = False
         game["player"].append(game["deck"].pop())
         if hand_value(game["player"]) >= 21:
             await self.update_embed(interaction, ended=True)
@@ -414,6 +449,7 @@ class BlackjackAIView(discord.ui.View):
         game = active_games.get(self.user_id)
         if not game:
             return
+        game["can_double"] = False
         while hand_value(game["dealer"]) < 17:
             game["dealer"].append(game["deck"].pop())
         await self.update_embed(interaction, ended=True)
@@ -426,10 +462,23 @@ class BlackjackAIView(discord.ui.View):
         game = active_games.get(self.user_id)
         if not game:
             return
+        if game.get("double_lock"):
+            await interaction.response.send_message("処理中です", ephemeral=True)
+            return
+        if not game.get("can_double", True) or len(game.get("player", [])) != 2:
+            await interaction.response.send_message("ダブルダウンは最初の2枚で1回だけです", ephemeral=True)
+            return
+        if game["bet"] * 2 > BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE:
+            await interaction.response.send_message(
+                f"ダブルダウン上限です（総賭け額は最大 {BLACKJACK_MAX_TOTAL_BET_AFTER_DOUBLE:,} ナトコインまで）",
+                ephemeral=True)
+            return
         bal = db.get_balance(self.user_id, self.guild_id)
         if bal < game["bet"]:
             await interaction.response.send_message("ナトコインが足りません", ephemeral=True)
             return
+        game["double_lock"] = True
+        game["can_double"] = False
         db.update_balance(self.user_id, self.guild_id, -game["bet"])
         game["bet"] *= 2
         game["player"].append(game["deck"].pop())
@@ -464,7 +513,7 @@ class BJAgainButton(discord.ui.Button):
         random.shuffle(deck)
         player = [deck.pop(), deck.pop()]
         dealer = [deck.pop(), deck.pop()]
-        active_games[uid] = {"deck": deck, "player": player, "dealer": dealer, "bet": bet}
+        active_games[uid] = {"deck": deck, "player": player, "dealer": dealer, "bet": bet, "can_double": True, "double_lock": False}
         p_val = hand_value(player)
         embed = discord.Embed(title="🤖 ブラックジャック vs AI", color=discord.Color.dark_green())
         embed.add_field(name=f"あなたの手札（{p_val}）", value=hand_str(player), inline=False)
@@ -543,7 +592,7 @@ class BlackjackModeView(discord.ui.View):
         random.shuffle(deck)
         player = [deck.pop(), deck.pop()]
         dealer = [deck.pop(), deck.pop()]
-        active_games[user_id] = {"deck": deck, "player": player, "dealer": dealer, "bet": bet}
+        active_games[user_id] = {"deck": deck, "player": player, "dealer": dealer, "bet": bet, "can_double": True, "double_lock": False}
 
         p_val = hand_value(player)
         embed = discord.Embed(title="🤖 ブラックジャック vs AI", color=discord.Color.dark_green())
@@ -617,6 +666,9 @@ class Blackjack(commands.Cog):
     async def blackjack(self, interaction: discord.Interaction, bet: int):
         if bet < 10:
             await interaction.response.send_message("❌ 最低10ナトコインから", ephemeral=True)
+            return
+        if bet > BLACKJACK_MAX_BET:
+            await interaction.response.send_message(f"❌ ブラックジャックの賭け金上限は {BLACKJACK_MAX_BET:,} ナトコインです", ephemeral=True)
             return
         user_id = str(interaction.user.id)
         guild_id = str(interaction.guild.id)

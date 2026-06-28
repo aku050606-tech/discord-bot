@@ -206,6 +206,7 @@ def build_area_embed(vp, area, note="", color=LAND_COL_NORMAL):
     目立たせるのは枠を大きくするのではなく、見出し(##)と帯の色で。"""
     a = L.LAND_AREAS[area]
     desc = note if note else a["intro"]
+    desc = _pad_note(desc, 5)
     e = discord.Embed(title=f"{a['emoji']} {a['name']} ── 探索中", description=desc, color=color)
     cur = _cur_hp(vp); mh = max_hp(vp)
     e.add_field(name="❤️ HP", value=f"{cur}/{mh}\n{hp_bar(cur, mh, 12)}", inline=True)
@@ -582,7 +583,13 @@ class LandStoryView(discord.ui.View):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid); self.area = area; self.ev = ev
         for i, ch in enumerate(ev["choices"]):
-            self.add_item(_StoryChoiceBtn(i, ch["label"]))
+            self.add_item(_StoryChoiceBtn(i, ch["label"], row=0))
+        # 選択イベント中も通常探索と近いコンポーネント行数を保つ。
+        # 操作は選択肢だけ、下段は視覚的な高さ維持用の無効ボタン。
+        self.add_item(discord.ui.Button(label="🗺️ 行き先を変える", style=discord.ButtonStyle.secondary, disabled=True, row=1))
+        self.add_item(discord.ui.Button(label="🏘️ タウンに戻る", style=discord.ButtonStyle.secondary, disabled=True, row=1))
+        if _has_food(uid):
+            self.add_item(LandFoodDisabledSelect())
 
     async def interaction_check(self, interaction):
         if str(interaction.user.id) != self.uid:
@@ -591,8 +598,8 @@ class LandStoryView(discord.ui.View):
         return True
 
 class _StoryChoiceBtn(discord.ui.Button):
-    def __init__(self, idx, label):
-        super().__init__(label=label, style=discord.ButtonStyle.secondary)
+    def __init__(self, idx, label, row=0):
+        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=row)
         self.idx = idx
     async def callback(self, interaction):
         view: LandStoryView = self.view
