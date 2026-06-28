@@ -815,8 +815,6 @@ BOSS_TIER = {3: 4, 4: 5}
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ⚒️ 鍛冶屋クラフト v20 ── 重周回素材・採取イベント・職人装備
 # ・素材図鑑に反映。入手場所は明記せず、名前と説明から推理する方針。
-# ・☆2は平原素材 約1000周＋浅瀬素材 約300周が目安。
-# ・☆3は森＋大洋素材を要求。現状は未来目標として表示。
 # ・☆4ボス素材はクラフト素材に使わない。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CRAFT_MATERIALS = {
@@ -876,8 +874,6 @@ MATERIALS.update({mid: {"name": m["name"], "emoji": m["emoji"], "cat":"craft", "
                   for mid, m in CRAFT_MATERIALS.items()})
 
 # エリア別クラフト素材ドロップ。land=街道、voyage=海洋探索。
-# 1周目安：landは戦闘/採取/発見で複数機会があるため、レシピ側の要求数を重くして約1000周に寄せる。
-# voyageは戦闘/発見で落ちるため、浅瀬素材は約300周に寄せる。
 CRAFT_MATERIAL_DROPS = {
     "land": {
         1: [
@@ -927,13 +923,13 @@ def roll_craft_material(source, area, bonus=1.0, amount_bonus=False):
 # 鍛冶専用装備：既存☆2/☆3より約5〜10%弱い。ステータス詳細はUIで原則隠す。
 WEAPONS.update({
     # ☆2 crafted（平原＋浅瀬）
-    "forge_tide_sword": {"name":"鍛造・潮鉄の剣", "wtype":"sword", "power":45, "hits":1, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"潮鉄を打って作る鍛冶屋製の剣。ガチャ産☆2より少し控えめ。"},
+    "forge_tide_sword": {"name":"鍛造・潮鉄の剣", "wtype":"sword", "power":45, "hits":1, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"潮鉄を打って作る鍛冶屋製の剣。潮の音がかすかに残る。"},
     "forge_tide_twin":  {"name":"鍛造・潮牙の双剣", "wtype":"twin", "power":16, "hits":3, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"浅瀬素材で作る双剣。軽く、数で押す。"},
     "forge_coral_staff":{"name":"鍛造・珊瑚の杖", "wtype":"staff", "power":37, "hits":1, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"浅瀬サンゴを芯にした杖。"},
     "forge_green_bow":  {"name":"鍛造・緑鉱の弓", "wtype":"bow", "power":24, "hits":2, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"緑鉱石で補強した弓。"},
     "forge_tide_gun":   {"name":"鍛造・潮鳴り銃", "wtype":"gun", "power":46, "hits":1, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"潮鉄の銃身を持つ銃。"},
     "forge_core_greatsword":{"name":"鍛造・芯材の大剣", "wtype":"greatsword", "power":54, "hits":1, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"流木の芯材と潮鉄を束ねた大剣。"},
-    # ☆3 crafted（森＋大洋。現状は素材不足で100%作れない未来目標）
+    # ☆3 crafted（森＋大洋）
     "forge_forest_sword": {"name":"鍛造・森潮の剣", "wtype":"sword", "power":62, "hits":1, "slots":2, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森と大洋の素材を合わせた未踏の設計図。"},
     "forge_forest_twin":  {"name":"鍛造・森牙の双刃", "wtype":"twin", "power":22, "hits":3, "slots":2, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森素材が必要な双刃。"},
     "forge_sap_staff":    {"name":"鍛造・樹液結晶の杖", "wtype":"staff", "power":51, "hits":1, "slots":2, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"樹液結晶を魔力の導線にした杖。"},
@@ -946,23 +942,23 @@ ARMOR_PARTS["torso"]["items"].update({
     "forge_forest_mail":{"name":"鍛造・森潮の胴鎧", "power":27, "slots":1, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森素材と大洋素材を重ねた胴鎧。"},
 })
 ARMOR_PARTS["legs"]["items"].update({
-    "forge_tide_greaves": {"name":"鍛造・潮鉄の脚甲", "power":12, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"潮鉄と獣革で足元を固める鍛冶屋製の脚甲。既存☆2脚より少し控えめ。"},
-    "forge_forest_greaves":{"name":"鍛造・森潮の脚甲", "power":20, "slots":1, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森素材と大洋素材で作る未来目標の脚甲。"},
+    "forge_tide_greaves": {"name":"鍛造・潮鉄の脚甲", "power":14, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"潮鉄と獣革で組んだ脚甲。足音が少し軽くなる。"},
+    "forge_forest_greaves":{"name":"鍛造・森潮の脚甲", "power":21, "slots":1, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森のしなりと海の硬さを合わせた脚甲。"},
 })
 
 CRAFT_RECIPES = {
-    # ☆2武器：平原1000周＋浅瀬300周くらいの重め目標。武器種で素材傾向を分ける。
+    # ☆2武器：武器種で素材傾向を分ける。
     "forge_tide_sword": {"kind":"weapon", "item":"forge_tide_sword", "rank":2, "cost":{"plain_wood":360,"beast_hide":260,"green_ore":70,"tide_iron":70,"driftwood_core":80,"small_magic_stone":24}},
     "forge_tide_twin": {"kind":"weapon", "item":"forge_tide_twin", "rank":2, "cost":{"beast_hide":320,"meadow_sinew":46,"green_ore":55,"tide_iron":65,"shallow_coral":60,"blue_glass_sand":42,"small_magic_stone":24}},
     "forge_coral_staff": {"kind":"weapon", "item":"forge_coral_staff", "rank":2, "cost":{"plain_wood":420,"old_cloth":140,"sun_grass":70,"driftwood_core":95,"shallow_coral":85,"foam_pearl":18,"small_magic_stone":28}},
     "forge_green_bow": {"kind":"weapon", "item":"forge_green_bow", "rank":2, "cost":{"plain_wood":460,"plant_fiber":260,"meadow_sinew":52,"wind_shell":38,"driftwood_core":90,"blue_glass_sand":38,"small_magic_stone":24}},
     "forge_tide_gun": {"kind":"weapon", "item":"forge_tide_gun", "rank":2, "cost":{"rough_stone":360,"charcoal":220,"green_ore":78,"plain_relic":16,"tide_iron":95,"foam_pearl":16,"small_magic_stone":30}},
     "forge_core_greatsword": {"kind":"weapon", "item":"forge_core_greatsword", "rank":2, "cost":{"rough_stone":430,"beast_bone":280,"green_ore":85,"plain_relic":18,"driftwood_core":115,"tide_iron":105,"small_magic_stone":32}},
-    # ☆2防具：胴＋脚。防御の価値を上げる導線。
+    # ☆2防具：1種類作れれば満足できる重さ。防御の価値を上げる導線。
     "forge_coral_mail": {"kind":"armor", "part":"torso", "item":"forge_coral_mail", "rank":2, "cost":{"beast_hide":420,"beast_bone":260,"rough_stone":380,"shallow_coral":105,"tide_iron":80,"blue_glass_sand":46,"foam_pearl":18,"small_magic_stone":30}},
-    "forge_tide_greaves": {"kind":"armor", "part":"legs", "item":"forge_tide_greaves", "rank":2, "cost":{"beast_hide":360,"plant_fiber":250,"beast_bone":220,"meadow_sinew":42,"tide_iron":62,"shallow_coral":70,"driftwood_core":58,"small_magic_stone":26}},
+    "forge_tide_greaves": {"kind":"armor", "part":"legs", "item":"forge_tide_greaves", "rank":2, "cost":{"beast_hide":360,"plant_fiber":240,"meadow_sinew":44,"tide_iron":78,"driftwood_core":70,"shallow_coral":72,"small_magic_stone":26}},
 
-    # ☆3：森＋大洋素材。現状は作れない未来目標として鍛冶屋に表示。
+    # ☆3：森＋大洋素材。
     "forge_forest_sword": {"kind":"weapon", "item":"forge_forest_sword", "rank":3, "cost":{"ancient_wood":520,"sap_crystal":90,"forest_fang":65,"ocean_steel":140,"blue_pearl":55,"seaweed_fiber":160,"small_magic_stone":70}},
     "forge_forest_twin": {"kind":"weapon", "item":"forge_forest_twin", "rank":3, "cost":{"ancient_wood":440,"sap_crystal":105,"forest_fang":90,"ocean_steel":120,"blue_pearl":65,"storm_shell":42,"small_magic_stone":70}},
     "forge_sap_staff": {"kind":"weapon", "item":"forge_sap_staff", "rank":3, "cost":{"ancient_wood":620,"sap_crystal":145,"spirit_leaf":58,"blue_pearl":80,"white_coral":90,"small_magic_stone":84}},
@@ -970,5 +966,5 @@ CRAFT_RECIPES = {
     "forge_ocean_gun": {"kind":"weapon", "item":"forge_ocean_gun", "rank":3, "cost":{"charcoal":500,"sap_crystal":95,"ocean_steel":210,"blue_pearl":92,"white_coral":110,"small_magic_stone":88}},
     "forge_ocean_greatsword": {"kind":"weapon", "item":"forge_ocean_greatsword", "rank":3, "cost":{"ancient_wood":520,"forest_fang":75,"ocean_steel":260,"blue_pearl":75,"white_coral":120,"small_magic_stone":96}},
     "forge_forest_mail": {"kind":"armor", "part":"torso", "item":"forge_forest_mail", "rank":3, "cost":{"ancient_wood":620,"moss_stone":180,"sap_crystal":120,"ocean_steel":190,"white_coral":150,"storm_shell":70,"small_magic_stone":90}},
-    "forge_forest_greaves": {"kind":"armor", "part":"legs", "item":"forge_forest_greaves", "rank":3, "cost":{"ancient_wood":520,"forest_fang":80,"spirit_leaf":62,"seaweed_fiber":190,"storm_shell":80,"white_coral":105,"small_magic_stone":82}},
+    "forge_forest_greaves": {"kind":"armor", "part":"legs", "item":"forge_forest_greaves", "rank":3, "cost":{"ancient_wood":540,"moss_stone":150,"spirit_leaf":62,"seaweed_fiber":190,"storm_shell":78,"white_coral":130,"small_magic_stone":82}},
 }

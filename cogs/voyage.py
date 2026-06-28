@@ -1892,7 +1892,7 @@ def _skill_fits(part, item_id, sid):
 
 # ━━━━━━━━ 装備屋 ━━━━━━━━
 def build_equipshop_embed(vp, uid=None, gid=None):
-    e = discord.Embed(title="⚒️ 装備屋",
+    e = discord.Embed(title="⚔️ リディア（装備屋）",
                       color=discord.Color.dark_orange(),
                       description="武器・防具・技を買い、装備に技を刻もう。\n"
                                   "武器の種別に合う技だけ刻める（杖＝回復専用 等）。持ち替え・売却はインベントリで。")
@@ -2572,12 +2572,11 @@ def _daily_random_shop_items(gid):
 
 def build_itemshop_embed(vp, uid, gid):
     e = discord.Embed(
-        title="🛒 道具屋",
+        title="🛒 ポロ（道具屋）",
         color=0xe67e22,
         description=(
-            "街道・航海で使える消耗品を扱う店。\n"
-            "包帯・食事は常設。煙玉/お守り/地図は日替わり入荷。\n"
-            "身代わり人形・守護の羽は店では売らない、幻のドロップ限定品。"
+            "『腹が減ったら歩けないし、備えがなければ帰れないよ。』\n"
+            "旅の食料と、街道で役立つ小道具が並んでいる。"
         ),
     )
     e.add_field(name="💰 所持金", value=f"**{db.get_balance(uid, gid):,}** ナトコイン", inline=False)
@@ -2599,7 +2598,7 @@ def build_itemshop_embed(vp, uid, gid):
         tag = "常設" if it.get("shop") == "always" else "本日入荷"
         lines.append(f"{it['emoji']} **{it['name']}**（{tag}/所持{have}）\n{it['desc']}・**{it['price']:,}**コイン")
     e.add_field(name="🛤️ 街道消耗品", value="\n".join(lines) if lines else "本日の入荷なし", inline=False)
-    e.set_footer(text="ランダム入荷は毎日更新。レア保護アイテムはドロップ限定。")
+    e.set_footer(text="ポロは商品棚の奥を時々入れ替えている。")
     return e
 
 class ItemShopView(discord.ui.View):
@@ -2609,6 +2608,47 @@ class ItemShopView(discord.ui.View):
         self.add_item(ItemFoodBuySelect(uid, gid))
         self.add_item(ItemLandItemBuySelect(uid, gid))
         self.add_item(ItemShopBackButton(uid, gid))
+
+class QuantityBuyModal(discord.ui.Modal):
+    def __init__(self, uid, gid, kind, item_id, name, emoji, price, have):
+        super().__init__(title=f"{name}を買う")
+        self.uid = str(uid); self.gid = str(gid)
+        self.kind = kind; self.item_id = item_id
+        self.name = name; self.emoji = emoji; self.price = int(price); self.have = int(have)
+        self.qty = discord.ui.TextInput(
+            label=f"購入数（1個 {self.price:,}コイン / 所持 {self.have}）",
+            placeholder="例: 3",
+            min_length=1,
+            max_length=5,
+        )
+        self.add_item(self.qty)
+
+    async def on_submit(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        raw = str(self.qty.value).replace(",", "").replace("，", "").strip()
+        try:
+            q = int(raw)
+        except ValueError:
+            await it.response.send_message("数字で入力してね。", ephemeral=True); return
+        if q <= 0:
+            await it.response.send_message("1個以上で入力してね。", ephemeral=True); return
+        if q > 999:
+            await it.response.send_message("一度に買えるのは999個まで。", ephemeral=True); return
+        cost = self.price * q
+        bal = db.get_balance(self.uid, self.gid)
+        if bal < cost:
+            await it.response.send_message(f"💰 コインが足りない（必要 {cost:,} / 所持 {bal:,}）。", ephemeral=True); return
+        vp = db.get_voyage(self.uid)
+        if self.kind == "food":
+            vp.setdefault("foods", {})[self.item_id] = vp.setdefault("foods", {}).get(self.item_id, 0) + q
+        else:
+            vp.setdefault("land_items", {})[self.item_id] = vp.setdefault("land_items", {}).get(self.item_id, 0) + q
+        db.update_balance(self.uid, self.gid, -cost)
+        db.add_zukan(self.uid, "item_seen", self.item_id)
+        db.save_voyage(self.uid, vp)
+        await it.response.edit_message(embed=build_itemshop_embed(vp, self.uid, self.gid), view=ItemShopView(self.uid, self.gid))
+        await it.followup.send(f"{self.emoji} **{self.name} ×{q}** を購入した（-{cost:,}）。", ephemeral=True)
 
 class ItemLandItemBuySelect(discord.ui.Select):
     def __init__(self, uid, gid):
@@ -2620,31 +2660,24 @@ class ItemLandItemBuySelect(discord.ui.Select):
             it = L.LAND_ITEMS[iid]
             have = vp.get("land_items", {}).get(iid, 0)
             opts.append(discord.SelectOption(
-                label=f"{it['name']}（{it['price']:,}）", emoji=it["emoji"], value=iid,
+                label=f"{it['name']} / {it['price']:,}コイン", emoji=it["emoji"], value=iid,
                 description=f"所持{have}・{it.get('desc','')[:70]}"))
         if not opts:
             opts = [discord.SelectOption(label="本日の入荷なし", value="__none__")]
-        super().__init__(placeholder="🛤️ 街道消耗品を買う", options=opts[:25], row=1)
+        super().__init__(placeholder="🛤️ 街道の小道具を選ぶ", options=opts[:25], row=1)
     async def callback(self, itx):
         if str(itx.user.id) != self.uid:
             await itx.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
         iid = self.values[0]
         if iid == "__none__" or iid not in getattr(L, "LAND_ITEMS", {}):
-            await itx.response.send_message("その商品は今は売っていない。", ephemeral=True); return
+            await itx.response.send_message("ポロは棚を指差した。今は空っぽだ。", ephemeral=True); return
         meta = L.LAND_ITEMS[iid]
         price = int(meta.get("price", 0))
-        if price <= 0 or meta.get("shop") == "drop":
-            await itx.response.send_message("これは店では買えない。", ephemeral=True); return
-        bal = db.get_balance(self.uid, self.gid)
-        if bal < price:
-            await itx.response.send_message(f"💰 コインが足りない（{price:,}必要）。", ephemeral=True); return
+        if price <= 0:
+            await itx.response.send_message("ポロは首を横に振った。これは値札のない品らしい。", ephemeral=True); return
         vp = db.get_voyage(self.uid)
-        vp.setdefault("land_items", {})[iid] = vp.setdefault("land_items", {}).get(iid, 0) + 1
-        db.update_balance(self.uid, self.gid, -price)
-        db.add_zukan(self.uid, "item_seen", iid)
-        db.save_voyage(self.uid, vp)
-        await itx.response.edit_message(embed=build_itemshop_embed(vp, self.uid, self.gid), view=ItemShopView(self.uid, self.gid))
-        await itx.followup.send(f"{meta['emoji']} **{meta['name']}** を購入した（-{price:,}）。", ephemeral=True)
+        have = vp.get("land_items", {}).get(iid, 0)
+        await itx.response.send_modal(QuantityBuyModal(self.uid, self.gid, "land", iid, meta["name"], meta["emoji"], price, have))
 
 class ItemShopBackButton(discord.ui.Button):
     def __init__(self, uid, gid):
@@ -2659,33 +2692,24 @@ class ItemShopBackButton(discord.ui.Button):
 class ItemFoodBuySelect(discord.ui.Select):
     def __init__(self, uid, gid):
         self.uid = str(uid); self.gid = str(gid)
+        vp = db.get_voyage(uid)
         opts = []
         for fid, f in V.FOODS.items():
-            for q in FOOD_QTY_STEPS:
-                opts.append(discord.SelectOption(
-                    label=f"{f['name']} ×{q}", emoji=f["emoji"], value=f"{fid}:{q}",
-                    description=f"{f['price']*q:,}コイン・HP+{int(f['heal_pct']*100)}%"))
-        super().__init__(placeholder="購入する食料を選ぶ", options=opts[:25], row=0)
+            have = vp.get("foods", {}).get(fid, 0)
+            opts.append(discord.SelectOption(
+                label=f"{f['name']} / {f['price']:,}コイン", emoji=f["emoji"], value=fid,
+                description=f"所持{have}・HP+{int(f['heal_pct']*100)}%"))
+        super().__init__(placeholder="🍖 食料を選ぶ", options=opts[:25], row=0)
     async def callback(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        fid, q = self.values[0].split(":"); q = int(q)
+        fid = self.values[0]
         if fid not in V.FOODS:
-            await it.response.send_message("その商品は見つからない。", ephemeral=True); return
+            await it.response.send_message("ポロは首をかしげた。その品は見当たらない。", ephemeral=True); return
         f = V.FOODS[fid]
-        price_each = int(f.get("price", 0))
-        bal = db.get_balance(self.uid, self.gid)
-        if bal < price_each:
-            await it.response.send_message(f"💰 コインが足りない（1個 {price_each:,} 必要）。", ephemeral=True); return
-        buy = min(q, bal // price_each)
-        cost = int(buy * price_each)
         vp = db.get_voyage(self.uid)
-        vp.setdefault("foods", {})[fid] = vp.setdefault("foods", {}).get(fid, 0) + buy
-        db.update_balance(self.uid, self.gid, -cost)
-        db.save_voyage(self.uid, vp)
-        await it.response.edit_message(embed=build_itemshop_embed(vp, self.uid, self.gid),
-                                       view=ItemShopView(self.uid, self.gid))
-        await it.followup.send(f"{f['emoji']} **{f['name']} ×{buy}** を購入した（-{cost:,}）。", ephemeral=True)
+        have = vp.get("foods", {}).get(fid, 0)
+        await it.response.send_modal(QuantityBuyModal(self.uid, self.gid, "food", fid, f["name"], f["emoji"], int(f["price"]), have))
 
 async def open_item_shop(interaction, user_id=None):
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
@@ -2779,9 +2803,9 @@ def build_skill_gacha_embed(uid: str, gid: str):
     vp = db.get_voyage(uid)
     medals = vp.get("gacha_medals", 0)
     e = discord.Embed(
-        title="🎰 技ガチャ屋 ── 深淵スキルカプセル",
+        title="🎰 ノワール（ガチャ屋） ── 深淵スキルカプセル",
         description=(
-            "店主が黒い箱を撫でる。中から、金属音とも心音ともつかない音。\n\n"
+            "ノワールが黒い箱を撫でる。中から、金属音とも心音ともつかない音。\n\n"
             f"**1回** {V.GACHA_PRICE:,} コイン / **10連** {V.GACHA_TEN_PRICE:,} コイン\n"
             f"🎖️ **ガチャメダル**：1回につき +{V.GACHA_MEDAL_PER_PULL}枚\n\n"
             "🌈 **☆3技**：0.2%\n"
@@ -3235,7 +3259,7 @@ def _discover_drop(uid, vp, kind):
     v = vp["voyage"]
     lines = []
     area = int(v.get("area", 1) or 1)
-    # ⚒️ 海洋素材：発見イベントでも手に入る。浅瀬は約300周目標の一部。
+    # ⚒️ 海洋素材：発見イベントでも手に入る。
     if hasattr(V, "roll_craft_material"):
         bonus = 1.35 if kind in ("island", "maelstrom", "abyss") else 1.0
         cmid = V.roll_craft_material("voyage", area, bonus=bonus)
@@ -3811,71 +3835,63 @@ def build_skill_zukan_embed(uid=None):
     emb.description = "\n".join(lines)
     return emb
 
+MATERIAL_GROUP_LABELS = {
+    "spoils": "⚔️ 戦利品",
+    "common": "🧰 共通素材",
+    "rare": "💠 魔性素材",
+    "plain": "🛤️ 平原の素材",
+    "shallow": "🌊 浅瀬の素材",
+    "forest": "🌲 森の素材",
+    "ocean": "⚓ 大洋の素材",
+    "mountain": "⛰️ 山の素材",
+    "offshore": "🌫️ 沖合の素材",
+}
+MATERIAL_GROUP_ORDER = ["spoils", "common", "rare", "plain", "shallow", "forest", "ocean", "mountain", "offshore"]
+
 def build_item_zukan_embed(uid=None):
     seen = set(db.get_zukan(uid, "item_seen")) if uid else set()
-    emb = discord.Embed(title="🎒 アイテム図鑑", color=0xe67e22)
-    # ✨ 特殊アイテム（オープンにしない・説明なし・未取得は伏せる）
+    emb = discord.Embed(
+        title="🎒 アイテム図鑑",
+        description="見つけた品だけ記録される。空白の名前は、まだ旅のどこかに眠っている。",
+        color=0xe67e22)
+    # ✨ 特殊アイテム
     sp_lines = [
         V.SHARD_NAME if "shard" in seen else "❔ ？？？",
         SHADOW_DARK_SHARD if "shadow_dark_shard" in seen else "❔ ？？？",
     ]
     for pid, pet in getattr(V, "PETS", {}).items():
-        sp_lines.append(f"{pet['emoji']} **{pet['name']}** … {pet.get('desc','')}" if pid in seen else "❔ ？？？")
-    if getattr(V, "LOTTERY_ITEM_ID", "lottery_ticket") in seen:
-        sp_lines.append(f"{V.LOTTERY_ITEM['emoji']} **{V.LOTTERY_ITEM['name']}** … 所持品から使える夢の紙切れ")
-    else:
-        sp_lines.append("❔ ？？？")
+        sp_lines.append(f"{pet['emoji']} **{pet['name']}**" if pid in seen else "❔ ？？？")
+    sp_lines.append(f"{V.LOTTERY_ITEM['emoji']} **{V.LOTTERY_ITEM['name']}**" if getattr(V, "LOTTERY_ITEM_ID", "lottery_ticket") in seen else "❔ ？？？")
     emb.add_field(name="✨ 特殊アイテム", value="\n".join(sp_lines), inline=False)
     # 🍖 食料
     food_lines = []
     for fid, f in V.FOODS.items():
-        if fid in seen:
-            food_lines.append(f"{f['emoji']} **{f['name']}** … HP+{int(f['heal_pct']*100)}%回復")
-        else:
-            food_lines.append("❔ ？？？")
+        food_lines.append(f"{f['emoji']} **{f['name']}**" if fid in seen else "❔ ？？？")
     emb.add_field(name="🍖 食料", value="\n".join(food_lines), inline=False)
     # ⛽ 補給
-    barrel = "🛢️ **燃料樽** … 拾うとその場で燃料補給" if "fuel_barrel" in seen else "❔ ？？？"
+    barrel = "🛢️ **燃料樽**" if "fuel_barrel" in seen else "❔ ？？？"
     emb.add_field(name="⛽ 補給品", value=barrel, inline=False)
-    # 💎 素材（未取得=❔）
-    got = len([m for m in V.MATERIALS if m in seen])
-    mat_lines = []
-    for mid, m in V.MATERIALS.items():
-        if mid in seen:
-            hint = m.get("hint")
-            mat_lines.append(f"{m['emoji']} **{m['name']}**" + (f" … {hint}" if hint else ""))
-        else:
-            mat_lines.append("❔ ？？？")
-    # Discordのfield上限対策で分割
-    chunks = []
-    cur = ""
-    for line in mat_lines:
-        if len(cur) + len(line) + 1 > 950:
-            chunks.append(cur); cur = line
-        else:
-            cur = line if not cur else cur + "\n" + line
-    if cur: chunks.append(cur)
-    for i, chunk in enumerate(chunks[:4], 1):
-        emb.add_field(name=f"💎 素材（{got}/{len(V.MATERIALS)}）" + (f" {i}" if len(chunks)>1 else ""),
-                      value=chunk, inline=False)
-    # 🛤️ 街道アイテム（LAND_ITEMS）
+    # 💎 素材：場所別に整理。未取得は名前を伏せる。
+    total_mats = len(V.MATERIALS)
+    got_mats = len([mid for mid in V.MATERIALS if mid in seen])
+    for group in MATERIAL_GROUP_ORDER:
+        mids = [mid for mid, m in V.MATERIALS.items() if (m.get("group") or "spoils") == group]
+        if not mids:
+            continue
+        lines = []
+        for mid in mids:
+            m = V.MATERIALS[mid]
+            lines.append(f"{m['emoji']} **{m['name']}**" if mid in seen else "❔ ？？？")
+        got = len([mid for mid in mids if mid in seen])
+        emb.add_field(name=f"{MATERIAL_GROUP_LABELS.get(group, group)}（{got}/{len(mids)}）", value="\n".join(lines), inline=False)
+    emb.set_footer(text=f"素材記録 {got_mats}/{total_mats}。名前の分からない素材は、まだ手元にない。")
+    # 🛤️ 街道アイテム
     land_lines = []
     for iid, it in getattr(L, "LAND_ITEMS", {}).items():
-        if iid in seen:
-            land_lines.append(f"{it['emoji']} **{it['name']}** … {it.get('desc','')}")
-        else:
-            land_lines.append("❔ ？？？")
+        land_lines.append(f"{it['emoji']} **{it['name']}**" if iid in seen else "❔ ？？？")
     if land_lines:
         got_land = len([iid for iid in getattr(L, "LAND_ITEMS", {}) if iid in seen])
-        emb.add_field(name=f"🛤️ 街道アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）",
-                      value="\n".join(land_lines), inline=False)
-
-    emb.add_field(name="🧪 消費アイテム",
-                  value=("🎣 **各種の竿** … 釣り用。エリアが深いほど早く摩耗（耐久制）\n"
-                         "🎛️ **リール** … 使うほど摩耗。切れると標準に戻る\n"
-                         "🧵 **ライン** … 使うほど摩耗。切れると標準に戻る\n"
-                         "🧰 **技外しキット** … 刻んだ技を1つ外せる"),
-                  inline=False)
+        emb.add_field(name=f"🛤️ 街道アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）", value="\n".join(land_lines), inline=False)
     return emb
 
 class SimpleZukanView(discord.ui.View):
@@ -3933,7 +3949,7 @@ def build_voyage_fish_zukan_embed(uid, area=1):
     else:
         comp_txt = f"　🏆 コンプ報酬 {reward:,}"
     emb = discord.Embed(
-        title=f"🎣 海洋図鑑 — E{area} {_area_label(uid, area)}",
+        title=(f"🎣 海洋図鑑 — {_area_label(uid, area)}" if area == 4 and not _reached_e4(uid) else f"🎣 海洋図鑑 — E{area} {_area_label(uid, area)}"),
         description=f"釣った魚 **{got}/{fish_total}** 種　👑金冠 {len(crowns)}{comp_txt}",
         color=VOYAGE_FISH_AREA_COLOR.get(area, 0x1abc9c))
     for rar in VOYAGE_FISH_RARITY_ORDER:
@@ -3963,7 +3979,7 @@ class VoyageFishZukanView(discord.ui.View):
         self.user_id = str(user_id); self.area = area
         for a in (1, 2, 3, 4):
             b = discord.ui.Button(
-                label=f"E{a} {_area_label(self.user_id, a)}",
+                label=("？？？" if a == 4 and not _reached_e4(self.user_id) else f"E{a} {_area_label(self.user_id, a)}"),
                 style=discord.ButtonStyle.primary if a == area else discord.ButtonStyle.secondary,
                 row=0)
             b.callback = self._mk(a)

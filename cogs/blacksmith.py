@@ -26,11 +26,11 @@ def build_blacksmith_embed(uid, selected=None):
     vp = db.get_voyage(uid)
     mats = vp.get("materials", {})
     emb = discord.Embed(
-        title="⚒️ 鍛冶屋",
+        title="⚒️ ガレン（鍛冶屋）",
         color=COL,
-        description=("素材を集めて、鍛冶屋だけの装備を作れる。\n"
-                     "入手場所はあえて詳しくは書かれていない。名前と説明から探してみよう。\n"
-                     "※細かい性能値は表示せず、使って確かめる方針。鍛冶☆3は未来目標。")
+        description=("炉の奥で火花が散る。\n"
+                     "素材を持ち込めば、ガレンが旅の道具を鍛え上げてくれる。\n"
+                     "『良い素材は、だいたい良い場所に落ちてるもんだ。名前をよく見ろ。』")
     )
     if selected and selected in V.CRAFT_RECIPES:
         r = V.CRAFT_RECIPES[selected]
@@ -41,13 +41,13 @@ def build_blacksmith_embed(uid, selected=None):
         for mid in r["cost"]:
             m = V.MATERIALS.get(mid, {})
             hints.append(f"{m.get('emoji','❔')} **{m.get('name',mid)}**：{m.get('hint','どこかで見つかりそうだ。')}")
-        emb.add_field(name="鍛冶師のひとこと", value="\n".join(hints[:5]), inline=False)
-        emb.set_footer(text="作成可能" if can else "素材が足りない")
+        emb.add_field(name="ガレンの目利き", value="\n".join(hints[:5]), inline=False)
+        emb.set_footer(text="火床は熱い。あとは素材次第だ。" if can else "炉は静かに、足りない素材を待っている。")
     else:
         r2 = [r for r in V.CRAFT_RECIPES.values() if r["rank"] == 2]
         r3 = [r for r in V.CRAFT_RECIPES.values() if r["rank"] == 3]
-        emb.add_field(name="★2 レシピ", value=f"{len(r2)}種類。平原は約1000周、浅瀬は約300周が目安。腰を据えて作る職人装備。", inline=False)
-        emb.add_field(name="★3 レシピ", value=f"{len(r3)}種類。森と大洋の素材が必要。現状は基本作れない未来目標。", inline=False)
+        emb.add_field(name="★2 レシピ", value=f"{len(r2)}種類。潮と草の匂いがする、旅人向けの職人装備。", inline=False)
+        emb.add_field(name="★3 レシピ", value=f"{len(r3)}種類。深い森と遠い海の気配をまとった設計図。", inline=False)
         owned = []
         for mid, n in mats.items():
             if n > 0 and mid in V.MATERIALS:
@@ -62,7 +62,7 @@ class RecipeSelect(discord.ui.Select):
         opts = []
         for key, r in V.CRAFT_RECIPES.items():
             label = _recipe_name(r).replace("★", "").replace("**", "")[:95]
-            opts.append(discord.SelectOption(label=label, value=key, description=("★2 作成可を目指せ" if r["rank"]==2 else "★3 未来目標")))
+            opts.append(discord.SelectOption(label=label, value=key, description=("潮と草の素材で打つ" if r["rank"]==2 else "森と海の気配がする")))
         super().__init__(placeholder="作りたい装備を選ぶ", options=opts[:25], row=0)
     async def callback(self, it):
         if str(it.user.id) != self.uid:
@@ -117,7 +117,7 @@ async def open_blacksmith(interaction, uid):
 
 class Blacksmith(commands.Cog):
     def __init__(self, bot): self.bot = bot
-    @app_commands.command(name="鍛冶屋", description="素材を使って鍛冶屋装備を作る")
+    @app_commands.command(name="鍛冶屋", description="ガレンに素材を渡して装備を作る")
     async def blacksmith(self, interaction: discord.Interaction):
         await interaction.response.send_message(embed=build_blacksmith_embed(str(interaction.user.id)), view=BlacksmithView(str(interaction.user.id)), ephemeral=True)
 

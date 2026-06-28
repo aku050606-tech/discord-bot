@@ -355,25 +355,25 @@ class ShoppingStreetView(discord.ui.View):
     async def _check(self, interaction):
         return await check_user(interaction, self.user_id)
 
-    @discord.ui.button(label="🛒 道具屋", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="🛒 ポロ（道具屋）", style=discord.ButtonStyle.secondary, row=0)
     async def item_shop(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.voyage import open_item_shop
         await open_item_shop(interaction, self.user_id)
 
-    @discord.ui.button(label="⚔️ 装備屋", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="⚔️ リディア（装備屋）", style=discord.ButtonStyle.secondary, row=0)
     async def equip_shop(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.voyage import open_equip_shop
         await open_equip_shop(interaction, self.user_id)
 
-    @discord.ui.button(label="⚒️ 鍛冶屋", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="⚒️ ガレン（鍛冶屋）", style=discord.ButtonStyle.secondary, row=0)
     async def blacksmith(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.blacksmith import open_blacksmith
         await open_blacksmith(interaction, self.user_id)
 
-    @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🎰 ノワール（ガチャ屋）", style=discord.ButtonStyle.secondary, row=1)
     async def gacha(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.voyage import open_skill_gacha
@@ -431,7 +431,7 @@ class MainMenuView(discord.ui.View):
         if not await self._check(interaction): return
         await open_shopping_street(interaction, str(interaction.user.id), str(interaction.guild.id))
 
-    @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🎰 ノワール（ガチャ屋）", style=discord.ButtonStyle.secondary, row=1)
     async def gacha(self, interaction, button):
         if not await self._check(interaction): return
         from cogs.voyage import open_skill_gacha
