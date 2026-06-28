@@ -191,8 +191,8 @@ class StatsView(discord.ui.View):
     async def _home_cb(self, interaction):
         if not await self._check(interaction):
             return
-        from cogs.menu import go_home
-        await go_home(interaction, self.user_id)
+        from cogs.phone import open_phone
+        await open_phone(interaction, self.user_id)
 
 
 async def open_stats(interaction: discord.Interaction, uid: str = None):

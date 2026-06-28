@@ -67,14 +67,21 @@ def build_phone_embed(user, guild) -> discord.Embed:
     return e
 
 
-async def open_phone(interaction: discord.Interaction, uid: str = None):
+async def open_phone(interaction: discord.Interaction, uid: str = None, *, edit: bool = True):
+    """スマホを開く。
+
+    edit=True  : すでにスマホ内にいる時の戻る操作。今のephemeral画面を差し替える。
+    edit=False : 港やメインメニューなど通常画面から開く操作。元の画面は残して、本人だけに見えるスマホを新規表示。
+    """
     uid = uid or str(interaction.user.id)
     embed = build_phone_embed(interaction.user, interaction.guild)
     view = PhoneHomeView(uid)
     if interaction.response.is_done():
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-    else:
+    elif edit:
         await interaction.response.edit_message(embed=embed, view=view)
+    else:
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 class PhoneBackView(discord.ui.View):
@@ -161,9 +168,11 @@ class PhoneHomeView(discord.ui.View):
         if not await self._check(interaction): return
         from cogs.lfg import CreateView
         view = CreateView(interaction.user.id)
-        await interaction.response.send_message(
-            embed=view.status_embed(), view=view, ephemeral=True)
-        view.message = await interaction.original_response()
+        await interaction.response.edit_message(embed=view.status_embed(), view=view)
+        try:
+            view.message = await interaction.original_response()
+        except Exception:
+            view.message = None
 
     @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.primary, row=2)
     async def inventory(self, interaction, button):
@@ -220,7 +229,10 @@ class LineHomeView(discord.ui.View):
         if not await self._check(interaction): return
         v = discord.ui.View(timeout=120)
         v.add_item(LineRecipientSelect(self.user_id))
-        await interaction.response.send_message("送る相手を選んでください：", view=v, ephemeral=True)
+        await interaction.response.edit_message(
+            content="送る相手を選んでください：",
+            embed=None,
+            view=v)
 
     @discord.ui.button(label="📥 受信箱", style=discord.ButtonStyle.primary, row=0)
     async def inbox(self, interaction, button):
@@ -249,9 +261,10 @@ class LineHomeView(discord.ui.View):
     async def notify(self, interaction, button):
         if not await self._check(interaction): return
         v = LineNotifyView(self.user_id)
-        await interaction.response.send_message(
+        await interaction.response.edit_message(
+            content=None,
             embed=build_notify_embed(db.get_line_dm(self.user_id, str(interaction.guild.id))),
-            view=v, ephemeral=True)
+            view=v)
 
     @discord.ui.button(label="◀️ スマホに戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back(self, interaction, button):

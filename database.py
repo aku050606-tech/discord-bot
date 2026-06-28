@@ -922,6 +922,7 @@ class Database:
             "level": 1, "xp": 0, "cur_hp": 100,
             "learned_skills": {},
             "unequip_kits": 0,
+            "lottery_tickets": 0,      # 🎟️ 技ガチャのハズレ枠などで入手。所持品から使用
             "special_items": [],       # 全損しても持ち帰れる特殊アイテム（救済枠）
             "shards": 0,               # 🧭 羅針盤のカケラ（特殊ポーチ・永続・全損でもロストしない・航海をまたいで蓄積）
             "has_voyage_rod": False,    # 🎣 航海専用の釣り竿（ドックで10万・永久・これが無いと海で釣れない）
@@ -975,6 +976,7 @@ class Database:
         d.setdefault("ship_skills", [])
         d.setdefault("ship_hp_cur", 0)
         d.setdefault("ship", None)
+        d.setdefault("lottery_tickets", 0)
         d.setdefault("special_items", [])
         # ── 🧭 カケラを永続枠へ：旧 voyage内shards をトップレベル(特殊ポーチ)へ移行 ──
         d.setdefault("shards", 0)

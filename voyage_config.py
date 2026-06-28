@@ -718,8 +718,19 @@ def xp_to_next(level):
 MARKET_PRICE_BAND = 0.20      # ±20%（きつめ。金銭授受の抜け道を絞る）
 MARKET_FEE = 0.05            # 売買手数料（コインシンク）
 
-# ── ガチャ（Phase2で使用）──
-GACHA_PRICE = 30_000
+# ── 技ガチャ ──
+GACHA_PRICE = 10_000
+GACHA_TEN_PRICE = 90_000
+GACHA_SKILL3_RATE = 0.002   # 0.2%
+GACHA_PET_RATE = 0.001      # 0.1%
+GACHA_FOOD_RATE = 0.10      # 当たり以外の10%
+LOTTERY_ITEM_ID = "lottery_ticket"
+LOTTERY_ITEM = {"name": "宝くじ", "emoji": "🎟️"}
+PETS = {
+    "pet_dog": {"name": "犬", "emoji": "🐶", "desc": "人懐っこい相棒。今は図鑑登録のみ。"},
+    "pet_cat": {"name": "猫", "emoji": "🐱", "desc": "気まぐれな相棒。今は図鑑登録のみ。"},
+}
+
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

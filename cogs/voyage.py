@@ -701,9 +701,6 @@ def build_port_embed(vp):
         else:
             pe.append(f"{info['emoji']} {info['name']}：なし")
     e.add_field(name="🧍 個人の装備", value="\n".join(pe), inline=False)
-    rc = repair_cost(vp)
-    if rc > 0:
-        e.add_field(name="🔧 修理見積", value=f"満タンまで **{rc:,}** ナトコイン", inline=False)
     return e
 
 def build_voyage_embed(vp, last_msg=None, title=None, color=None, footer=None):
@@ -765,7 +762,6 @@ class PortView(discord.ui.View):
             self.add_item(SailButton())
             self.add_item(DockButton())
             self.add_item(ShopButton())
-            self.add_item(RepairButton())
             self.add_item(OagButton())
             self.add_item(PortInvButton())
             self.add_item(PortPhoneButton())
@@ -1113,7 +1109,7 @@ class PortPhoneButton(discord.ui.Button):
         if str(interaction.user.id) != view.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
         from cogs.phone import open_phone
-        await open_phone(interaction, view.user_id)
+        await open_phone(interaction, view.user_id, edit=False)
 
 class LeaveButton(discord.ui.Button):
     def __init__(self):
@@ -2304,7 +2300,19 @@ def build_inv_embed(vp, tab):
         food_lines = [f"{V.FOODS[k]['emoji']} {V.FOODS[k]['name']} ×{n}（HP+{int(V.FOODS[k]['heal_pct']*100)}%）"
                       for k, n in foods.items() if n > 0]
         e.add_field(name="🍖 食料", value="\n".join(food_lines) if food_lines else "なし", inline=False)
-        e.add_field(name="🧰 その他", value=f"技外しキット ×{vp.get('unequip_kits',0)}", inline=False)
+        lottery = vp.get("lottery_tickets", 0)
+        special = vp.get("special_items", []) or []
+        other_lines = [f"技外しキット ×{vp.get('unequip_kits',0)}"]
+        if lottery:
+            other_lines.append(f"{V.LOTTERY_ITEM['emoji']} {V.LOTTERY_ITEM['name']} ×{lottery}")
+        if special:
+            pet_counts = {}
+            for x in special:
+                if x in getattr(V, "PETS", {}): pet_counts[x] = pet_counts.get(x, 0) + 1
+            for pid, n in pet_counts.items():
+                pet = V.PETS[pid]
+                other_lines.append(f"{pet['emoji']} {pet['name']} ×{n}（特殊アイテム）")
+        e.add_field(name="🧰 その他", value="\n".join(other_lines), inline=False)
         mats = vp.get("materials", {})
         mat_lines = [f"{V.MATERIALS[k]['emoji']} {V.MATERIALS[k]['name']} ×{n}"
                      for k, n in mats.items() if n > 0]
@@ -2356,7 +2364,38 @@ class InventoryView(discord.ui.View):
         elif tab == "item":
             if any(n > 0 for n in vp.get("foods", {}).values()):
                 self.add_item(FoodEatSelect(user_id, gid, back))
+            if vp.get("lottery_tickets", 0) > 0:
+                self.add_item(LotteryUseButton(user_id, gid, back))
         self.add_item(InvBackButton(user_id, gid, back))
+
+class LotteryUseButton(discord.ui.Button):
+    def __init__(self, user_id, gid, back):
+        super().__init__(label="🎟️ 宝くじを使う", style=discord.ButtonStyle.success, row=2)
+        self.user_id = str(user_id); self.gid = str(gid); self.back = back
+    async def callback(self, it):
+        if str(it.user.id) != self.user_id:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        vp = db.get_voyage(self.user_id)
+        if vp.get("lottery_tickets", 0) <= 0:
+            await it.response.send_message("🎟️ 宝くじがない。", ephemeral=True); return
+        r = random.random(); prize = 0; label = "ハズレ"
+        if r < 0.001:
+            prize, label = 1_000_000, "超大当たり 100万コイン"
+        elif r < 0.011:
+            prize, label = 50_000, "大当たり 5万コイン"
+        elif r < 0.061:
+            prize, label = 10_000, "当たり 1万コイン"
+        elif r < 0.161:
+            prize, label = 1_000, "小当たり 1000コイン"
+        elif r < 0.361:
+            prize, label = 100, "末等 100コイン"
+        vp["lottery_tickets"] = max(0, vp.get("lottery_tickets", 0) - 1)
+        db.save_voyage(self.user_id, vp)
+        if prize:
+            db.update_balance(self.user_id, self.gid, prize)
+        e = discord.Embed(title="🎟️ 宝くじ 開封", color=0xf1c40f if prize else 0x7f8c8d)
+        e.description = "カリカリ……封を切る音が、妙に大きく聞こえる。\n\n" + (f"🎊 **{label}！**\n+{prize:,} ナトコイン" if prize else "……紙。完全に紙。\n**ハズレ**")
+        await it.response.edit_message(embed=e, view=InventoryView(self.user_id, self.gid, "item", self.back))
 
 class FoodEatSelect(discord.ui.Select):
     """🍖 食料を食べてHP回復（航海中の体力管理）。"""
@@ -2498,6 +2537,130 @@ async def open_equip_shop(interaction, user_id=None):
     else:
         await interaction.response.send_message(embed=embed, view=view)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🎰 技ガチャ屋
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _gacha_skill3_pool():
+    return [sid for sid, sk in VS.SKILLS.items()
+            if sk.get("rank") == 3 and sk.get("slot") in ("weapon", "armor")]
+
+def _give_food(vp):
+    fid = random.choice(list(V.FOODS.keys()))
+    vp.setdefault("foods", {})[fid] = vp.setdefault("foods", {}).get(fid, 0) + 1
+    db.add_zukan(vp.get("_uid", ""), "item_seen", fid) if vp.get("_uid") else None
+    f = V.FOODS[fid]
+    return {"kind": "food", "text": f"{f['emoji']} {f['name']}", "id": fid}
+
+def _roll_skill_gacha(uid: str):
+    vp = db.get_voyage(uid)
+    vp["_uid"] = uid
+    r = random.random()
+    if r < V.GACHA_SKILL3_RATE:
+        pool = _gacha_skill3_pool()
+        sid = random.choice(pool)
+        vp.setdefault("learned_skills", {})[sid] = vp.setdefault("learned_skills", {}).get(sid, 0) + 1
+        db.add_zukan(uid, "skill_seen", sid)
+        sk = VS.SKILLS[sid]
+        result = {"kind": "skill3", "text": f"{V.rarity_stars(3)} {sk['emoji']} {sk['name']}", "id": sid}
+    elif r < V.GACHA_SKILL3_RATE + V.GACHA_PET_RATE:
+        pid = random.choice(list(V.PETS.keys()))
+        vp.setdefault("special_items", []).append(pid)
+        db.add_zukan(uid, "item_seen", pid)
+        pet = V.PETS[pid]
+        result = {"kind": "pet", "text": f"{pet['emoji']} {pet['name']}", "id": pid}
+    else:
+        if random.random() < V.GACHA_FOOD_RATE:
+            fid = random.choice(list(V.FOODS.keys()))
+            vp.setdefault("foods", {})[fid] = vp.setdefault("foods", {}).get(fid, 0) + 1
+            db.add_zukan(uid, "item_seen", fid)
+            f = V.FOODS[fid]
+            result = {"kind": "food", "text": f"{f['emoji']} {f['name']}", "id": fid}
+        else:
+            vp["lottery_tickets"] = vp.get("lottery_tickets", 0) + 1
+            db.add_zukan(uid, "item_seen", V.LOTTERY_ITEM_ID)
+            result = {"kind": "lottery", "text": f"{V.LOTTERY_ITEM['emoji']} {V.LOTTERY_ITEM['name']}", "id": V.LOTTERY_ITEM_ID}
+    vp.pop("_uid", None)
+    db.save_voyage(uid, vp)
+    return result
+
+def build_skill_gacha_embed(uid: str, gid: str):
+    bal = db.get_balance(uid, gid)
+    e = discord.Embed(
+        title="🎰 技ガチャ屋 ── 深淵スキルカプセル",
+        description=(
+            "店主が黒い箱を撫でる。中から、金属音とも心音ともつかない音。\n\n"
+            f"**1回** {V.GACHA_PRICE:,} コイン / **10連** {V.GACHA_TEN_PRICE:,} コイン\n"
+            "🌈 **☆3技**：0.2%\n"
+            "🐾 **ペット**：0.1%（特殊アイテム入り／図鑑登録）\n"
+            "🍖 ハズレ枠：食事10% / 残り宝くじ\n\n"
+            f"現在残高：**{bal:,}** ナトコイン"
+        ),
+        color=0x8e44ad,
+    )
+    e.set_footer(text="※演出は長め。焦らされるために作られた箱です。")
+    return e
+
+class SkillGachaView(discord.ui.View):
+    def __init__(self, user_id, gid):
+        super().__init__(timeout=900)
+        self.user_id = str(user_id); self.gid = str(gid)
+    async def guard(self, it):
+        if str(it.user.id) != self.user_id:
+            await it.response.send_message("これはあなたのガチャではありません", ephemeral=True); return False
+        return True
+    async def _spin(self, it, count: int):
+        if not await self.guard(it): return
+        price = V.GACHA_TEN_PRICE if count == 10 else V.GACHA_PRICE
+        if db.get_balance(self.user_id, self.gid) < price:
+            await it.response.send_message(f"❌ コインが足りない（必要 {price:,}）", ephemeral=True); return
+        db.update_balance(self.user_id, self.gid, -price)
+        e = discord.Embed(title="🎰 技ガチャ 起動", description="🔒 ロック解除中……\n▓▓░░░░░░░░", color=0x2c3e50)
+        await it.response.edit_message(embed=e, view=None)
+        await asyncio.sleep(1.2)
+        e.description = "⚙️ 歯車が噛み合う。\n▓▓▓▓▓░░░░░\n\n**まだ開かない。**"
+        await it.edit_original_response(embed=e)
+        await asyncio.sleep(1.4)
+        e.description = "💜 箱の奥が光った。\n▓▓▓▓▓▓▓▓░░\n\n心臓に悪い沈黙が流れる。"
+        await it.edit_original_response(embed=e)
+        await asyncio.sleep(1.6)
+        results = [_roll_skill_gacha(self.user_id) for _ in range(count)]
+        hot = [r for r in results if r["kind"] in ("skill3", "pet")]
+        if hot:
+            flash = discord.Embed(title="🔥🔥🔥 激熱演出 🔥🔥🔥", description="画面が白く焼ける。\n鐘が鳴る。\n**これは、ただのハズレではない。**", color=0xff3b30)
+            await it.edit_original_response(embed=flash)
+            await asyncio.sleep(2.0)
+        lines = []
+        for r in results:
+            prefix = "🌈 **大当たり**" if r["kind"] == "skill3" else ("🐾 **ペット降臨**" if r["kind"] == "pet" else "・")
+            lines.append(f"{prefix} {r['text']}")
+        color = 0xffd700 if any(r["kind"] == "skill3" for r in results) else (0xff7f50 if hot else 0x7f8c8d)
+        title = "🎉 技ガチャ 結果" if hot else "🎰 技ガチャ 結果"
+        e = discord.Embed(title=title, description="\n".join(lines), color=color)
+        e.set_footer(text=f"-{price:,} コイン / 残高 {db.get_balance(self.user_id, self.gid):,}")
+        await it.edit_original_response(embed=e, view=SkillGachaView(self.user_id, self.gid))
+    @discord.ui.button(label="1回まわす（10,000）", style=discord.ButtonStyle.primary, row=0)
+    async def once(self, it, b):
+        await self._spin(it, 1)
+    @discord.ui.button(label="10連まわす（90,000）", style=discord.ButtonStyle.danger, row=0)
+    async def ten(self, it, b):
+        await self._spin(it, 10)
+    @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.secondary, row=1)
+    async def inv(self, it, b):
+        if not await self.guard(it): return
+        await open_inventory(it, self.user_id, back="town")
+    @discord.ui.button(label="◀ タウンへ", style=discord.ButtonStyle.secondary, row=1)
+    async def back(self, it, b):
+        if not await self.guard(it): return
+        from cogs.menu import go_town
+        await go_town(it, self.user_id)
+
+async def open_skill_gacha(interaction, user_id=None):
+    uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
+    if interaction.response.is_done():
+        await interaction.followup.send(embed=build_skill_gacha_embed(uid, gid), view=SkillGachaView(uid, gid))
+    else:
+        await interaction.response.send_message(embed=build_skill_gacha_embed(uid, gid), view=SkillGachaView(uid, gid))
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ⚔️ 戦闘UI（CombatView）── エンジン voyage_combat を Discord で操作
 #   通常攻撃／通常防御／✨特技(刻んだ技・CD/溜め制限)／敵AI。海戦・白兵 共通。
@@ -3331,6 +3494,12 @@ def build_item_zukan_embed(uid=None):
         V.SHARD_NAME if "shard" in seen else "❔ ？？？",
         SHADOW_DARK_SHARD if "shadow_dark_shard" in seen else "❔ ？？？",
     ]
+    for pid, pet in getattr(V, "PETS", {}).items():
+        sp_lines.append(f"{pet['emoji']} **{pet['name']}** … {pet.get('desc','')}" if pid in seen else "❔ ？？？")
+    if getattr(V, "LOTTERY_ITEM_ID", "lottery_ticket") in seen:
+        sp_lines.append(f"{V.LOTTERY_ITEM['emoji']} **{V.LOTTERY_ITEM['name']}** … 所持品から使える夢の紙切れ")
+    else:
+        sp_lines.append("❔ ？？？")
     emb.add_field(name="✨ 特殊アイテム", value="\n".join(sp_lines), inline=False)
     # 🍖 食料
     food_lines = []
