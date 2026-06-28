@@ -173,6 +173,33 @@ LAND_COL_NORMAL = 0x8d6e63   # 通常（茶）
 LAND_COL_EVENT  = 0xe1a740   # 発見・イベント（金）
 LAND_COL_GATHER = 0x4f9d69   # 採取（緑）
 LAND_COL_STORY  = 0x8e7cc3   # ストーリー（紫）
+LAND_COL_CALM   = 0x566b5f   # 何もない（しょぼめ・鈍い緑）
+LAND_COL_COMBAT = 0xd97706   # 通常戦闘（橙）
+LAND_COL_MID    = 0xb45309   # 中レア（濃い橙）
+LAND_COL_RARE   = 0xb91c1c   # 激レア（赤）
+
+def _pad_note(note, min_lines=5):
+    """Discordの高さブレを抑えるため、演出文の行数をだいたい固定する。
+    空行だけだと潰れることがあるのでゼロ幅スペースを使う。"""
+    text = str(note or "")
+    lines = text.splitlines() if text else []
+    while len(lines) < min_lines:
+        lines.append("\u200b")
+    return "\n".join(lines)
+
+def _theater_note(kind):
+    """探索前の演出。種類ごとに文字の大きさ・色・雰囲気を変える。"""
+    table = {
+        "calm": (LAND_COL_CALM, "… 静かな道", "風が草を撫でていく。\n今のところ、嫌な気配はない。"),
+        "gather": (LAND_COL_GATHER, "## 🍃 何かを見つけた……", "足元の草が、不自然に倒れている。\n近づいて、そっと確かめる。"),
+        "story": (LAND_COL_STORY, "## 📖 古い気配がある……", "道の先に、誰かの痕跡が残っている。\nこれは、ただの寄り道ではなさそうだ。"),
+        "event": (LAND_COL_EVENT, "## ✦ 何かが起きそうだ……", "空気が少しだけ変わった。\n足を止めて、周囲を見渡す。"),
+        "combat": (LAND_COL_COMBAT, "## ⚔️ 物音がした……", "茂みの奥で、何かが動く。\n手に力が入る。"),
+        "midrare": (LAND_COL_MID, "## 🔸 ……静かすぎる。", "鳥の声が消えた。\n普通の獣ではない。気を抜くな。"),
+        "rare": (LAND_COL_RARE, "## ⚠️ 異様な気配", "風が止んだ。\n空気が重い。\n逃げるなら、今しかない。"),
+    }
+    col, head, body = table.get(kind, table["event"])
+    return col, _pad_note(f"{head}\n{body}", 5)
 
 def build_area_embed(vp, area, note="", color=LAND_COL_NORMAL):
     """探索中の固定枠。枠（フィールド構成）は常に同じ＝チャットが上下に揺れない。
@@ -279,6 +306,24 @@ class LandTownButton(discord.ui.Button):
         await _back_to_town(interaction, view.uid)
 
 
+# ━━━ 演出中の固定UI（ボタンを消さず無効化して高さブレを防ぐ）━━━
+class LandTheaterView(discord.ui.View):
+    def __init__(self, uid, gid, area):
+        super().__init__(timeout=30)
+        self.uid = str(uid); self.gid = str(gid); self.area = area
+        self.add_item(discord.ui.Button(label="🥾 探索中…", style=discord.ButtonStyle.secondary, disabled=True, row=0))
+        self.add_item(discord.ui.Button(label="🗺️ 行き先を変える", style=discord.ButtonStyle.secondary, disabled=True, row=1))
+        self.add_item(discord.ui.Button(label="🏘️ タウンに戻る", style=discord.ButtonStyle.secondary, disabled=True, row=1))
+        if _has_food(uid):
+            self.add_item(LandFoodDisabledSelect())
+
+class LandFoodDisabledSelect(discord.ui.Select):
+    def __init__(self):
+        super().__init__(
+            placeholder="🍖 食料を食べる（HP回復）",
+            options=[discord.SelectOption(label="演出中…", value="wait")],
+            disabled=True, row=2)
+
 # ━━━ 食料で回復（道中） ━━━
 class LandFoodSelect(discord.ui.Select):
     """🍖 食料を食べてHP回復。戻り先の view を作り直して再描画する。"""
@@ -336,15 +381,49 @@ class LandAreaView(discord.ui.View):
             return False
         return True
 
-    async def _resolve(self, interaction):
+    async def _play_and_resolve(self, interaction):
+        """先にイベント種別を決めて、その種類に合う演出を固定枠で見せてから結果へ。"""
         kind = L.land_encounter_pick(self.area)
+        spec = None
+        ev = None
+        theater = kind
+        if kind == "combat":
+            spec = L.make_land_enemy(self.area)
+            if spec.get("is_rare"):
+                theater = "rare"
+            elif spec.get("is_midrare"):
+                theater = "midrare"
+            else:
+                theater = "combat"
+        elif kind == "story":
+            ev = L.pick_story(self.area); theater = "story"
+        elif kind == "event":
+            ev = L.pick_event(self.area); theater = "event"
+        elif kind == "gather":
+            theater = "gather"
+        else:
+            theater = "calm"
+
+        vp = db.get_voyage(self.uid)
+        col, note = _theater_note(theater)
+        await interaction.edit_original_response(
+            embed=build_area_embed(vp, self.area, note, col),
+            view=LandTheaterView(self.uid, self.gid, self.area))
+        await asyncio.sleep(1.6 if theater in ("rare", "midrare") else 1.15)
+        await self._resolve_prepared(interaction, kind, spec=spec, ev=ev)
+
+    async def _resolve(self, interaction):
+        # 旧呼び出し互換。新規は _play_and_resolve を使う。
+        await self._play_and_resolve(interaction)
+
+    async def _resolve_prepared(self, interaction, kind, spec=None, ev=None):
         vp = db.get_voyage(self.uid)
         if kind == "combat":
-            await self._start_combat(interaction, vp)
+            await self._start_combat(interaction, vp, spec=spec)
         elif kind == "story":
-            await self._show_narrative(interaction, vp, L.pick_story(self.area))
+            await self._show_narrative(interaction, vp, ev or L.pick_story(self.area))
         elif kind == "event":
-            await self._show_narrative(interaction, vp, L.pick_event(self.area))
+            await self._show_narrative(interaction, vp, ev or L.pick_event(self.area))
         elif kind == "gather":
             coin = random.randint(*L.LAND_GATHER_COIN[self.area])
             _run_add_coin(vp, coin); db.save_voyage(self.uid, vp)
@@ -354,11 +433,11 @@ class LandAreaView(discord.ui.View):
                 view=LandResultView(self.uid, self.gid, self.area))
         else:  # calm
             await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, random.choice(L.LAND_CALM), LAND_COL_NORMAL),
+                embed=build_area_embed(vp, self.area, _pad_note(random.choice(L.LAND_CALM), 5), LAND_COL_CALM),
                 view=LandResultView(self.uid, self.gid, self.area))
 
-    async def _start_combat(self, interaction, vp):
-        spec = L.make_land_enemy(self.area)
+    async def _start_combat(self, interaction, vp, spec=None):
+        spec = spec or L.make_land_enemy(self.area)
         if spec.get("key"):
             db.add_zukan(self.uid, "enemy_seen", spec["key"])   # 📖 図鑑：遭遇を記録
         if spec.get("is_rare"):
@@ -403,9 +482,10 @@ class _ExploreBtn(discord.ui.Button):
         view: LandAreaView = self.view
         vp = db.get_voyage(view.uid)
         await interaction.response.edit_message(
-            embed=build_area_embed(vp, view.area, f"## {random.choice(LAND_WAITS)}"), view=None)
-        await asyncio.sleep(2)
-        await view._resolve(interaction)
+            embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}", 5), LAND_COL_NORMAL),
+            view=LandTheaterView(view.uid, view.gid, view.area))
+        await asyncio.sleep(0.45)
+        await view._play_and_resolve(interaction)
 
 class _ChangeBtn(discord.ui.Button):
     def __init__(self):
@@ -665,10 +745,11 @@ class _AgainBtn(discord.ui.Button):
         view: LandResultView = self.view
         vp = db.get_voyage(view.uid)
         await interaction.response.edit_message(
-            embed=build_area_embed(vp, view.area, f"## {random.choice(LAND_WAITS)}"), view=None)
-        await asyncio.sleep(2)
+            embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}", 5), LAND_COL_NORMAL),
+            view=LandTheaterView(view.uid, view.gid, view.area))
+        await asyncio.sleep(0.45)
         av = LandAreaView(view.uid, view.gid, view.area)
-        await av._resolve(interaction)
+        await av._play_and_resolve(interaction)
 
 
 class Land(commands.Cog):

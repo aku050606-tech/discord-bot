@@ -382,8 +382,7 @@ class MainMenuView(discord.ui.View):
     @discord.ui.button(label="🎰 ガチャ屋", style=discord.ButtonStyle.secondary, row=1)
     async def gacha(self, interaction, button):
         if not await self._check(interaction): return
-        from cogs.voyage import open_skill_gacha
-        await open_skill_gacha(interaction, str(interaction.user.id))
+        await _coming_soon(interaction, "ガチャ屋")
 
     # ── 3段目：冒険（ギルド・街道）──
     @discord.ui.button(label="🏛️ ギルド", style=discord.ButtonStyle.secondary, row=2)
