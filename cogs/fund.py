@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 from database import Database
 from config import FUND_GOALS, ADMIN_USER_IDS
+import voyage_config as V
 
 db = Database()
 DEFAULT_GOAL = "danger_zone"
@@ -134,6 +135,59 @@ class PortHubView(discord.ui.View):
         await interaction.response.edit_message(content="港を後にした。", embed=None, view=None)
 
 
+
+def _grant_port_pet(user_id: str, pet_id: str):
+    """港復興トップ支援者へのペット付与。重複付与防止フラグも保存。"""
+    vp = db.get_voyage(user_id)
+    if vp.get("port_revival_pet_claimed"):
+        return False, vp
+    vp.setdefault("special_items", []).append(pet_id)
+    vp["port_revival_pet_claimed"] = True
+    db.add_zukan(user_id, "item_seen", pet_id)
+    db.save_voyage(user_id, vp)
+    return True, vp
+
+
+class PortRevivalPetSelect(discord.ui.Select):
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        opts = [
+            discord.SelectOption(label=V.PETS["pet_dog"]["name"], value="pet_dog", emoji=V.PETS["pet_dog"]["emoji"], description="港復興記念・オーグからの贈り物"),
+            discord.SelectOption(label=V.PETS["pet_cat"]["name"], value="pet_cat", emoji=V.PETS["pet_cat"]["emoji"], description="港復興記念・オーグからの贈り物"),
+        ]
+        super().__init__(placeholder="🐾 オーグからの贈り物を選ぶ", min_values=1, max_values=1, options=opts)
+
+    async def callback(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message("これは港復興の最大支援者への贈り物です。", ephemeral=True)
+            return
+        pet_id = self.values[0]
+        ok, vp = _grant_port_pet(self.uid, pet_id)
+        if not ok:
+            await interaction.response.send_message("もう港復興記念の贈り物は受け取り済みです。", ephemeral=True)
+            return
+        pet = V.PETS[pet_id]
+        e = discord.Embed(
+            title="🎁 オーグからの贈り物",
+            description=(
+                "「……港が、戻ってきたな。」\n\n"
+                "オーグは照れくさそうに鼻をかき、木箱の中から小さな相棒をそっと抱き上げた。\n\n"
+                f"**{pet['emoji']} {pet['name']}** が、あなたの仲間になった。\n\n"
+                "「一番この港に賭けてくれたやつに、俺からの礼だ。\n"
+                "大事にしてやってくれ。……こいつも、きっとお前を気に入る。」"
+            ),
+            color=discord.Color.gold()
+        )
+        await interaction.response.edit_message(embed=e, view=None)
+
+
+class PortRevivalPetGiftView(discord.ui.View):
+    def __init__(self, uid, gid):
+        super().__init__(timeout=900)
+        self.uid = str(uid); self.gid = str(gid)
+        self.add_item(PortRevivalPetSelect(uid, gid))
+
+
 class ContributeModal(discord.ui.Modal):
     def __init__(self, user_id, goal_key):
         g = FUND_GOALS[goal_key]
@@ -187,6 +241,25 @@ class ContributeModal(discord.ui.Modal):
                 ann.add_field(name="達成額", value=f"**{new_total:,}** ナトコイン", inline=True)
                 ann.set_footer(text="支援してくれた全員に感謝を！")
                 await interaction.channel.send(embed=ann)
+
+                top = db.get_fund_contributors(gid, self.goal_key, limit=1)
+                if top:
+                    top_uid, top_amt = top[0]
+                    m = interaction.guild.get_member(int(top_uid))
+                    top_name = m.mention if m else f"<@{top_uid}>"
+                    gift = discord.Embed(
+                        title="🐾 港復興記念 ── オーグからの贈り物",
+                        description=(
+                            "波止場に、久しぶりの灯りがともった。\n\n"
+                            "オーグが、少しだけ笑う。\n\n"
+                            "「一番この港に金を入れてくれたやつに、俺から礼がある。\n"
+                            "犬か猫、好きな方を選べ。こいつらも港の復興を見届けた仲間だ。」\n\n"
+                            f"最大支援者：{top_name}\n"
+                            f"支援額：**{top_amt:,}** ナトコイン"
+                        ),
+                        color=discord.Color.gold()
+                    )
+                    await interaction.channel.send(embed=gift, view=PortRevivalPetGiftView(top_uid, gid))
             except Exception:
                 pass
 

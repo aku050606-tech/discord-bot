@@ -37,6 +37,47 @@ def _cur_hp(vp):
     mh = max_hp(vp)
     return max(0, min(mh, vp.get("cur_hp", mh)))
 
+
+# ━━━ 🐾 ペット効果（犬＋猫を両方所持で、2探索に1回HP3%回復）━━━
+def _pet_counts(vp):
+    counts = {}
+    for pid in vp.get("special_items", []) or []:
+        if pid in getattr(V, "PETS", {}):
+            counts[pid] = counts.get(pid, 0) + 1
+    return counts
+
+def _pet_line(vp):
+    counts = _pet_counts(vp)
+    if not counts:
+        return "なし"
+    parts = []
+    for pid in ("pet_dog", "pet_cat"):
+        if counts.get(pid, 0) > 0 and pid in V.PETS:
+            p = V.PETS[pid]
+            parts.append(f"{p['emoji']} {p['name']}" + (f"×{counts[pid]}" if counts[pid] > 1 else ""))
+    return " / ".join(parts) if parts else "なし"
+
+def _has_dog_and_cat(vp):
+    counts = _pet_counts(vp)
+    return counts.get("pet_dog", 0) > 0 and counts.get("pet_cat", 0) > 0
+
+def _apply_pet_explore_heal(uid, vp):
+    """探索開始ごとにカウント。犬＋猫所持なら2探索に1回、最大HPの3%回復。"""
+    if not _has_dog_and_cat(vp):
+        return None
+    step = int(vp.get("land_pet_steps", 0)) + 1
+    vp["land_pet_steps"] = step
+    if step % 2 != 0:
+        return None
+    mh = max_hp(vp)
+    cur = _cur_hp(vp)
+    if cur >= mh:
+        return None
+    heal = max(1, int(mh * 0.03))
+    before = cur
+    vp["cur_hp"] = min(mh, cur + heal)
+    return f"🐾 犬と猫が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
+
 def _heal_full(uid):
     """タウン帰還で全快。"""
     vp = db.get_voyage(uid)
@@ -204,6 +245,7 @@ def build_land_home_embed(vp):
         description="徒歩で冒険に出る。倒した敵から経験値がもらえる。\nどの地へ向かう？",
         color=0x8d6e63)
     e.add_field(name="📊 あなた", value=_stat_line(vp), inline=False)
+    e.add_field(name="🐾 所持ペット", value=_pet_line(vp), inline=False)
     rows = []
     for area, a in L.LAND_AREAS.items():
         if vp["level"] >= a["req_lv"]:
@@ -259,6 +301,7 @@ def build_area_embed(vp, area, note="", color=LAND_COL_NORMAL):
     e.add_field(name="❤️ HP", value=f"{cur}/{mh}\n{hp_bar(cur, mh, 12)}", inline=True)
     e.add_field(name="📊 レベル", value=f"Lv{vp['level']}\nXP {vp['xp']}/{C_xp(vp)}", inline=True)
     e.add_field(name="🎒 装備", value=_gear_line(vp), inline=True)
+    e.add_field(name="🐾 所持ペット", value=_pet_line(vp), inline=False)
     e.set_footer(text=_harvest_footer(vp))
     return e
 
@@ -662,13 +705,15 @@ class _ExploreBtn(discord.ui.Button):
     async def callback(self, interaction):
         view: LandAreaView = self.view
         vp = db.get_voyage(view.uid)
+        pet_note = _apply_pet_explore_heal(view.uid, vp)
+        db.save_voyage(view.uid, vp)
         # ここで先に defer しておく。
         # response.edit_message → sleep → edit_original_response の混在で、
         # Discord側のタイミング次第で演出画面のまま止まることがあったため、
         # 以降の画面更新は edit_original_response に統一する。
         await interaction.response.defer()
         await interaction.edit_original_response(
-            embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}", 5), LAND_COL_NORMAL),
+            embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}" + (f"\n{pet_note}" if pet_note else ""), 5), LAND_COL_NORMAL),
             view=LandTheaterView(view.uid, view.gid, view.area))
         await asyncio.sleep(0.45)
         try:
@@ -1066,9 +1111,11 @@ class _AgainBtn(discord.ui.Button):
     async def callback(self, interaction):
         view: LandResultView = self.view
         vp = db.get_voyage(view.uid)
+        pet_note = _apply_pet_explore_heal(view.uid, vp)
+        db.save_voyage(view.uid, vp)
         await interaction.response.defer()
         await interaction.edit_original_response(
-            embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}", 5), LAND_COL_NORMAL),
+            embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}" + (f"\n{pet_note}" if pet_note else ""), 5), LAND_COL_NORMAL),
             view=LandTheaterView(view.uid, view.gid, view.area))
         await asyncio.sleep(0.45)
         try:
