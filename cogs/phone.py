@@ -63,7 +63,7 @@ def build_phone_embed(user, guild) -> discord.Embed:
     e.add_field(name="📜 クエスト", value="日替わり任務", inline=True)
     e.add_field(name="💬 LINE", value=(f"📩 {unread}" if unread else "新着なし"), inline=True)
     e.add_field(name="🐦 ツイッター", value="つぶやく", inline=True)
-    e.set_footer(text="タップでアプリを起動")
+    e.set_footer(text="タップでアプリを起動（インベントリはタウン下部から）")
     return e
 
 
@@ -164,12 +164,6 @@ class PhoneHomeView(discord.ui.View):
         await interaction.response.send_message(
             embed=view.status_embed(), view=view, ephemeral=True)
         view.message = await interaction.original_response()
-
-    @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.primary, row=2)
-    async def inventory(self, interaction, button):
-        if not await self._check(interaction): return
-        from cogs.voyage import open_inventory
-        await open_inventory(interaction, self.user_id, back="town")
 
     @discord.ui.button(label="📖 図鑑", style=discord.ButtonStyle.primary, row=3)
     async def zukan(self, interaction, button):
