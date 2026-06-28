@@ -302,6 +302,12 @@ def build_area_embed(vp, area, note="", color=LAND_COL_NORMAL):
     e.add_field(name="📊 レベル", value=f"Lv{vp['level']}\nXP {vp['xp']}/{C_xp(vp)}", inline=True)
     e.add_field(name="🎒 装備", value=_gear_line(vp), inline=True)
     e.add_field(name="🐾 所持ペット", value=_pet_line(vp), inline=False)
+    buffs = vp.get("land_buffs", {}) or {}
+    if buffs:
+        bmeta = {"lucky_charm":"🍀幸運", "old_map":"🗺️地図", "lantern":"🔦ランタン", "gold_compass":"🧭羅針盤", "smoke_bomb":"💨煙玉"}
+        bline = " / ".join(f"{bmeta.get(k,k)} 残り{v}" for k, v in buffs.items() if v > 0)
+        if bline:
+            e.add_field(name="✨ 発動中", value=bline, inline=False)
     e.set_footer(text=_harvest_footer(vp))
     return e
 
@@ -494,7 +500,7 @@ def _consume_buff_once(vp, key):
 
 def _apply_coin_buff(vp, coin):
     if _consume_buff_once(vp, "gold_compass"):
-        return int(coin * 1.5), True
+        return int(coin * 1.6), True
     return coin, False
 
 
@@ -526,23 +532,23 @@ class LandItemSelect(discord.ui.Select):
             mh=max_hp(vp); cur=_cur_hp(vp)
             if cur >= mh:
                 await itx.response.send_message("❤️ HPは満タンだ。", ephemeral=True); return
-            before=cur; vp["cur_hp"]=min(mh, cur+int(mh*0.20))
+            before=cur; vp["cur_hp"]=min(mh, cur+int(mh*0.25))
             msg=f"🩹 **包帯** を巻いた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
         elif iid == "smoke_bomb":
             _land_buffs(vp)["smoke_bomb"] = _land_buffs(vp).get("smoke_bomb",0)+1
             msg="💨 **煙玉** を構えた。次の雑魚戦を煙に紛れて回避する。"
         elif iid == "lucky_charm":
-            _land_buffs(vp)["lucky_charm"] = _land_buffs(vp).get("lucky_charm",0)+1
-            msg="🍀 **幸運のお守り** が淡く光った。次の探索だけ強敵の気配を引き寄せる。"
+            _land_buffs(vp)["lucky_charm"] = _land_buffs(vp).get("lucky_charm",0)+10
+            msg="🍀 **幸運のお守り** が淡く光った。10探索のあいだ、強敵と良い発見の気配が濃くなる。"
         elif iid == "old_map":
-            _land_buffs(vp)["old_map"] = _land_buffs(vp).get("old_map",0)+1
-            msg="🗺️ **古びた地図** を広げた。次の探索は何かがありそうな道を選ぶ。"
+            _land_buffs(vp)["old_map"] = _land_buffs(vp).get("old_map",0)+10
+            msg="🗺️ **古びた地図** を広げた。10探索のあいだ、隠れた道や出来事を拾いやすくなる。"
         elif iid == "lantern":
-            _land_buffs(vp)["lantern"] = _land_buffs(vp).get("lantern",0)+1
-            msg="🔦 **探索ランタン** に火を入れた。次の探索で空振りを避けやすくなる。"
+            _land_buffs(vp)["lantern"] = _land_buffs(vp).get("lantern",0)+20
+            msg="🔦 **探索ランタン** に火を入れた。20探索のあいだ、何もない道を避けやすくなる。"
         elif iid == "gold_compass":
-            _land_buffs(vp)["gold_compass"] = _land_buffs(vp).get("gold_compass",0)+1
-            msg="🧭 **黄金の羅針盤** が震えた。次の探索のコイン収穫が増える。"
+            _land_buffs(vp)["gold_compass"] = _land_buffs(vp).get("gold_compass",0)+20
+            msg="🧭 **黄金の羅針盤** が震えた。20探索のあいだ、コイン収穫が大きく増える。"
         elif iid in ("decoy_doll", "guardian_feather"):
             await itx.response.send_message("これは死亡時に効果を発揮する貴重品。今は使わない方がいい。", ephemeral=True); return
         else:

@@ -317,7 +317,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
             "🛤️　**街道**　　　── 平原・森・山を徒歩で冒険\n"
             "🃏　**カジノ**　　── スロット＆テーブルで一攫千金\n"
             "📱　**スマホ**　　── 銀行・デイリー・クエスト・募集\n"
-            "🏠　**家**　　　　── 休んでHPを全快（5分ごと）"
+            "🏠　**家**　　　　── 休んでHPを全快（3分ごと）"
         ),
         inline=False,
     )
@@ -401,7 +401,7 @@ class MainMenuView(discord.ui.View):
         uid = str(interaction.user.id)
         gid = str(interaction.guild.id)
         vp = db.get_voyage(uid)
-        HOME_HEAL_CD = 300  # 5分
+        HOME_HEAL_CD = 180  # 3分
         last = vp.get("last_home_heal", 0)
         left = HOME_HEAL_CD - (time.time() - last)
         mh = 100 + (vp.get("level", 1) - 1) * 10

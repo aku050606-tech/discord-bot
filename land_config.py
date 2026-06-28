@@ -373,35 +373,36 @@ LAND_EVENTS = {
 #   回復系は最大50%まで。全回復は通常アイテムでは行わない。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 LAND_ITEMS = {
-    "bandage": {"emoji":"🩹", "name":"包帯", "rarity":"common", "price":4000, "shop":"always", "desc":"HPを20%回復"},
-    "smoke_bomb": {"emoji":"💨", "name":"煙玉", "rarity":"rare", "price":15000, "shop":"random", "desc":"次の雑魚戦を回避"},
-    "lucky_charm": {"emoji":"🍀", "name":"幸運のお守り", "rarity":"rare", "price":25000, "shop":"random", "desc":"次の探索だけ中ボス/大ボス率UP"},
-    "old_map": {"emoji":"🗺️", "name":"古びた地図", "rarity":"rare", "price":30000, "shop":"random", "desc":"次の探索をイベント寄りにする"},
-    "lantern": {"emoji":"🔦", "name":"探索ランタン", "rarity":"rare", "price":40000, "shop":"drop", "desc":"次の探索で何もなしを避けやすくする"},
-    "gold_compass": {"emoji":"🧭", "name":"黄金の羅針盤", "rarity":"epic", "price":80000, "shop":"drop", "desc":"次の探索のコイン収穫+50%"},
+    "bandage": {"emoji":"🩹", "name":"包帯", "rarity":"common", "price":4000, "shop":"always", "desc":"HPを25%回復"},
+    "smoke_bomb": {"emoji":"💨", "name":"煙玉", "rarity":"rare", "price":15000, "shop":"random", "desc":"次の雑魚戦を確定回避"},
+    "lucky_charm": {"emoji":"🍀", "name":"幸運のお守り", "rarity":"rare", "price":25000, "shop":"random", "desc":"10探索：中ボス/大ボス/アイテム率UP"},
+    "old_map": {"emoji":"🗺️", "name":"古びた地図", "rarity":"rare", "price":30000, "shop":"random", "desc":"10探索：イベント/発見率大幅UP"},
+    "lantern": {"emoji":"🔦", "name":"探索ランタン", "rarity":"rare", "price":40000, "shop":"drop", "desc":"20探索：何もなし無効/イベント率UP"},
+    "gold_compass": {"emoji":"🧭", "name":"黄金の羅針盤", "rarity":"epic", "price":80000, "shop":"drop", "desc":"20探索：コイン収穫+60%"},
     "decoy_doll": {"emoji":"🪆", "name":"身代わり人形", "rarity":"epic", "price":0, "shop":"drop", "desc":"死亡時の収穫ロストを自動で無効化"},
     "guardian_feather": {"emoji":"👼", "name":"守護の羽", "rarity":"legend", "price":0, "shop":"drop", "desc":"死亡時に使う/使わないを選べる。使うと収穫ロスト無効"},
 }
 
 # 戦闘合計50%固定：雑魚44 / 中ボス5 / 大ボス1。非戦闘側だけエリアで味付け。
 LAND_EVENT_TABLE = {
-    1: {"combat":44, "midrare":5, "rare":1, "story":14, "event":14, "item":6, "coin":8, "gather":6, "calm":2},
-    2: {"combat":44, "midrare":5, "rare":1, "story":15, "event":15, "item":5, "coin":7, "gather":6, "calm":2},
-    3: {"combat":44, "midrare":5, "rare":1, "story":16, "event":16, "item":5, "coin":6, "gather":5, "calm":2},
+    1: {"combat":44, "midrare":5, "rare":1, "story":15, "event":15, "item":4, "coin":8, "gather":6, "calm":2},
+    2: {"combat":44, "midrare":5, "rare":1, "story":16, "event":16, "item":4, "coin":7, "gather":6, "calm":1},
+    3: {"combat":44, "midrare":5, "rare":1, "story":17, "event":17, "item":4, "coin":6, "gather":5, "calm":1},
 }
 
 # アイテムイベント時の抽選。エピックは幻レベル寄り。
 LAND_ITEM_EVENT_DROPS = [
-    ("bandage", 45), ("smoke_bomb", 12), ("lucky_charm", 8), ("old_map", 8),
-    ("lantern", 5), ("gold_compass", 1.2), ("decoy_doll", 0.15), ("guardian_feather", 0.04),
+    # アイテム発見イベント用。出すぎ防止のため、便利系はやや渋め。
+    ("bandage", 38), ("smoke_bomb", 9), ("lucky_charm", 6), ("old_map", 6),
+    ("lantern", 4), ("gold_compass", 0.9), ("decoy_doll", 0.10), ("guardian_feather", 0.025),
 ]
 
 # 戦闘ドロップ：雑魚でも落ちるがかなり低確率。
 LAND_ITEM_DROP_RATES = {
-    # 雑魚からも「たまに」落ちる。使える消耗品は少し出やすく、エピック/レジェンドは幻枠。
-    "zako": [("bandage",0.030), ("smoke_bomb",0.006), ("lucky_charm",0.004), ("old_map",0.004), ("lantern",0.002), ("decoy_doll",0.00010), ("guardian_feather",0.00003)],
-    "mid":  [("bandage",0.100), ("smoke_bomb",0.030), ("lucky_charm",0.025), ("old_map",0.025), ("lantern",0.012), ("gold_compass",0.006), ("decoy_doll",0.00080), ("guardian_feather",0.00020)],
-    "rare": [("bandage",0.250), ("smoke_bomb",0.080), ("lucky_charm",0.070), ("old_map",0.070), ("lantern",0.035), ("gold_compass",0.018), ("decoy_doll",0.00300), ("guardian_feather",0.00100)],
+    # 戦闘ドロップ。アイテムが溢れすぎないよう v14 で全体的に約35〜45%ナーフ。
+    "zako": [("bandage",0.018), ("smoke_bomb",0.0035), ("lucky_charm",0.0025), ("old_map",0.0025), ("lantern",0.0012), ("decoy_doll",0.00006), ("guardian_feather",0.000015)],
+    "mid":  [("bandage",0.065), ("smoke_bomb",0.020), ("lucky_charm",0.016), ("old_map",0.016), ("lantern",0.008), ("gold_compass",0.004), ("decoy_doll",0.00050), ("guardian_feather",0.00012)],
+    "rare": [("bandage",0.180), ("smoke_bomb",0.055), ("lucky_charm",0.045), ("old_map",0.045), ("lantern",0.025), ("gold_compass",0.013), ("decoy_doll",0.00200), ("guardian_feather",0.00070)],
 }
 
 LAND_COIN_EVENT = {1:[250,900], 2:[700,1800], 3:[1400,3600]}
@@ -592,10 +593,15 @@ def make_land_enemy(area, force=None, buffs=None):
 def land_encounter_pick(area, buffs=None):
     table = dict(LAND_EVENT_TABLE.get(area, LAND_EVENT_TABLE[1]))
     buffs = buffs or {}
+    if buffs.get("lucky_charm"):
+        # 使った感が出るように、10探索のあいだ強敵・アイテム寄りへ。
+        table["midrare"] += 3; table["rare"] += 1; table["item"] += 4; table["calm"] = max(0, table.get("calm", 0) - 2)
     if buffs.get("old_map"):
-        table["event"] += 18; table["item"] += 7; table["calm"] = max(0, table.get("calm", 0) - 2)
+        # 「地図」らしく、ただの確率UPではなくイベント/発見の道へ寄せる。
+        table["event"] += 22; table["story"] += 6; table["item"] += 10; table["coin"] += 4; table["calm"] = 0
     if buffs.get("lantern"):
-        table["calm"] = 0; table["gather"] += 2
+        # 20探索のあいだ空振りを消し、探索イベントを増やす。
+        table["calm"] = 0; table["event"] += 8; table["gather"] += 4
     keys = list(table.keys()); wts = list(table.values())
     return random.choices(keys, weights=wts)[0]
 
