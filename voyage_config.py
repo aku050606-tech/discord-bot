@@ -945,6 +945,10 @@ ARMOR_PARTS["torso"]["items"].update({
     "forge_coral_mail": {"name":"鍛造・浅瀬の胴鎧", "power":18, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"浅瀬サンゴと丈夫な獣革で作る鍛冶屋製の胴鎧。"},
     "forge_forest_mail":{"name":"鍛造・森潮の胴鎧", "power":27, "slots":1, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森素材と大洋素材を重ねた胴鎧。"},
 })
+ARMOR_PARTS["legs"]["items"].update({
+    "forge_tide_greaves": {"name":"鍛造・潮鉄の脚甲", "power":12, "slots":1, "rank":2, "req_lv":8, "price":0, "crafted":True, "desc":"潮鉄と獣革で足元を固める鍛冶屋製の脚甲。既存☆2脚より少し控えめ。"},
+    "forge_forest_greaves":{"name":"鍛造・森潮の脚甲", "power":20, "slots":1, "rank":3, "req_lv":15, "price":0, "crafted":True, "desc":"森素材と大洋素材で作る未来目標の脚甲。"},
+})
 
 CRAFT_RECIPES = {
     # ☆2武器：平原1000周＋浅瀬300周くらいの重め目標。武器種で素材傾向を分ける。
@@ -954,8 +958,9 @@ CRAFT_RECIPES = {
     "forge_green_bow": {"kind":"weapon", "item":"forge_green_bow", "rank":2, "cost":{"plain_wood":460,"plant_fiber":260,"meadow_sinew":52,"wind_shell":38,"driftwood_core":90,"blue_glass_sand":38,"small_magic_stone":24}},
     "forge_tide_gun": {"kind":"weapon", "item":"forge_tide_gun", "rank":2, "cost":{"rough_stone":360,"charcoal":220,"green_ore":78,"plain_relic":16,"tide_iron":95,"foam_pearl":16,"small_magic_stone":30}},
     "forge_core_greatsword": {"kind":"weapon", "item":"forge_core_greatsword", "rank":2, "cost":{"rough_stone":430,"beast_bone":280,"green_ore":85,"plain_relic":18,"driftwood_core":115,"tide_iron":105,"small_magic_stone":32}},
-    # ☆2防具：1種類作れれば満足できる重さ。防御の価値を上げる導線。
+    # ☆2防具：胴＋脚。防御の価値を上げる導線。
     "forge_coral_mail": {"kind":"armor", "part":"torso", "item":"forge_coral_mail", "rank":2, "cost":{"beast_hide":420,"beast_bone":260,"rough_stone":380,"shallow_coral":105,"tide_iron":80,"blue_glass_sand":46,"foam_pearl":18,"small_magic_stone":30}},
+    "forge_tide_greaves": {"kind":"armor", "part":"legs", "item":"forge_tide_greaves", "rank":2, "cost":{"beast_hide":360,"plant_fiber":250,"beast_bone":220,"meadow_sinew":42,"tide_iron":62,"shallow_coral":70,"driftwood_core":58,"small_magic_stone":26}},
 
     # ☆3：森＋大洋素材。現状は作れない未来目標として鍛冶屋に表示。
     "forge_forest_sword": {"kind":"weapon", "item":"forge_forest_sword", "rank":3, "cost":{"ancient_wood":520,"sap_crystal":90,"forest_fang":65,"ocean_steel":140,"blue_pearl":55,"seaweed_fiber":160,"small_magic_stone":70}},
@@ -965,4 +970,5 @@ CRAFT_RECIPES = {
     "forge_ocean_gun": {"kind":"weapon", "item":"forge_ocean_gun", "rank":3, "cost":{"charcoal":500,"sap_crystal":95,"ocean_steel":210,"blue_pearl":92,"white_coral":110,"small_magic_stone":88}},
     "forge_ocean_greatsword": {"kind":"weapon", "item":"forge_ocean_greatsword", "rank":3, "cost":{"ancient_wood":520,"forest_fang":75,"ocean_steel":260,"blue_pearl":75,"white_coral":120,"small_magic_stone":96}},
     "forge_forest_mail": {"kind":"armor", "part":"torso", "item":"forge_forest_mail", "rank":3, "cost":{"ancient_wood":620,"moss_stone":180,"sap_crystal":120,"ocean_steel":190,"white_coral":150,"storm_shell":70,"small_magic_stone":90}},
+    "forge_forest_greaves": {"kind":"armor", "part":"legs", "item":"forge_forest_greaves", "rank":3, "cost":{"ancient_wood":520,"forest_fang":80,"spirit_leaf":62,"seaweed_fiber":190,"storm_shell":80,"white_coral":105,"small_magic_stone":82}},
 }
