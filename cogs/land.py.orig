@@ -44,22 +44,6 @@ def _heal_full(uid):
     db.save_voyage(uid, vp)
 
 
-def _land_xp_amount(vp, area, raw_xp):
-    """街道XP補正。
-    平原はLv5からかなり重く、Lv10以降はほぼ育たない。
-    補正値は land_config.LAND_XP_AREA_SCALE で調整する。
-    """
-    lv = int(vp.get("level", 1))
-    raw_xp = int(raw_xp)
-    mult = 1.0
-    if hasattr(L, "land_xp_scale"):
-        mult = float(L.land_xp_scale(area, lv))
-    amt = int(raw_xp * mult)
-    if raw_xp > 0 and mult > 0:
-        return max(1, amt)
-    return max(0, amt)
-
-
 # ━━━ 探索の収穫トラッキング（死亡で50%失う対象） ━━━
 import math
 
@@ -381,102 +365,6 @@ def _has_food(uid):
     return any(n > 0 for n in vp.get("foods", {}).values())
 
 
-# ━━━ 街道消耗品 helper ━━━
-def _land_items(vp):
-    return vp.setdefault("land_items", {})
-
-def _land_buffs(vp):
-    return vp.setdefault("land_buffs", {})
-
-def _add_land_item(uid, vp, item_id, n=1):
-    if item_id not in getattr(L, "LAND_ITEMS", {}):
-        return None
-    inv = _land_items(vp)
-    inv[item_id] = inv.get(item_id, 0) + int(n)
-    db.add_zukan(uid, "item_seen", item_id)
-    it = L.LAND_ITEMS[item_id]
-    return f"{it['emoji']} {it['name']}"
-
-def _roll_land_item_drop(uid, vp, tier="zako"):
-    got = []
-    for item_id, rate in getattr(L, "LAND_ITEM_DROP_RATES", {}).get(tier, []):
-        if random.random() < rate:
-            name = _add_land_item(uid, vp, item_id, 1)
-            if name: got.append(name)
-    return got
-
-def _has_land_items(uid):
-    vp = db.get_voyage(uid)
-    return any(n > 0 for n in vp.get("land_items", {}).values())
-
-def _consume_buff_once(vp, key):
-    buffs = _land_buffs(vp)
-    if buffs.get(key, 0) > 0:
-        buffs[key] -= 1
-        if buffs[key] <= 0: del buffs[key]
-        return True
-    return False
-
-def _apply_coin_buff(vp, coin):
-    if _consume_buff_once(vp, "gold_compass"):
-        return int(coin * 1.5), True
-    return coin, False
-
-
-
-class LandItemSelect(discord.ui.Select):
-    """街道専用消耗品を使う。"""
-    def __init__(self, uid, gid, area, rebuild):
-        self.uid = str(uid); self.gid = str(gid); self.area = area; self.rebuild = rebuild
-        vp = db.get_voyage(uid); opts=[]
-        for iid, n in vp.get("land_items", {}).items():
-            if n > 0 and iid in L.LAND_ITEMS:
-                it = L.LAND_ITEMS[iid]
-                opts.append(discord.SelectOption(label=f"{it['name']} ×{n}", emoji=it['emoji'], value=iid, description=it.get('desc','')[:90]))
-        if not opts:
-            opts=[discord.SelectOption(label="街道アイテムがない", value="__none__")]
-        super().__init__(placeholder="🎒 街道アイテムを使う", options=opts[:25], row=3)
-    async def callback(self, itx):
-        if str(itx.user.id) != self.uid:
-            await itx.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        iid = self.values[0]
-        vp = db.get_voyage(self.uid)
-        if iid == "__none__" or vp.get("land_items", {}).get(iid, 0) <= 0:
-            await itx.response.send_message("使える街道アイテムがない。", ephemeral=True); return
-        meta = L.LAND_ITEMS.get(iid)
-        if not meta:
-            await itx.response.send_message("そのアイテムは使えない。", ephemeral=True); return
-        msg = ""
-        if iid == "bandage":
-            mh=max_hp(vp); cur=_cur_hp(vp)
-            if cur >= mh:
-                await itx.response.send_message("❤️ HPは満タンだ。", ephemeral=True); return
-            before=cur; vp["cur_hp"]=min(mh, cur+int(mh*0.20))
-            msg=f"🩹 **包帯** を巻いた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
-        elif iid == "smoke_bomb":
-            _land_buffs(vp)["smoke_bomb"] = _land_buffs(vp).get("smoke_bomb",0)+1
-            msg="💨 **煙玉** を構えた。次の雑魚戦を煙に紛れて回避する。"
-        elif iid == "lucky_charm":
-            _land_buffs(vp)["lucky_charm"] = _land_buffs(vp).get("lucky_charm",0)+1
-            msg="🍀 **幸運のお守り** が淡く光った。次の探索だけ強敵の気配を引き寄せる。"
-        elif iid == "old_map":
-            _land_buffs(vp)["old_map"] = _land_buffs(vp).get("old_map",0)+1
-            msg="🗺️ **古びた地図** を広げた。次の探索は何かがありそうな道を選ぶ。"
-        elif iid == "lantern":
-            _land_buffs(vp)["lantern"] = _land_buffs(vp).get("lantern",0)+1
-            msg="🔦 **探索ランタン** に火を入れた。次の探索で空振りを避けやすくなる。"
-        elif iid == "gold_compass":
-            _land_buffs(vp)["gold_compass"] = _land_buffs(vp).get("gold_compass",0)+1
-            msg="🧭 **黄金の羅針盤** が震えた。次の探索のコイン収穫が増える。"
-        elif iid in ("decoy_doll", "guardian_feather"):
-            await itx.response.send_message("これは死亡時に効果を発揮する貴重品。今は使わない方がいい。", ephemeral=True); return
-        else:
-            await itx.response.send_message("そのアイテムはまだ使えない。", ephemeral=True); return
-        vp["land_items"][iid] -= 1
-        if vp["land_items"][iid] <= 0: del vp["land_items"][iid]
-        db.save_voyage(self.uid, vp)
-        await itx.response.edit_message(embed=build_area_embed(vp, self.area, f"## 🎒 アイテム使用\n{msg}", LAND_COL_EVENT), view=self.rebuild(self.uid, self.gid, self.area))
-
 # ━━━ エリア内（探索ループ）━━━
 class LandAreaView(discord.ui.View):
     def __init__(self, uid, gid, area):
@@ -485,8 +373,6 @@ class LandAreaView(discord.ui.View):
         self.add_item(_ExploreBtn())
         self.add_item(_ChangeBtn())
         self.add_item(_TownBtn())
-        if _has_land_items(uid):
-            self.add_item(LandItemSelect(uid, gid, area, LandAreaView))
         if _has_food(uid):
             self.add_item(LandFoodSelect(uid, gid, area, LandAreaView))
 
@@ -498,16 +384,12 @@ class LandAreaView(discord.ui.View):
 
     async def _play_and_resolve(self, interaction):
         """先にイベント種別を決めて、その種類に合う演出を固定枠で見せてから結果へ。"""
-        vp = db.get_voyage(self.uid)
-        buffs = dict(vp.get("land_buffs", {}))
-        kind = L.land_encounter_pick(self.area, buffs)
+        kind = L.land_encounter_pick(self.area)
         spec = None
         ev = None
         theater = kind
-        if kind in ("combat", "midrare", "rare"):
-            force = "combat" if kind == "combat" else kind
-            spec = L.make_land_enemy(self.area, force=force, buffs=buffs)
-            kind = "combat"
+        if kind == "combat":
+            spec = L.make_land_enemy(self.area)
             if spec.get("is_rare"):
                 theater = "rare"
             elif spec.get("is_midrare"):
@@ -517,16 +399,13 @@ class LandAreaView(discord.ui.View):
         elif kind == "story":
             ev = L.pick_story(self.area); theater = "story"
         elif kind == "event":
-            ev = L.pick_random_event(self.area); theater = "event"
-        elif kind == "item":
-            theater = "gather"
-        elif kind == "coin":
-            theater = "event"
+            ev = L.pick_event(self.area); theater = "event"
         elif kind == "gather":
             theater = "gather"
         else:
             theater = "calm"
 
+        vp = db.get_voyage(self.uid)
         col, note = _theater_note(theater)
         await interaction.edit_original_response(
             embed=build_area_embed(vp, self.area, note, col),
@@ -541,47 +420,19 @@ class LandAreaView(discord.ui.View):
     async def _resolve_prepared(self, interaction, kind, spec=None, ev=None):
         vp = db.get_voyage(self.uid)
         if kind == "combat":
-            if spec and (not spec.get("is_rare")) and (not spec.get("is_midrare")) and _consume_buff_once(vp, "smoke_bomb"):
-                db.save_voyage(self.uid, vp)
-                await interaction.edit_original_response(
-                    embed=build_area_embed(vp, self.area, "## 💨 煙玉\n敵の気配が近づいた瞬間、煙を放って身を隠した。\n雑魚との戦闘を回避した。", LAND_COL_CALM),
-                    view=LandResultView(self.uid, self.gid, self.area))
-                return
-            _consume_buff_once(vp, "lucky_charm"); db.save_voyage(self.uid, vp)
             await self._start_combat(interaction, vp, spec=spec)
         elif kind == "story":
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
             await self._show_narrative(interaction, vp, ev or L.pick_story(self.area))
         elif kind == "event":
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
-            await self._show_narrative(interaction, vp, ev or L.pick_random_event(self.area))
-        elif kind == "item":
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
-            iid = L.pick_land_item(self.area); got = _add_land_item(self.uid, vp, iid, 1); db.save_voyage(self.uid, vp)
-            await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, f"## 🎁 道端の発見\n草陰から **{got}** を見つけた。\n価値があるかどうかは、使う時になってわかる。", LAND_COL_EVENT),
-                view=LandResultView(self.uid, self.gid, self.area))
-        elif kind == "coin":
-            coin = random.randint(*L.LAND_COIN_EVENT.get(self.area, [300, 1000]))
-            coin, boosted = _apply_coin_buff(vp, coin)
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
-            _run_add_coin(vp, coin); db.save_voyage(self.uid, vp)
-            plus = "\n🧭 羅針盤が反応した。" if boosted else ""
-            await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, f"## 💰 小さな収穫\n古い革袋を見つけた。{plus}\n中には **{coin:,}** コインが入っていた。", LAND_COL_EVENT),
-                view=LandResultView(self.uid, self.gid, self.area))
+            await self._show_narrative(interaction, vp, ev or L.pick_event(self.area))
         elif kind == "gather":
             coin = random.randint(*L.LAND_GATHER_COIN[self.area])
-            coin, boosted = _apply_coin_buff(vp, coin)
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
             _run_add_coin(vp, coin); db.save_voyage(self.uid, vp)
             flav = random.choice(L.LAND_GATHER[self.area])
-            plus = "\n🧭 羅針盤が反応した。" if boosted else ""
             await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, f"## 🌿 採取\n{flav}{plus}\n**💰 +{coin:,}**", LAND_COL_GATHER),
+                embed=build_area_embed(vp, self.area, f"## 🌿 採取\n{flav}\n**💰 +{coin:,}**", LAND_COL_GATHER),
                 view=LandResultView(self.uid, self.gid, self.area))
         else:  # calm
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
             await interaction.edit_original_response(
                 embed=build_area_embed(vp, self.area, _pad_note(random.choice(L.LAND_CALM), 5), LAND_COL_CALM),
                 view=LandResultView(self.uid, self.gid, self.area))
@@ -615,7 +466,7 @@ class LandAreaView(discord.ui.View):
                 view=LandResultView(self.uid, self.gid, self.area)); return
         head = f"## {ev['emoji']} {ev['title']}\n\n"
         col = LAND_COL_EVENT if ev.get("id", "").startswith("e_") else LAND_COL_STORY
-        if ev.get("type", "choice") == "choice":
+        if ev["type"] == "choice":
             await interaction.edit_original_response(
                 embed=build_area_embed(vp, self.area, head + ev["flavor"], col),
                 view=LandStoryView(self.uid, self.gid, self.area, ev))
@@ -631,23 +482,11 @@ class _ExploreBtn(discord.ui.Button):
     async def callback(self, interaction):
         view: LandAreaView = self.view
         vp = db.get_voyage(view.uid)
-        # ここで先に defer しておく。
-        # response.edit_message → sleep → edit_original_response の混在で、
-        # Discord側のタイミング次第で演出画面のまま止まることがあったため、
-        # 以降の画面更新は edit_original_response に統一する。
-        await interaction.response.defer()
-        await interaction.edit_original_response(
+        await interaction.response.edit_message(
             embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}", 5), LAND_COL_NORMAL),
             view=LandTheaterView(view.uid, view.gid, view.area))
         await asyncio.sleep(0.45)
-        try:
-            await view._play_and_resolve(interaction)
-        except Exception:
-            # 万一イベント解決で落ちても、無効ボタンの演出画面に取り残されないよう復帰させる。
-            vp = db.get_voyage(view.uid)
-            await interaction.edit_original_response(
-                embed=build_area_embed(vp, view.area, "## 🌿 足を止めた……\n嫌な予感がして、いったん周囲を見直した。\nもう一度探索できる。", LAND_COL_CALM),
-                view=LandResultView(view.uid, view.gid, view.area))
+        await view._play_and_resolve(interaction)
 
 class _ChangeBtn(discord.ui.Button):
     def __init__(self):
@@ -738,48 +577,6 @@ class _RareFleeBtn(discord.ui.Button):
             view=LandResultView(view.uid, view.gid, view.area))
 
 
-
-# ━━━ イベントのサブ抽選（イベントは「きっかけ」、結果は毎回揺れる）━━━
-def _choice_outcome(ch):
-    outs = ch.get("outcomes")
-    if not outs:
-        return None
-    keys = [x[0] for x in outs]; wts = [x[1] for x in outs]
-    return random.choices(keys, weights=wts)[0]
-
-def _apply_event_outcome(uid, gid, vp, area, outcome):
-    lines = []
-    start_combat = None
-    if not outcome or outcome == "nothing":
-        lines.append("何も見つからなかった。けれど、空気だけは少し重い。")
-    elif outcome == "coin":
-        coin = random.randint(*L.LAND_COIN_EVENT.get(area, [300,1000]))
-        coin, boosted = _apply_coin_buff(vp, coin)
-        _run_add_coin(vp, coin)
-        lines.append(f"## 💰 +{coin:,}" + ("\n🧭 羅針盤が反応した。" if boosted else ""))
-    elif outcome == "item":
-        iid = L.pick_land_item(area); got = _add_land_item(uid, vp, iid, 1)
-        lines.append(f"## 🎁 {got} を手に入れた！")
-    elif outcome == "xp":
-        xp = random.randint(2, 6) if area == 1 else random.randint(5, 12) if area == 2 else random.randint(8, 18)
-        xp = _land_xp_amount(vp, area, xp)
-        leveled = add_xp(vp, xp); lines.append(f"## ✨ XP +{xp}")
-        if leveled: lines.append(f"## 🎉 レベルアップ！ → Lv{vp['level']}")
-    elif outcome == "heal":
-        mh=max_hp(vp); cur=_cur_hp(vp); heal=int(mh*(0.15+0.05*area)); vp["cur_hp"]=min(mh, cur+heal)
-        lines.append(f"## ❤️ HP +{vp['cur_hp']-cur}（{vp['cur_hp']}/{mh}）")
-    elif outcome == "damage":
-        mh=max_hp(vp); cur=_cur_hp(vp); dmg=random.randint(5, 12) if area == 1 else random.randint(10, 22) if area == 2 else random.randint(16, 34)
-        vp["cur_hp"] = max(1, cur-dmg); lines.append(f"## 💢 罠で -{cur-vp['cur_hp']}（{vp['cur_hp']}/{mh}）")
-    elif outcome == "combat":
-        lines.append("## ⚔️ 物音がした……\nイベントの気配に釣られて、敵が飛び出してきた！")
-        start_combat = L.make_land_enemy(area, force="combat", buffs=vp.get("land_buffs", {}))
-    elif outcome == "mid_hint":
-        lines.append("## 🔸 強い気配\n普通の獣ではない足跡を見つけた。今日は深入りしない方がいいかもしれない。")
-    elif outcome == "story":
-        lines.append("## 📖 塔の痕跡\n古い文字が残っている。意味はわからない。だが、海を嫌っていることだけは伝わってくる。")
-    return lines, start_combat
-
 # ━━━ 陸ストーリー（選択肢）━━━
 class LandStoryView(discord.ui.View):
     def __init__(self, uid, gid, area, ev):
@@ -815,7 +612,6 @@ class _StoryChoiceBtn(discord.ui.Button):
             lines.append(f"## 💰 +{coin:,}")
         if ch.get("xp"):
             xp = random.randint(*ch["xp"])
-            xp = _land_xp_amount(vp, view.area, xp)
             leveled = add_xp(vp, xp)
             lines.append(f"## ✨ XP +{xp}")
             if leveled:
@@ -835,25 +631,8 @@ class _StoryChoiceBtn(discord.ui.Button):
                 vp.setdefault("foods", {}); vp["foods"][fid] = vp["foods"].get(fid, 0) + 1
                 db.add_zukan(view.uid, "item_seen", fid)
                 lines.append(f"## 🍖 {V.FOODS[fid]['name']} を手に入れた！")
-        if ch.get("cost"):
-            cost = random.randint(*ch["cost"])
-            bal = db.get_balance(view.uid, view.gid)
-            pay = min(bal, cost)
-            if pay > 0:
-                db.update_balance(view.uid, view.gid, -pay)
-                lines.append(f"💸 -{pay:,} コイン")
-        out = _choice_outcome(ch)
-        extra, start_combat = _apply_event_outcome(view.uid, view.gid, vp, view.area, out)
-        if extra:
-            lines.append(""); lines.extend(extra)
         db.save_voyage(view.uid, vp)
-        if start_combat:
-            await interaction.response.edit_message(embed=build_area_embed(vp, view.area, "\n".join(lines), LAND_COL_COMBAT), view=LandTheaterView(view.uid, view.gid, view.area))
-            await asyncio.sleep(1.0)
-            emb, fight_view = _build_fight(view.uid, view.gid, view.area, start_combat)
-            await interaction.edit_original_response(embed=emb, view=fight_view)
-            return
-        col = LAND_COL_EVENT if view.ev.get("id", "").startswith(("e_", "rv_")) else LAND_COL_STORY
+        col = LAND_COL_EVENT if view.ev.get("id", "").startswith("e_") else LAND_COL_STORY
         await interaction.response.edit_message(
             embed=build_area_embed(vp, view.area, "\n".join(lines), col),
             view=LandResultView(view.uid, view.gid, view.area))
@@ -880,12 +659,9 @@ def land_on_end(uid, gid, area, spec):
                 coin = random.randint(*(spec.get("mid_coin") or a["coin"]))
             else:
                 xp = random.randint(*a["xp"]); coin = random.randint(*a["coin"])
-            xp = _land_xp_amount(vp, area, xp)
             leveled = add_xp(vp, xp)
             _run_add_coin(vp, coin)                 # 💰 収穫に貯める（タウン帰還で確定／死ぬと半分失う）
             drop = _run_add_drop(uid, vp, area, spec)   # 🎁 装備ドロップ（中レアは高確率）
-            tier = "rare" if spec.get("is_rare") else "mid" if spec.get("is_midrare") else "zako"
-            item_drops = _roll_land_item_drop(uid, vp, tier)
             db.save_voyage(uid, vp)
             if spec.get("is_rare"):
                 head = f"## ✨🏆 レアな {spec['emoji']} {spec['name']} を討ち取った！"
@@ -898,30 +674,16 @@ def land_on_end(uid, gid, area, spec):
                 lines.append(f"## 🎉 レベルアップ！ → Lv{vp['level']}")
             if drop:
                 lines.append(f"## 🎁 {drop} を手に入れた！")
-            for got_item in item_drops:
-                lines.append(f"## 🎒 {got_item} を手に入れた！")
             if spec.get("is_rare") and spec.get("rare_story"):
                 lines.append("")
                 lines.append(f"> {spec['rare_story']}")
             emb.description = "\n".join(lines)
             view = LandResultView(uid, gid, area)
         else:
-            xp = _land_xp_amount(vp, area, max(2, a_lose_xp(area))); add_xp(vp, xp)
+            xp = max(2, a_lose_xp(area)); add_xp(vp, xp)
             vp["cur_hp"] = max(1, max_hp(vp) // 4)   # 帰宅後の残HP（家マークや食料で立て直す）
-            if vp.get("land_items", {}).get("decoy_doll", 0) > 0:
-                vp["land_items"]["decoy_doll"] -= 1
-                if vp["land_items"]["decoy_doll"] <= 0: del vp["land_items"]["decoy_doll"]
-                _run_settle_town(uid, gid, vp)
-                lost = ["🪆 **身代わり人形** が砕け、収穫ロストを防いだ。"]
-                db.save_voyage(uid, vp)
-            elif vp.get("land_items", {}).get("guardian_feather", 0) > 0:
-                db.save_voyage(uid, vp)
-                emb.description = "## 💀 …目の前が、すうっと暗くなった。\n\n👼 **守護の羽** が震えている。\n使えば今回の収穫ロストを防げる。"
-                await interaction.response.edit_message(embed=emb, view=FeatherChoiceView(uid, gid))
-                return
-            else:
-                lost = _run_settle_death(uid, gid, vp)   # 💀 収穫の50%を失う
-                db.save_voyage(uid, vp)
+            lost = _run_settle_death(uid, gid, vp)   # 💀 収穫の50%を失う
+            db.save_voyage(uid, vp)
             body = [
                 "## 💀 …目の前が、すうっと暗くなった。",
                 "",
@@ -940,50 +702,6 @@ def land_on_end(uid, gid, area, spec):
         await interaction.response.edit_message(embed=emb, view=view)
     return _end
 
-
-
-class FeatherChoiceView(discord.ui.View):
-    """守護の羽は死亡時に使う/使わないを選択できる。"""
-    def __init__(self, uid, gid):
-        super().__init__(timeout=900)
-        self.uid=str(uid); self.gid=str(gid)
-        self.add_item(_UseFeatherBtn())
-        self.add_item(_NoFeatherBtn())
-    async def interaction_check(self, interaction):
-        if str(interaction.user.id) != self.uid:
-            await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return False
-        return True
-
-class _UseFeatherBtn(discord.ui.Button):
-    def __init__(self):
-        super().__init__(label="👼 守護の羽を使う", style=discord.ButtonStyle.primary, row=0)
-    async def callback(self, it):
-        view: FeatherChoiceView = self.view
-        vp = db.get_voyage(view.uid)
-        if vp.get("land_items", {}).get("guardian_feather", 0) <= 0:
-            await it.response.send_message("守護の羽がない。", ephemeral=True); return
-        vp["land_items"]["guardian_feather"] -= 1
-        if vp["land_items"]["guardian_feather"] <= 0: del vp["land_items"]["guardian_feather"]
-        _run_settle_town(view.uid, view.gid, vp)
-        vp["cur_hp"] = max(1, max_hp(vp)//4)
-        db.save_voyage(view.uid, vp)
-        e = discord.Embed(title="👼 守護の羽", color=0xf5d76e, description="## 👼 羽が光にほどけた。\n今回の収穫は失われなかった。\n気づけば、見覚えのある我が家の寝床に倒れていた。")
-        await it.response.edit_message(embed=e, view=WakeHomeView(view.uid, view.gid))
-
-class _NoFeatherBtn(discord.ui.Button):
-    def __init__(self):
-        super().__init__(label="使わない", style=discord.ButtonStyle.secondary, row=0)
-    async def callback(self, it):
-        view: FeatherChoiceView = self.view
-        vp = db.get_voyage(view.uid)
-        lost = _run_settle_death(view.uid, view.gid, vp)
-        vp["cur_hp"] = max(1, max_hp(vp)//4)
-        db.save_voyage(view.uid, vp)
-        body = ["## 💀 羽は使わなかった。", "🌀 気づくと、見覚えのある我が家の寝床に倒れていた。"]
-        if lost:
-            body.append(""); body.append("## 💔 持ち物を半分、どこかへ落としてきた…"); body += lost
-        e = discord.Embed(title="💀 戦闘不能", color=0x7f1d1d, description="\n".join(body))
-        await it.response.edit_message(embed=e, view=WakeHomeView(view.uid, view.gid))
 
 class WakeHomeView(discord.ui.View):
     """敗北後：不思議な力で家に戻された → 目を覚ましてタウンへ。"""
@@ -1017,8 +735,6 @@ class LandResultView(discord.ui.View):
         self.add_item(_AgainBtn())
         self.add_item(_ChangeBtn())
         self.add_item(_TownBtn())
-        if _has_land_items(uid):
-            self.add_item(LandItemSelect(uid, gid, area, LandResultView))
         if _has_food(uid):
             self.add_item(LandFoodSelect(uid, gid, area, LandResultView))
 
@@ -1035,19 +751,12 @@ class _AgainBtn(discord.ui.Button):
     async def callback(self, interaction):
         view: LandResultView = self.view
         vp = db.get_voyage(view.uid)
-        await interaction.response.defer()
-        await interaction.edit_original_response(
+        await interaction.response.edit_message(
             embed=build_area_embed(vp, view.area, _pad_note(f"## {random.choice(LAND_WAITS)}", 5), LAND_COL_NORMAL),
             view=LandTheaterView(view.uid, view.gid, view.area))
         await asyncio.sleep(0.45)
-        try:
-            av = LandAreaView(view.uid, view.gid, view.area)
-            await av._play_and_resolve(interaction)
-        except Exception:
-            vp = db.get_voyage(view.uid)
-            await interaction.edit_original_response(
-                embed=build_area_embed(vp, view.area, "## 🌿 足を止めた……\n嫌な予感がして、いったん周囲を見直した。\nもう一度探索できる。", LAND_COL_CALM),
-                view=LandResultView(view.uid, view.gid, view.area))
+        av = LandAreaView(view.uid, view.gid, view.area)
+        await av._play_and_resolve(interaction)
 
 
 class Land(commands.Cog):

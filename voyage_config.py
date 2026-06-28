@@ -321,10 +321,11 @@ ISLAND_TREASURE = {"base_min":4000, "base_max":14000}
 
 # ━━━ 🎒 アイテム（食料・燃料樽・素材）━━━
 # 🍖 食料：HPを割合回復。ドロップ＋ドックで購入。
+# 回復量はゲーム全体の最大値を50%に統一（全回復は家/休息など専用手段のみ）。
 FOODS = {
-    "hardtack": {"name": "乾パン",     "emoji": "🥖", "heal_pct": 0.30, "price": 2000, "stars": 1},
-    "jerky":    {"name": "干し肉",     "emoji": "🍖", "heal_pct": 0.50, "price": 4000, "stars": 1},
-    "feast":    {"name": "船員の宴",   "emoji": "🍲", "heal_pct": 1.00, "price": 7000, "stars": 2},
+    "hardtack": {"name": "乾パン",     "emoji": "🥖", "heal_pct": 0.10, "price": 2000, "stars": 1},
+    "jerky":    {"name": "干し肉",     "emoji": "🍖", "heal_pct": 0.30, "price": 4000, "stars": 1},
+    "feast":    {"name": "船員の宴",   "emoji": "🍲", "heal_pct": 0.50, "price": 7000, "stars": 2},
 }
 # ⛽ 燃料樽：拾うとその場で燃料補給（即時消費）
 FUEL_BARREL = {"name": "燃料樽", "emoji": "🛢️", "fuel": 3000}
@@ -707,9 +708,36 @@ XP_PER_FISH = 3
 XP_PER_ISLAND = 5
 XP_PER_PIRATE_WIN = 25
 XP_PER_PIRATE_LOSE = 8        # 負けても少し経験は得る
-# 必要XP（Lv→次Lvまで）。緩やかな累乗。
+# 必要XP（Lv→次Lvまで）。
+# Lv5以降から必要XPを強めに上げ、Lv10以降はさらに重くする。
+# 平原など低エリアで「XPが急に下がった」と見えないよう、報酬側ではなく必要XP側で詰まらせる。
 def xp_to_next(level):
-    return int(60 * (level ** 1.45))
+    level = int(level)
+    if level <= 4:
+        return int(60 * (level ** 1.45))
+    # Lv5〜9：平原1000探索前後でLv10を狙う帯
+    if level == 5:
+        return 900
+    if level == 6:
+        return 1100
+    if level == 7:
+        return 1300
+    if level == 8:
+        return 1500
+    if level == 9:
+        return 1800
+    # Lv10以降：次のステージへ行かないと現実的に伸びにくい重さ
+    if level == 10:
+        return 6000
+    if level == 11:
+        return 7500
+    if level == 12:
+        return 9000
+    if level == 13:
+        return 11000
+    if level == 14:
+        return 13500
+    return int(13500 * ((level / 14) ** 2.0))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # マーケット適正価格ガード（Phase3で使用・少しきつめ）

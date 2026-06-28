@@ -12,6 +12,7 @@ from discord.ext import commands
 from database import Database
 import voyage_config as V
 import voyage_events as VE
+import land_config as L
 from config import ADMIN_USER_IDS
 
 db = Database()
@@ -2299,6 +2300,13 @@ def build_inv_embed(vp, tab):
         food_lines = [f"{V.FOODS[k]['emoji']} {V.FOODS[k]['name']} ×{n}（HP+{int(V.FOODS[k]['heal_pct']*100)}%）"
                       for k, n in foods.items() if n > 0]
         e.add_field(name="🍖 食料", value="\n".join(food_lines) if food_lines else "なし", inline=False)
+        land_inv = vp.get("land_items", {})
+        land_lines = []
+        for iid, n in land_inv.items():
+            if n > 0 and iid in getattr(L, "LAND_ITEMS", {}):
+                it = L.LAND_ITEMS[iid]
+                land_lines.append(f"{it['emoji']} {it['name']} ×{n}（{it.get('desc','')}）")
+        e.add_field(name="🛤️ 街道アイテム", value="\n".join(land_lines) if land_lines else "なし", inline=False)
         lottery = vp.get("lottery_tickets", 0)
         special = vp.get("special_items", []) or []
         other_lines = [f"技外しキット ×{vp.get('unequip_kits',0)}"]
@@ -2541,10 +2549,138 @@ async def open_equip_shop(interaction, user_id=None):
     vp = db.get_voyage(uid)
     await _replace_or_send(interaction, embed=build_equipshop_embed(vp, uid, gid), view=EquipShopView(uid, gid))
 
+# ━━━━━━━━ 🛒 道具屋（商店街専用。ドック/船屋へは戻さない）━━━━━━━━
+def _daily_random_shop_items(gid):
+    """ランダム入荷：日付＋ギルドで固定。毎日ラインナップが変わる。"""
+    import datetime, hashlib, random as _r
+    candidates = [iid for iid, it in getattr(L, "LAND_ITEMS", {}).items() if it.get("shop") == "random"]
+    seed = f"{datetime.date.today().isoformat()}:{gid}:landshop"
+    rng = _r.Random(int(hashlib.sha256(seed.encode()).hexdigest()[:12], 16))
+    rng.shuffle(candidates)
+    return candidates[:2]
+
+
+def build_itemshop_embed(vp, uid, gid):
+    e = discord.Embed(
+        title="🛒 道具屋",
+        color=0xe67e22,
+        description=(
+            "街道・航海で使える消耗品を扱う店。\n"
+            "包帯・食事は常設。煙玉/お守り/地図は日替わり入荷。\n"
+            "身代わり人形・守護の羽は店では売らない、幻のドロップ限定品。"
+        ),
+    )
+    e.add_field(name="💰 所持金", value=f"**{db.get_balance(uid, gid):,}** ナトコイン", inline=False)
+    # 常設：食料
+    for fid, f in V.FOODS.items():
+        have = vp.get("foods", {}).get(fid, 0)
+        e.add_field(
+            name=f"{f['emoji']} {f['name']}（所持{have}）",
+            value=f"HP+{int(f['heal_pct']*100)}%・**{f['price']:,}**コイン",
+            inline=True,
+        )
+    # 常設：街道アイテム（包帯）
+    always = [iid for iid, it in getattr(L, "LAND_ITEMS", {}).items() if it.get("shop") == "always"]
+    daily = _daily_random_shop_items(gid)
+    lines = []
+    for iid in always + daily:
+        it = L.LAND_ITEMS[iid]
+        have = vp.get("land_items", {}).get(iid, 0)
+        tag = "常設" if it.get("shop") == "always" else "本日入荷"
+        lines.append(f"{it['emoji']} **{it['name']}**（{tag}/所持{have}）\n{it['desc']}・**{it['price']:,}**コイン")
+    e.add_field(name="🛤️ 街道消耗品", value="\n".join(lines) if lines else "本日の入荷なし", inline=False)
+    e.set_footer(text="ランダム入荷は毎日更新。レア保護アイテムはドロップ限定。")
+    return e
+
+class ItemShopView(discord.ui.View):
+    def __init__(self, uid, gid):
+        super().__init__(timeout=900)
+        self.uid = str(uid); self.gid = str(gid)
+        self.add_item(ItemFoodBuySelect(uid, gid))
+        self.add_item(ItemLandItemBuySelect(uid, gid))
+        self.add_item(ItemShopBackButton(uid, gid))
+
+class ItemLandItemBuySelect(discord.ui.Select):
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        vp = db.get_voyage(uid)
+        ids = [iid for iid, it in getattr(L, "LAND_ITEMS", {}).items() if it.get("shop") == "always"] + _daily_random_shop_items(gid)
+        opts = []
+        for iid in ids:
+            it = L.LAND_ITEMS[iid]
+            have = vp.get("land_items", {}).get(iid, 0)
+            opts.append(discord.SelectOption(
+                label=f"{it['name']}（{it['price']:,}）", emoji=it["emoji"], value=iid,
+                description=f"所持{have}・{it.get('desc','')[:70]}"))
+        if not opts:
+            opts = [discord.SelectOption(label="本日の入荷なし", value="__none__")]
+        super().__init__(placeholder="🛤️ 街道消耗品を買う", options=opts[:25], row=1)
+    async def callback(self, itx):
+        if str(itx.user.id) != self.uid:
+            await itx.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        iid = self.values[0]
+        if iid == "__none__" or iid not in getattr(L, "LAND_ITEMS", {}):
+            await itx.response.send_message("その商品は今は売っていない。", ephemeral=True); return
+        meta = L.LAND_ITEMS[iid]
+        price = int(meta.get("price", 0))
+        if price <= 0 or meta.get("shop") == "drop":
+            await itx.response.send_message("これは店では買えない。", ephemeral=True); return
+        bal = db.get_balance(self.uid, self.gid)
+        if bal < price:
+            await itx.response.send_message(f"💰 コインが足りない（{price:,}必要）。", ephemeral=True); return
+        vp = db.get_voyage(self.uid)
+        vp.setdefault("land_items", {})[iid] = vp.setdefault("land_items", {}).get(iid, 0) + 1
+        db.update_balance(self.uid, self.gid, -price)
+        db.add_zukan(self.uid, "item_seen", iid)
+        db.save_voyage(self.uid, vp)
+        await itx.response.edit_message(embed=build_itemshop_embed(vp, self.uid, self.gid), view=ItemShopView(self.uid, self.gid))
+        await itx.followup.send(f"{meta['emoji']} **{meta['name']}** を購入した（-{price:,}）。", ephemeral=True)
+
+class ItemShopBackButton(discord.ui.Button):
+    def __init__(self, uid, gid):
+        super().__init__(label="◀ メニューへ戻る", style=discord.ButtonStyle.secondary, row=2)
+        self.uid = str(uid); self.gid = str(gid)
+    async def callback(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        from cogs.menu import go_town
+        await go_town(it, self.uid)
+
+class ItemFoodBuySelect(discord.ui.Select):
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        opts = []
+        for fid, f in V.FOODS.items():
+            for q in FOOD_QTY_STEPS:
+                opts.append(discord.SelectOption(
+                    label=f"{f['name']} ×{q}", emoji=f["emoji"], value=f"{fid}:{q}",
+                    description=f"{f['price']*q:,}コイン・HP+{int(f['heal_pct']*100)}%"))
+        super().__init__(placeholder="購入する食料を選ぶ", options=opts[:25], row=0)
+    async def callback(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        fid, q = self.values[0].split(":"); q = int(q)
+        if fid not in V.FOODS:
+            await it.response.send_message("その商品は見つからない。", ephemeral=True); return
+        f = V.FOODS[fid]
+        price_each = int(f.get("price", 0))
+        bal = db.get_balance(self.uid, self.gid)
+        if bal < price_each:
+            await it.response.send_message(f"💰 コインが足りない（1個 {price_each:,} 必要）。", ephemeral=True); return
+        buy = min(q, bal // price_each)
+        cost = int(buy * price_each)
+        vp = db.get_voyage(self.uid)
+        vp.setdefault("foods", {})[fid] = vp.setdefault("foods", {}).get(fid, 0) + buy
+        db.update_balance(self.uid, self.gid, -cost)
+        db.save_voyage(self.uid, vp)
+        await it.response.edit_message(embed=build_itemshop_embed(vp, self.uid, self.gid),
+                                       view=ItemShopView(self.uid, self.gid))
+        await it.followup.send(f"{f['emoji']} **{f['name']} ×{buy}** を購入した（-{cost:,}）。", ephemeral=True)
+
 async def open_item_shop(interaction, user_id=None):
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
     vp = db.get_voyage(uid)
-    await _replace_or_send(interaction, embed=build_foodshop_embed(vp, uid, gid), view=FoodShopView(uid, gid))
+    await _replace_or_send(interaction, embed=build_itemshop_embed(vp, uid, gid), view=ItemShopView(uid, gid))
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 🎰 技ガチャ屋
