@@ -67,6 +67,12 @@ LAND_ENEMIES = {
         {"name": "大バッタ",         "emoji": "🦗",  "ratio": 1.35, "hp_mult": 1.65, "atk_mult": 1.28, "tier": 1, "stars": 1},
         {"name": "はぐれゴブリン",   "emoji": "👺",  "ratio": 1.45, "hp_mult": 1.90, "atk_mult": 1.32, "tier": 1, "stars": 1},
         {"name": "イノシシ",         "emoji": "🐗",  "ratio": 1.55, "hp_mult": 2.05, "atk_mult": 1.42, "tier": 1, "stars": 1},
+        # v18追加：表示は全て☆1。既存☆1の中で弱め2体・強め3体にばらけさせる。
+        {"name": "草むらネズミ",     "emoji": "🐭",  "ratio": 0.82, "hp_mult": 1.45, "atk_mult": 1.05, "tier": 1, "stars": 1},
+        {"name": "泥はねガエル",     "emoji": "🐸",  "ratio": 0.90, "hp_mult": 1.70, "atk_mult": 1.04, "tier": 1, "stars": 1},
+        {"name": "錆び短剣の盗人",   "emoji": "🗡️",  "ratio": 1.18, "hp_mult": 1.65, "atk_mult": 1.30, "tier": 1, "stars": 1},
+        {"name": "棍棒ゴブリン",     "emoji": "👺",  "ratio": 1.34, "hp_mult": 1.85, "atk_mult": 1.32, "tier": 1, "stars": 1},
+        {"name": "飢えた狼",         "emoji": "🐺",  "ratio": 1.50, "hp_mult": 1.70, "atk_mult": 1.48, "tier": 1, "stars": 1},
     ],
     2: [  # 🌲 森：Lv15＋☆1フル装備を基準。雑魚は勝てるが、強い個体はしっかり削る。
         {"name": "森オオカミ",       "emoji": "🐺",  "ratio": 0.95, "hp_mult": 1.10, "atk_mult": 0.48, "tier": 2, "stars": 2},
@@ -77,6 +83,12 @@ LAND_ENEMIES = {
         {"name": "大ムカデ",         "emoji": "🐛",  "ratio": 1.10, "hp_mult": 1.12, "atk_mult": 0.46, "tier": 2, "stars": 2},
         {"name": "塔の番犬",         "emoji": "🐕‍🦺", "ratio": 1.15, "hp_mult": 1.18, "atk_mult": 0.48, "tier": 2, "stars": 2},
         {"name": "森の熊",           "emoji": "🐻",  "ratio": 1.20, "hp_mult": 1.28, "atk_mult": 0.50, "tier": 2, "stars": 2},
+        # v18追加：表示は全て☆2。既存☆2の中で弱め2体・強め3体にばらけさせる。
+        {"name": "枝角ウサギ",       "emoji": "🐇",  "ratio": 0.84, "hp_mult": 1.02, "atk_mult": 0.43, "tier": 2, "stars": 2},
+        {"name": "苔むした小鬼",     "emoji": "🧌",  "ratio": 0.90, "hp_mult": 1.15, "atk_mult": 0.43, "tier": 2, "stars": 2},
+        {"name": "毒牙イタチ",       "emoji": "🦡",  "ratio": 1.08, "hp_mult": 1.00, "atk_mult": 0.52, "tier": 2, "stars": 2},
+        {"name": "森賊の斧使い",     "emoji": "🪓",  "ratio": 1.16, "hp_mult": 1.12, "atk_mult": 0.54, "tier": 2, "stars": 2},
+        {"name": "黒毛の大狼",       "emoji": "🐺",  "ratio": 1.24, "hp_mult": 1.20, "atk_mult": 0.54, "tier": 2, "stars": 2},
     ],
     3: [  # ⛰️ 山：Lv25＋☆2フル装備を基準。雑魚でも手応え、中ボスは明確な危険枠。
         {"name": "岩トカゲ",         "emoji": "🦎",  "ratio": 0.90, "hp_mult": 1.10, "atk_mult": 0.40, "tier": 3, "stars": 3},
@@ -87,6 +99,12 @@ LAND_ENEMIES = {
         {"name": "霜の魔狼",         "emoji": "🐺",  "ratio": 1.10, "hp_mult": 1.00, "atk_mult": 0.44, "tier": 3, "stars": 3},
         {"name": "オーガ",           "emoji": "👹",  "ratio": 1.20, "hp_mult": 1.20, "atk_mult": 0.44, "tier": 3, "stars": 3},
         {"name": "ワイバーン",       "emoji": "🐉",  "ratio": 1.20, "hp_mult": 1.05, "atk_mult": 0.46, "tier": 3, "stars": 3},
+        # v18追加：表示は全て☆3。既存☆3の中で弱め2体・強め3体にばらけさせる。
+        {"name": "岩影コウモリ",     "emoji": "🦇",  "ratio": 0.82, "hp_mult": 0.92, "atk_mult": 0.38, "tier": 3, "stars": 3},
+        {"name": "痩せ山狼",         "emoji": "🐺",  "ratio": 0.90, "hp_mult": 0.98, "atk_mult": 0.40, "tier": 3, "stars": 3},
+        {"name": "落石まとう山賊",   "emoji": "🪨",  "ratio": 1.08, "hp_mult": 1.12, "atk_mult": 0.44, "tier": 3, "stars": 3},
+        {"name": "塔の槍兵",         "emoji": "💂",  "ratio": 1.14, "hp_mult": 1.08, "atk_mult": 0.48, "tier": 3, "stars": 3},
+        {"name": "若いワイバーン",   "emoji": "🐲",  "ratio": 1.22, "hp_mult": 1.10, "atk_mult": 0.50, "tier": 3, "stars": 3},
     ],
 }
 
@@ -167,9 +185,9 @@ HOT_EVENT_EQUIP_DROP = [("dist", 0.03, [(1, 0.70), (2, 0.30)])]
 
 # ── 💎 経験値逃走モンスター v17 ──
 # 戦闘枠の中で低確率。装備/アイテムの平均ドロップ率を変えないため、ドロップは無し。
-# 通常版：約1% / キング版：約0.05%。毎ターン50%で逃げる。
-XP_RUNNER_RATE = 0.01
-XP_RUNNER_KING_RATE = 0.0005
+# 通常版：約2% / キング版：約0.1%。毎ターン50%で逃げる。
+XP_RUNNER_RATE = 0.02
+XP_RUNNER_KING_RATE = 0.001
 XP_RUNNERS = {
     1: {
         "normal": {"name":"黄金スライム", "emoji":"💎", "ratio":2.8, "hp_mult":2.8, "atk_mult":0.35, "def_mult":7.0, "tier":1, "stars":2, "xp_mult":20, "coin_mult":0.25},

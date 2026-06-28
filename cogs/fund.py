@@ -3,13 +3,18 @@
 解放後：港が再興し、危険水域（遠征）と総合ショップへのメニューになる。
 """
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from database import Database
-from config import FUND_GOALS, ADMIN_USER_IDS
+from config import FUND_GOALS, ADMIN_USER_IDS, PORT_DAILY_FUND_AMOUNT
 import voyage_config as V
 
 db = Database()
 DEFAULT_GOAL = "danger_zone"
+
+
+def _apply_port_daily_growth(guild_id: str, goal_key: str = DEFAULT_GOAL):
+    """さびれた港の自然復興。表示時/定期実行時の両方から呼べる冪等処理。"""
+    return db.apply_fund_daily_growth(str(guild_id), goal_key, PORT_DAILY_FUND_AMOUNT)
 
 
 def _has_port_access(guild, user, goal_key):
@@ -40,6 +45,7 @@ def _bar(cur, goal, width=12):
 
 def _add_progress_fields(embed, guild, user, goal_key):
     g = FUND_GOALS[goal_key]; gid = str(guild.id)
+    _apply_port_daily_growth(gid, goal_key)
     total, _ = db.get_fund(gid, goal_key); goal = g["goal"]
     pct = min(total / goal * 100, 100) if goal else 100
     embed.add_field(
@@ -269,6 +275,7 @@ async def open_port(interaction: discord.Interaction, user_id: str = None, goal_
     解放済みは母港（航海中なら航海画面）へ直行。未解放は支援ページ。"""
     uid = user_id or str(interaction.user.id)
     gid = str(interaction.guild.id)
+    _apply_port_daily_growth(gid, goal_key)
     if _has_port_access(interaction.guild, interaction.user, goal_key):
         from cogs.voyage import build_port_embed, build_voyage_embed, PortView, VoyageView
         vp = db.get_voyage(uid)
@@ -288,6 +295,20 @@ async def open_port(interaction: discord.Interaction, user_id: str = None, goal_
 class Fund(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.port_daily_growth_loop.start()
+
+    def cog_unload(self):
+        self.port_daily_growth_loop.cancel()
+
+    @tasks.loop(hours=1)
+    async def port_daily_growth_loop(self):
+        # サーバーごとに1日1回だけ、さびれた港の復興資金を自然増加させる。
+        for guild in self.bot.guilds:
+            _apply_port_daily_growth(str(guild.id), DEFAULT_GOAL)
+
+    @port_daily_growth_loop.before_loop
+    async def before_port_daily_growth_loop(self):
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot):

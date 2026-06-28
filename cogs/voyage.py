@@ -3803,6 +3803,18 @@ def build_item_zukan_embed(uid=None):
                  for mid, m in V.MATERIALS.items()]
     emb.add_field(name=f"💎 素材（{got}/{len(V.MATERIALS)}）",
                   value="　".join(mat_lines), inline=False)
+    # 🛤️ 街道アイテム（LAND_ITEMS）
+    land_lines = []
+    for iid, it in getattr(L, "LAND_ITEMS", {}).items():
+        if iid in seen:
+            land_lines.append(f"{it['emoji']} **{it['name']}** … {it.get('desc','')}")
+        else:
+            land_lines.append("❔ ？？？")
+    if land_lines:
+        got_land = len([iid for iid in getattr(L, "LAND_ITEMS", {}) if iid in seen])
+        emb.add_field(name=f"🛤️ 街道アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）",
+                      value="\n".join(land_lines), inline=False)
+
     emb.add_field(name="🧪 消費アイテム",
                   value=("🎣 **各種の竿** … 釣り用。エリアが深いほど早く摩耗（耐久制）\n"
                          "🎛️ **リール** … 使うほど摩耗。切れると標準に戻る\n"

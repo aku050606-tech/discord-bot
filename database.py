@@ -132,6 +132,10 @@ class Database:
             guild_id TEXT, goal_key TEXT, user_id TEXT, amount INTEGER DEFAULT 0,
             PRIMARY KEY (guild_id, goal_key, user_id)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS fund_auto_growth (
+            guild_id TEXT, goal_key TEXT, last_date TEXT,
+            PRIMARY KEY (guild_id, goal_key)
+        )""")
         # ── ⚓ 航海（船・装備・レベル・航海中状態を1つのJSONブロブで保持）──
         c.execute("""CREATE TABLE IF NOT EXISTS voyage (
             user_id TEXT PRIMARY KEY, data TEXT
@@ -885,6 +889,46 @@ class Database:
                 ON CONFLICT(guild_id, goal_key) DO UPDATE SET unlocked = 1""",
             (str(guild_id), goal_key))
         conn.commit(); conn.close()
+
+    def apply_fund_daily_growth(self, guild_id, goal_key, amount, today=None):
+        """JST日替わりでファンドを自動加算する。
+        返り値: (applied, total, just_unlocked)
+        """
+        from config import jst_today_str, FUND_GOALS
+        gid = str(guild_id)
+        today = today or jst_today_str()
+        amount = int(amount)
+        goal = int(FUND_GOALS.get(goal_key, {}).get("goal", 0))
+
+        conn = self.get_conn(); c = conn.cursor()
+        c.execute("SELECT total, unlocked FROM community_fund WHERE guild_id=? AND goal_key=?", (gid, goal_key))
+        row = c.fetchone()
+        total = int(row[0]) if row else 0
+        unlocked = bool(row[1]) if row else False
+        if unlocked or amount <= 0:
+            conn.close()
+            return (False, total, False)
+
+        c.execute("SELECT last_date FROM fund_auto_growth WHERE guild_id=? AND goal_key=?", (gid, goal_key))
+        last = c.fetchone()
+        if last and last[0] == today:
+            conn.close()
+            return (False, total, False)
+
+        new_total = total + amount
+        just_unlocked = bool(goal and new_total >= goal)
+        c.execute("""INSERT INTO community_fund (guild_id, goal_key, total, unlocked)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, goal_key) DO UPDATE SET
+                    total = total + ?,
+                    unlocked = CASE WHEN ? THEN 1 ELSE unlocked END""",
+            (gid, goal_key, amount, 1 if just_unlocked else 0, amount, 1 if just_unlocked else 0))
+        c.execute("""INSERT INTO fund_auto_growth (guild_id, goal_key, last_date)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, goal_key) DO UPDATE SET last_date = ?""",
+            (gid, goal_key, today, today))
+        conn.commit(); conn.close()
+        return (True, new_total, just_unlocked)
 
     def get_user_fund_contribution(self, guild_id, goal_key, user_id):
         conn = self.get_conn(); c = conn.cursor()

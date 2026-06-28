@@ -36,6 +36,10 @@ CHAT_REWARD_COINS = 1
 DAILY_AMOUNT = 2000        # デイリーボーナス額（ナトコイン）
 DAILY_SEND_LIMIT = 3000    # 1日の送金上限（ナトコイン）
 
+# ── さびれた港：自然復興額 ──
+# botが起動しているサーバーごとに、JST日替わりでファンドへ自動加算する。
+PORT_DAILY_FUND_AMOUNT = 200_000
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # スロット設定  ── EVENT HORIZON 仕様（完全版）──
 #   構造: 通常時(小役で土台) → GOD抽選 → EVENT HORIZON(継続ランクループ)
