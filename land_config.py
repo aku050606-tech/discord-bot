@@ -132,11 +132,11 @@ RARE_BOSS = {"crew_power": 60, "scale": 2.2, "hp_mult": 1.6, "atk_mult": 0.58, "
 #   midrare_drop：撃破時の装備ドロップ（☆, 確率）。
 LAND_MIDRARES = {
     1: [  # 🌿 平原 ☆2
-        {"name": "草原の大猪",     "emoji": "🐗", "ratio": 4.8, "hp_mult": 2.8, "atk_mult": 0.70, "tier": 1, "stars": 2,
+        {"name": "草原の大猪",     "emoji": "🐗", "ratio": 3.6, "hp_mult": 2.2, "atk_mult": 0.58, "tier": 1, "stars": 2,
          "xp": [20, 40], "coin": [1000, 2500], "drop": [(1, 0.03)]},
-        {"name": "古老ゴブリン",   "emoji": "👹", "ratio": 4.6, "hp_mult": 3.0, "atk_mult": 0.70, "tier": 1, "stars": 2,
+        {"name": "古老ゴブリン",   "emoji": "👹", "ratio": 3.4, "hp_mult": 2.3, "atk_mult": 0.58, "tier": 1, "stars": 2,
          "xp": [20, 40], "coin": [1000, 2500], "drop": [(1, 0.03)]},
-        {"name": "群れの長狼",     "emoji": "🐺", "ratio": 5.0, "hp_mult": 2.6, "atk_mult": 0.76, "tier": 1, "stars": 2,
+        {"name": "群れの長狼",     "emoji": "🐺", "ratio": 3.8, "hp_mult": 2.1, "atk_mult": 0.62, "tier": 1, "stars": 2,
          "xp": [20, 40], "coin": [1000, 2500], "drop": [(1, 0.03)]},
     ],
     2: [  # 🌲 森 ☆3
@@ -610,3 +610,161 @@ def pick_story(area):
 def pick_event(area):
     pool = LAND_EVENTS.get(area, [])
     return random.choice(pool) if pool else None
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🌏 街道イベント土台 v9 追加パック
+#   既存LAND_RANDOM_EVENTSへ追加するだけで、コード本体を触らずイベントを増やせる。
+#   形式：きっかけイベント → 選択肢 → サブ抽選(outcomes)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAND_RANDOM_EVENT_PACK_V9 = {
+    1: [
+        {"id":"v9_plain_wounded_soldier", "type":"choice", "emoji":"🩸", "title":"倒れた兵士", "flavor":"草むらの陰に、塔の紋章をつけた兵士が倒れている。まだ息はある。だが、手は剣から離れていない。",
+         "choices":[
+          {"label":"🩹 手当てする", "result":"傷口を縛ると、兵士はうわ言のように塔の名を呟いた。", "outcomes":[("xp",32),("item",22),("story",22),("combat",14),("nothing",10)]},
+          {"label":"🎒 荷物を見る", "result":"革袋に手を伸ばす。兵士の目が、かすかに開いた。", "outcomes":[("coin",28),("item",24),("combat",28),("damage",12),("nothing",8)]},
+          {"label":"🚶 立ち去る", "result":"関わらない。そう決めて、足早に離れた。", "outcomes":[("nothing",56),("xp",18),("combat",18),("story",8)]},
+         ]},
+        {"id":"v9_plain_traveling_merchant", "type":"choice", "emoji":"🧺", "title":"行商人", "flavor":"荷車を引く行商人が、妙に安い道具を並べている。笑顔が少しだけ作り物めいている。",
+         "choices":[
+          {"label":"🛒 品物を見る", "result":"埃っぽい布の上に、見慣れない道具が並ぶ。", "outcomes":[("item",34),("coin",10),("damage",8),("nothing",28),("combat",20)]},
+          {"label":"❓ 塔の噂を聞く", "result":"行商人は声を潜めた。『塔に近づくなら、空を見すぎるな』。", "outcomes":[("story",36),("xp",24),("item",12),("nothing",28)]},
+          {"label":"🚶 無視する", "result":"安すぎるものには裏がある。", "outcomes":[("nothing",62),("combat",20),("xp",18)]},
+         ]},
+        {"id":"v9_plain_old_windmill", "type":"choice", "emoji":"🌬️", "title":"止まった風車", "flavor":"丘の上に、羽根の折れた風車が立っている。風はあるのに、まったく動かない。",
+         "choices":[
+          {"label":"⚙️ 内部を調べる", "result":"軋む扉を押し開ける。中は思ったより暗い。", "outcomes":[("item",24),("coin",22),("combat",28),("story",14),("nothing",12)]},
+          {"label":"🪜 上に登る", "result":"古い梯子が、体重を受けて悲鳴を上げた。", "outcomes":[("xp",26),("damage",20),("coin",20),("combat",22),("nothing",12)]},
+         ]},
+        {"id":"v9_plain_blue_butterfly", "type":"choice", "emoji":"🦋", "title":"青い蝶", "flavor":"青い蝶が一匹、目の前を横切った。羽根には、地図のような模様が浮かんでいる。",
+         "choices":[
+          {"label":"🦋 追いかける", "result":"蝶は草原の奥へ、振り返るように飛んでいく。", "outcomes":[("item",28),("story",24),("combat",24),("xp",14),("nothing",10)]},
+          {"label":"✋ 手を伸ばす", "result":"指先に止まった瞬間、蝶は光の粒になった。", "outcomes":[("heal",24),("item",22),("xp",22),("nothing",32)]},
+         ]},
+        {"id":"v9_plain_broken_sword", "type":"choice", "emoji":"🗡️", "title":"折れた剣", "flavor":"道端に、刃の折れた剣が突き立っている。周囲の草だけが黒く焦げていた。",
+         "choices":[
+          {"label":"🗡️ 引き抜く", "result":"柄を握ると、手のひらがじんと痺れた。", "outcomes":[("combat",36),("item",20),("damage",16),("story",18),("nothing",10)]},
+          {"label":"📖 刻印を見る", "result":"剣には塔の文字で『帰還不能』と刻まれている。", "outcomes":[("story",38),("xp",24),("combat",18),("nothing",20)]},
+         ]},
+        {"id":"v9_plain_dry_river", "type":"choice", "emoji":"🏞️", "title":"干上がった川", "flavor":"川底が剥き出しになっている。水はないのに、濡れた足跡だけが続いている。",
+         "choices":[
+          {"label":"👣 足跡を追う", "result":"足跡は途中で、急に四つ足のものへ変わった。", "outcomes":[("combat",42),("item",16),("coin",16),("story",14),("nothing",12)]},
+          {"label":"💎 川底を探る", "result":"乾いた泥を掘り返す。", "outcomes":[("coin",30),("item",22),("damage",10),("nothing",28),("combat",10)]},
+         ]},
+        {"id":"v9_plain_singing_traveler", "type":"choice", "emoji":"🎻", "title":"吟遊詩人", "flavor":"遠くから、古い歌が聞こえる。歌詞には海と塔、そして帰らぬ者の名が混じっていた。",
+         "choices":[
+          {"label":"🎵 歌を聞く", "result":"歌は妙に耳に残る。知らないはずの風景が、頭に浮かんだ。", "outcomes":[("story",40),("xp",30),("heal",12),("nothing",18)]},
+          {"label":"💰 チップを渡す", "result":"詩人は一礼し、古い噂をひとつ置いていった。", "cost":[100,800], "outcomes":[("item",24),("story",34),("xp",22),("nothing",20)]},
+         ]},
+        {"id":"v9_plain_abandoned_shrine", "type":"choice", "emoji":"🕯️", "title":"草原の祠", "flavor":"小さな祠に、消えかけた蝋燭が残っている。火はないのに、芯だけが赤い。",
+         "choices":[
+          {"label":"🙏 祈る", "result":"祠の奥で、何かが小さく鳴った。", "outcomes":[("heal",26),("item",20),("story",22),("damage",10),("nothing",22)]},
+          {"label":"🕯️ 蝋燭を持つ", "result":"蝋燭は冷たい。けれど、影だけが揺れている。", "outcomes":[("item",28),("combat",26),("story",20),("nothing",26)]},
+         ]},
+        {"id":"v9_plain_hidden_cache", "type":"choice", "emoji":"📦", "title":"隠された木箱", "flavor":"石の裏に、小さな木箱が隠されている。誰かの非常用の備えだろうか。",
+         "choices":[
+          {"label":"📦 開ける", "result":"蓋は簡単に外れた。中身はまだ使えそうだ。", "outcomes":[("item",40),("coin",20),("combat",15),("nothing",25)]},
+          {"label":"🪤 罠を確認する", "result":"底に細い糸が張ってあった。危なかった。", "outcomes":[("xp",26),("item",26),("nothing",38),("combat",10)]},
+         ]},
+        {"id":"v9_plain_black_cat", "type":"choice", "emoji":"🐈‍⬛", "title":"黒猫", "flavor":"黒猫が道の真ん中に座り、こちらを見上げている。首輪には小さな鍵が下がっていた。",
+         "choices":[
+          {"label":"🐈‍⬛ 近づく", "result":"猫は逃げず、こちらを試すように尾を揺らした。", "outcomes":[("item",30),("story",24),("combat",20),("nothing",26)]},
+          {"label":"🍖 食べ物を見せる", "result":"猫は満足げに鳴き、草むらの奥へ案内する。", "outcomes":[("item",36),("coin",20),("xp",20),("nothing",24)]},
+         ]},
+    ],
+    2: [
+        {"id":"v9_forest_old_altar", "type":"choice", "emoji":"🪦", "title":"古い祭壇", "flavor":"倒木に囲まれた石の祭壇。表面には、削り取られた古い紋様が残っている。",
+         "choices":[
+          {"label":"🙏 手を置く", "result":"冷たい石が、ほんの一瞬だけ脈打った。", "outcomes":[("story",34),("damage",18),("item",22),("combat",16),("nothing",10)]},
+          {"label":"🔍 周囲を探す", "result":"落ち葉の下に、誰かが残した供物がある。", "outcomes":[("item",32),("coin",18),("combat",28),("nothing",22)]},
+         ]},
+        {"id":"v9_forest_giant_claw", "type":"choice", "emoji":"🐾", "title":"巨大な爪痕", "flavor":"大樹の幹に、深い爪痕が刻まれている。爪痕は人の背丈より大きい。",
+         "choices":[
+          {"label":"🐾 痕跡を追う", "result":"折れた枝が、森の奥へ続いている。", "outcomes":[("combat",45),("mid_hint",12),("item",16),("xp",17),("nothing",10)]},
+          {"label":"📖 爪痕を見る", "result":"爪痕の下に、塔の警告印が刻まれていた。", "outcomes":[("story",36),("xp",24),("combat",24),("nothing",16)]},
+         ]},
+        {"id":"v9_forest_lost_scout", "type":"choice", "emoji":"🧭", "title":"迷った斥候", "flavor":"塔の斥候らしき若者が、木の根元で震えている。敵か、ただの迷子か。",
+         "choices":[
+          {"label":"🤝 助ける", "result":"斥候は怯えながらも、森の抜け道を教えてくれた。", "outcomes":[("story",30),("xp",28),("item",18),("combat",14),("nothing",10)]},
+          {"label":"🎒 持ち物を調べる", "result":"彼の袋には、塔の配給品が入っていた。", "outcomes":[("item",34),("coin",20),("combat",26),("nothing",20)]},
+         ]},
+        {"id":"v9_forest_hollow_tree", "type":"choice", "emoji":"🌳", "title":"空洞の大樹", "flavor":"幹に大きな空洞のある大樹。中から、かすかな光が漏れている。",
+         "choices":[
+          {"label":"🔦 中を覗く", "result":"空洞の奥は、思ったより広い。", "outcomes":[("item",32),("combat",28),("story",22),("damage",8),("nothing",10)]},
+          {"label":"🪵 木肌を叩く", "result":"返ってきた音は、木のものではなかった。", "outcomes":[("combat",42),("xp",22),("item",16),("nothing",20)]},
+         ]},
+        {"id":"v9_forest_silent_brook", "type":"choice", "emoji":"💧", "title":"音のない小川", "flavor":"水は流れているのに、水音がしない。川面には空ではなく、塔の影が映っている。",
+         "choices":[
+          {"label":"💧 水を飲む", "result":"冷たい水が喉を通る。けれど、後味が鉄っぽい。", "outcomes":[("heal",25),("damage",16),("story",24),("nothing",35)]},
+          {"label":"🪙 川底を探る", "result":"小石に混じって、古い硬貨が沈んでいる。", "outcomes":[("coin",34),("item",22),("combat",22),("nothing",22)]},
+         ]},
+        {"id":"v9_forest_old_hut", "type":"choice", "emoji":"🏚️", "title":"森番の小屋", "flavor":"人の気配のない小屋。壁には弓、床には新しい泥の跡。無人のはずなのに、誰かが使っている。",
+         "choices":[
+          {"label":"🚪 入る", "result":"床板が軋む。奥の部屋で、何かが倒れた。", "outcomes":[("item",30),("combat",34),("coin",14),("story",12),("nothing",10)]},
+          {"label":"👣 泥の跡を追う", "result":"足跡は小屋の裏で途切れている。", "outcomes":[("combat",38),("story",26),("xp",20),("nothing",16)]},
+         ]},
+        {"id":"v9_forest_bell", "type":"choice", "emoji":"🔔", "title":"木に吊るされた鈴", "flavor":"枝から小さな鈴が吊るされている。風もないのに、ちりん、と鳴った。",
+         "choices":[
+          {"label":"🔔 鳴らす", "result":"森の奥から、同じ音が返ってきた。", "outcomes":[("combat",40),("story",24),("item",18),("nothing",18)]},
+          {"label":"✋ 外す", "result":"鈴を外すと、周囲の虫の声が戻った。", "outcomes":[("item",30),("xp",22),("damage",12),("nothing",36)]},
+         ]},
+        {"id":"v9_forest_buried_bag", "type":"choice", "emoji":"🎒", "title":"埋められた背嚢", "flavor":"木の根元に、不自然に盛り上がった土。布の端が少し見えている。",
+         "choices":[
+          {"label":"⛏️ 掘り出す", "result":"湿った土の中から、古い背嚢が出てきた。", "outcomes":[("item",38),("coin",24),("combat",18),("damage",8),("nothing",12)]},
+          {"label":"👂 耳を澄ます", "result":"土の下から、かすかに音がする。", "outcomes":[("combat",40),("story",20),("xp",20),("nothing",20)]},
+         ]},
+    ],
+    3: [
+        {"id":"v9_mountain_bell_tower", "type":"choice", "emoji":"🛕", "title":"鐘のない鐘楼", "flavor":"山道の脇に、鐘のない鐘楼が立っている。なのに、遠くで鐘の音が鳴った。",
+         "choices":[
+          {"label":"🛕 登る", "result":"階段は途中から崩れている。上には、山の全景が見えた。", "outcomes":[("story",34),("xp",24),("combat",24),("damage",10),("nothing",8)]},
+          {"label":"🔍 床を調べる", "result":"床板の下に、小さな箱が隠されている。", "outcomes":[("item",32),("coin",22),("combat",28),("nothing",18)]},
+         ]},
+        {"id":"v9_mountain_chain_marker", "type":"choice", "emoji":"📍", "title":"鎖の標石", "flavor":"道標の代わりに、鉄鎖が地面に打ち込まれている。鎖は低く唸っていた。",
+         "choices":[
+          {"label":"✋ 鎖に触れる", "result":"掌に、冷たさではない痛みが走る。", "outcomes":[("damage",26),("story",30),("item",18),("combat",18),("nothing",8)]},
+          {"label":"📖 標石を読む", "result":"『海圧安定。異常なし』――何の記録だろうか。", "outcomes":[("story",42),("xp",26),("combat",18),("nothing",14)]},
+         ]},
+        {"id":"v9_mountain_goat_path", "type":"choice", "emoji":"🐐", "title":"山羊の細道", "flavor":"崖沿いに、細い道が続いている。山羊の足跡に混じって、人の足跡もある。",
+         "choices":[
+          {"label":"🐐 進む", "result":"足元の石が、ぱらぱらと崖下へ落ちていく。", "outcomes":[("coin",24),("item",22),("combat",30),("damage",18),("nothing",6)]},
+          {"label":"👣 足跡を調べる", "result":"人の足跡は途中で消え、代わりに鎧の擦れた跡が残っている。", "outcomes":[("story",30),("combat",34),("xp",22),("nothing",14)]},
+         ]},
+        {"id":"v9_mountain_cave_mouth", "type":"choice", "emoji":"🕳️", "title":"洞穴の入口", "flavor":"山肌にぽっかりと穴が開いている。奥から、風ではない息のような音がする。",
+         "choices":[
+          {"label":"🔦 入る", "result":"一歩踏み入れると、背後の光が急に遠くなった。", "outcomes":[("combat",42),("item",24),("coin",16),("damage",10),("nothing",8)]},
+          {"label":"🪨 石を投げる", "result":"石は、落ちる音を返さなかった。", "outcomes":[("story",32),("combat",32),("xp",18),("nothing",18)]},
+         ]},
+        {"id":"v9_mountain_snowless_patch", "type":"choice", "emoji":"♨️", "title":"雪のない地面", "flavor":"周囲には薄雪があるのに、その一角だけ地面がむき出しだ。土から熱が立ちのぼっている。",
+         "choices":[
+          {"label":"✋ 土に触れる", "result":"温かい。いや、熱い。", "outcomes":[("damage",24),("item",22),("story",20),("nothing",34)]},
+          {"label":"⛏️ 掘る", "result":"少し掘ると、黒い石片が出てきた。", "outcomes":[("coin",28),("item",28),("combat",28),("nothing",16)]},
+         ]},
+        {"id":"v9_mountain_echo", "type":"choice", "emoji":"📣", "title":"返らないこだま", "flavor":"声を出せば反響しそうな谷。だが、ここでは音が戻ってこない。",
+         "choices":[
+          {"label":"📣 声を出す", "result":"声は谷に吸われた。数秒後、別の声が返ってきた。", "outcomes":[("combat",42),("story",28),("damage",10),("nothing",20)]},
+          {"label":"🤫 黙って進む", "result":"息を殺して、岩陰を抜ける。", "outcomes":[("item",20),("xp",24),("nothing",40),("combat",16)]},
+         ]},
+        {"id":"v9_mountain_supply_crate", "type":"choice", "emoji":"📦", "title":"塔の補給箱", "flavor":"塔の印が焼き付けられた補給箱。封は切られていない。近くに見張りはいないようだ。",
+         "choices":[
+          {"label":"📦 開ける", "result":"封を切ると、油と鉄の匂いがした。", "outcomes":[("item",36),("coin",22),("combat",28),("nothing",14)]},
+          {"label":"🪤 罠を探す", "result":"底に、細い警報線が仕込まれていた。", "outcomes":[("xp",26),("item",24),("nothing",34),("combat",16)]},
+         ]},
+        {"id":"v9_mountain_red_sky", "type":"choice", "emoji":"🌆", "title":"赤い空", "flavor":"一瞬だけ、空が赤く染まった。夕焼けではない。塔の方角から、低い振動が伝わる。",
+         "choices":[
+          {"label":"⛰️ 塔の方を見る", "result":"塔の影が、実際よりも大きく見えた。", "outcomes":[("story",44),("combat",24),("xp",20),("nothing",12)]},
+          {"label":"🏃 早足で進む", "result":"振動から逃げるように、山道を急いだ。", "outcomes":[("combat",36),("damage",16),("item",18),("nothing",30)]},
+         ]},
+    ],
+}
+
+for _area, _events in LAND_RANDOM_EVENT_PACK_V9.items():
+    LAND_RANDOM_EVENTS.setdefault(_area, [])
+    # zipを何度作り直しても二重追加にならないようidで重複排除
+    _seen = {e.get("id") for e in LAND_RANDOM_EVENTS[_area]}
+    for _ev in _events:
+        if _ev.get("id") not in _seen:
+            LAND_RANDOM_EVENTS[_area].append(_ev)
+            _seen.add(_ev.get("id"))
+
+# v9の目安：既存8件前後＋追加 平原10/森8/山8。ここからJSON化/外部化しやすい形に寄せていく。

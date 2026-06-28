@@ -751,7 +751,15 @@ GACHA_PRICE = 10_000
 GACHA_TEN_PRICE = 90_000
 GACHA_SKILL3_RATE = 0.002   # 0.2%
 GACHA_PET_RATE = 0.001      # 0.1%
-GACHA_FOOD_RATE = 0.10      # 当たり以外の10%
+# ガチャv2：技/ペット以外にも街道消耗品を混ぜ、ハズレ感を減らす。
+# 判定は上から順。残りは宝くじ。
+GACHA_EPIC_ITEM_RATE = 0.0010       # 0.10%（身代わり人形/守護の羽）
+GACHA_RARE_ITEM_RATE = 0.0220       # 2.20%（煙玉/お守り/地図）
+GACHA_UNCOMMON_ITEM_RATE = 0.0400   # 4.00%（ランタン/羅針盤）
+GACHA_FOOD_RATE = 0.4500            # 45.00%（乾パン/干し肉/船員の宴/包帯）
+GACHA_MEDAL_PER_PULL = 1
+GACHA_SKILL3_EXCHANGE_MEDALS = 200
+GACHA_PET_EXCHANGE_MEDALS = 400
 LOTTERY_ITEM_ID = "lottery_ticket"
 LOTTERY_ITEM = {"name": "宝くじ", "emoji": "🎟️"}
 PETS = {

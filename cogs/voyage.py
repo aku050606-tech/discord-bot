@@ -2309,7 +2309,7 @@ def build_inv_embed(vp, tab):
         e.add_field(name="🛤️ 街道アイテム", value="\n".join(land_lines) if land_lines else "なし", inline=False)
         lottery = vp.get("lottery_tickets", 0)
         special = vp.get("special_items", []) or []
-        other_lines = [f"技外しキット ×{vp.get('unequip_kits',0)}"]
+        other_lines = [f"技外しキット ×{vp.get('unequip_kits',0)}", f"🎖️ ガチャメダル ×{vp.get('gacha_medals',0)}"]
         if lottery:
             other_lines.append(f"{V.LOTTERY_ITEM['emoji']} {V.LOTTERY_ITEM['name']} ×{lottery}")
         if special:
@@ -2689,60 +2689,105 @@ def _gacha_skill3_pool():
     return [sid for sid, sk in VS.SKILLS.items()
             if sk.get("rank") == 3 and sk.get("slot") in ("weapon", "armor")]
 
-def _give_food(vp):
-    fid = random.choice(list(V.FOODS.keys()))
+GACHA_FOOD_POOL = ["hardtack", "jerky", "feast"]
+GACHA_LAND_COMMON_POOL = ["bandage"]
+GACHA_RARE_ITEM_POOL = ["smoke_bomb", "lucky_charm", "old_map"]
+GACHA_UNCOMMON_ITEM_POOL = ["lantern", "gold_compass"]
+GACHA_EPIC_ITEM_POOL = ["decoy_doll", "guardian_feather"]
+
+def _add_gacha_medals(uid: str, count: int):
+    vp = db.get_voyage(uid)
+    vp["gacha_medals"] = vp.get("gacha_medals", 0) + int(count) * V.GACHA_MEDAL_PER_PULL
+    db.save_voyage(uid, vp)
+    return vp["gacha_medals"]
+
+def _give_food_or_bandage(vp, uid: str):
+    # コモン枠：食料と包帯。食料はfoods、包帯はland_itemsへ。
+    if random.random() < 0.25:
+        iid = "bandage"
+        vp.setdefault("land_items", {})[iid] = vp.setdefault("land_items", {}).get(iid, 0) + 1
+        db.add_zukan(uid, "item_seen", iid)
+        it = L.LAND_ITEMS[iid]
+        return {"kind": "item_common", "text": f"{it['emoji']} {it['name']}", "id": iid}
+    fid = random.choices(GACHA_FOOD_POOL, weights=[45, 35, 20], k=1)[0]
     vp.setdefault("foods", {})[fid] = vp.setdefault("foods", {}).get(fid, 0) + 1
-    db.add_zukan(vp.get("_uid", ""), "item_seen", fid) if vp.get("_uid") else None
+    db.add_zukan(uid, "item_seen", fid)
     f = V.FOODS[fid]
     return {"kind": "food", "text": f"{f['emoji']} {f['name']}", "id": fid}
 
+def _give_land_item(vp, uid: str, pool, kind: str):
+    iid = random.choice(pool)
+    vp.setdefault("land_items", {})[iid] = vp.setdefault("land_items", {}).get(iid, 0) + 1
+    db.add_zukan(uid, "item_seen", iid)
+    it = L.LAND_ITEMS[iid]
+    return {"kind": kind, "text": f"{it['emoji']} {it['name']}", "id": iid}
+
 def _roll_skill_gacha(uid: str):
     vp = db.get_voyage(uid)
-    vp["_uid"] = uid
     r = random.random()
-    if r < V.GACHA_SKILL3_RATE:
+    cursor = V.GACHA_SKILL3_RATE
+    if r < cursor:
         pool = _gacha_skill3_pool()
         sid = random.choice(pool)
         vp.setdefault("learned_skills", {})[sid] = vp.setdefault("learned_skills", {}).get(sid, 0) + 1
         db.add_zukan(uid, "skill_seen", sid)
         sk = VS.SKILLS[sid]
         result = {"kind": "skill3", "text": f"{V.rarity_stars(3)} {sk['emoji']} {sk['name']}", "id": sid}
-    elif r < V.GACHA_SKILL3_RATE + V.GACHA_PET_RATE:
-        pid = random.choice(list(V.PETS.keys()))
-        vp.setdefault("special_items", []).append(pid)
-        db.add_zukan(uid, "item_seen", pid)
-        pet = V.PETS[pid]
-        result = {"kind": "pet", "text": f"{pet['emoji']} {pet['name']}", "id": pid}
     else:
-        if random.random() < V.GACHA_FOOD_RATE:
-            fid = random.choice(list(V.FOODS.keys()))
-            vp.setdefault("foods", {})[fid] = vp.setdefault("foods", {}).get(fid, 0) + 1
-            db.add_zukan(uid, "item_seen", fid)
-            f = V.FOODS[fid]
-            result = {"kind": "food", "text": f"{f['emoji']} {f['name']}", "id": fid}
+        cursor += V.GACHA_PET_RATE
+        if r < cursor:
+            pid = random.choice(list(V.PETS.keys()))
+            vp.setdefault("special_items", []).append(pid)
+            db.add_zukan(uid, "item_seen", pid)
+            pet = V.PETS[pid]
+            result = {"kind": "pet", "text": f"{pet['emoji']} {pet['name']}", "id": pid}
         else:
-            vp["lottery_tickets"] = vp.get("lottery_tickets", 0) + 1
-            db.add_zukan(uid, "item_seen", V.LOTTERY_ITEM_ID)
-            result = {"kind": "lottery", "text": f"{V.LOTTERY_ITEM['emoji']} {V.LOTTERY_ITEM['name']}", "id": V.LOTTERY_ITEM_ID}
-    vp.pop("_uid", None)
+            cursor += V.GACHA_EPIC_ITEM_RATE
+            if r < cursor:
+                result = _give_land_item(vp, uid, GACHA_EPIC_ITEM_POOL, "item_epic")
+            else:
+                cursor += V.GACHA_RARE_ITEM_RATE
+                if r < cursor:
+                    result = _give_land_item(vp, uid, GACHA_RARE_ITEM_POOL, "item_rare")
+                else:
+                    cursor += V.GACHA_UNCOMMON_ITEM_RATE
+                    if r < cursor:
+                        result = _give_land_item(vp, uid, GACHA_UNCOMMON_ITEM_POOL, "item_uncommon")
+                    else:
+                        cursor += V.GACHA_FOOD_RATE
+                        if r < cursor:
+                            result = _give_food_or_bandage(vp, uid)
+                        else:
+                            vp["lottery_tickets"] = vp.get("lottery_tickets", 0) + 1
+                            db.add_zukan(uid, "item_seen", V.LOTTERY_ITEM_ID)
+                            result = {"kind": "lottery", "text": f"{V.LOTTERY_ITEM['emoji']} {V.LOTTERY_ITEM['name']}", "id": V.LOTTERY_ITEM_ID}
     db.save_voyage(uid, vp)
     return result
 
 def build_skill_gacha_embed(uid: str, gid: str):
     bal = db.get_balance(uid, gid)
+    vp = db.get_voyage(uid)
+    medals = vp.get("gacha_medals", 0)
     e = discord.Embed(
         title="🎰 技ガチャ屋 ── 深淵スキルカプセル",
         description=(
             "店主が黒い箱を撫でる。中から、金属音とも心音ともつかない音。\n\n"
             f"**1回** {V.GACHA_PRICE:,} コイン / **10連** {V.GACHA_TEN_PRICE:,} コイン\n"
+            f"🎖️ **ガチャメダル**：1回につき +{V.GACHA_MEDAL_PER_PULL}枚\n\n"
             "🌈 **☆3技**：0.2%\n"
-            "🐾 **ペット**：0.1%（特殊アイテム入り／図鑑登録）\n"
-            "🍖 ハズレ枠：食事10% / 残り宝くじ\n\n"
-            f"現在残高：**{bal:,}** ナトコイン"
+            "🐾 **ペット**：0.1%\n"
+            "🟣 **幻の街道アイテム**：0.1%（身代わり人形 / 守護の羽）\n"
+            "🔵 **レア街道アイテム**：2.2%（煙玉 / お守り / 地図）\n"
+            "🟢 **探索アイテム**：4.0%（ランタン / 羅針盤）\n"
+            "⚪ **食料・包帯**：45.0%\n"
+            "🎟️ **宝くじ**：残り\n\n"
+            f"現在残高：**{bal:,}** ナトコイン\n"
+            f"所持メダル：🎖️ **{medals:,}枚**\n"
+            f"☆3交換まで：**{max(0, V.GACHA_SKILL3_EXCHANGE_MEDALS-medals):,}枚** / ペット交換まで：**{max(0, V.GACHA_PET_EXCHANGE_MEDALS-medals):,}枚**"
         ),
         color=0x8e44ad,
     )
-    e.set_footer(text="※演出は長め。焦らされるために作られた箱です。")
+    e.set_footer(text="※メダル交換：好きな☆3技=200枚 / 好きなペット=400枚")
     return e
 
 class SkillGachaView(discord.ui.View):
@@ -2759,6 +2804,7 @@ class SkillGachaView(discord.ui.View):
         if db.get_balance(self.user_id, self.gid) < price:
             await it.response.send_message(f"❌ コインが足りない（必要 {price:,}）", ephemeral=True); return
         db.update_balance(self.user_id, self.gid, -price)
+        medals_now = _add_gacha_medals(self.user_id, count)
         e = discord.Embed(title="🎰 技ガチャ 起動", description="🔒 ロック解除中……\n▓▓░░░░░░░░", color=0x2c3e50)
         await it.response.edit_message(embed=e, view=None)
         await asyncio.sleep(1.2)
@@ -2769,19 +2815,26 @@ class SkillGachaView(discord.ui.View):
         await it.edit_original_response(embed=e)
         await asyncio.sleep(1.6)
         results = [_roll_skill_gacha(self.user_id) for _ in range(count)]
-        hot = [r for r in results if r["kind"] in ("skill3", "pet")]
+        hot = [r for r in results if r["kind"] in ("skill3", "pet", "item_epic")]
         if hot:
             flash = discord.Embed(title="🔥🔥🔥 激熱演出 🔥🔥🔥", description="画面が白く焼ける。\n鐘が鳴る。\n**これは、ただのハズレではない。**", color=0xff3b30)
             await it.edit_original_response(embed=flash)
             await asyncio.sleep(2.0)
-        lines = []
-        for r in results:
-            prefix = "🌈 **大当たり**" if r["kind"] == "skill3" else ("🐾 **ペット降臨**" if r["kind"] == "pet" else "・")
-            lines.append(f"{prefix} {r['text']}")
-        color = 0xffd700 if any(r["kind"] == "skill3" for r in results) else (0xff7f50 if hot else 0x7f8c8d)
+        labels = {
+            "skill3": "🌈 **大当たり**",
+            "pet": "🐾 **ペット降臨**",
+            "item_epic": "🟣 **幻影反応**",
+            "item_rare": "🔵 **レア**",
+            "item_uncommon": "🟢 **小当たり**",
+            "food": "⚪",
+            "item_common": "⚪",
+            "lottery": "・",
+        }
+        lines = [f"{labels.get(r['kind'], '・')} {r['text']}" for r in results]
+        color = 0xffd700 if any(r["kind"] == "skill3" for r in results) else (0xff3b30 if hot else 0x7f8c8d)
         title = "🎉 技ガチャ 結果" if hot else "🎰 技ガチャ 結果"
         e = discord.Embed(title=title, description="\n".join(lines), color=color)
-        e.set_footer(text=f"-{price:,} コイン / 残高 {db.get_balance(self.user_id, self.gid):,}")
+        e.set_footer(text=f"🎖️メダル +{count} → {medals_now:,}枚 / -{price:,} コイン / 残高 {db.get_balance(self.user_id, self.gid):,}")
         await it.edit_original_response(embed=e, view=SkillGachaView(self.user_id, self.gid))
     @discord.ui.button(label="1回まわす（10,000）", style=discord.ButtonStyle.primary, row=0)
     async def once(self, it, b):
@@ -2789,15 +2842,91 @@ class SkillGachaView(discord.ui.View):
     @discord.ui.button(label="10連まわす（90,000）", style=discord.ButtonStyle.danger, row=0)
     async def ten(self, it, b):
         await self._spin(it, 10)
-    @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🏅 メダル交換所", style=discord.ButtonStyle.success, row=1)
+    async def exchange(self, it, b):
+        if not await self.guard(it): return
+        await it.response.edit_message(embed=build_gacha_exchange_embed(self.user_id), view=GachaExchangeView(self.user_id, self.gid))
+    @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.secondary, row=2)
     async def inv(self, it, b):
         if not await self.guard(it): return
         await open_inventory(it, self.user_id, back="town")
-    @discord.ui.button(label="◀ タウンへ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="◀ タウンへ", style=discord.ButtonStyle.secondary, row=2)
     async def back(self, it, b):
         if not await self.guard(it): return
         from cogs.menu import go_town
         await go_town(it, self.user_id)
+
+def build_gacha_exchange_embed(uid: str):
+    vp = db.get_voyage(uid)
+    medals = vp.get("gacha_medals", 0)
+    return discord.Embed(
+        title="🏅 ガチャメダル交換所",
+        description=(
+            f"所持メダル：🎖️ **{medals:,}枚**\n\n"
+            f"🌈 好きな☆3技：**{V.GACHA_SKILL3_EXCHANGE_MEDALS}枚**\n"
+            f"🐾 好きなペット：**{V.GACHA_PET_EXCHANGE_MEDALS}枚**\n\n"
+            "運に見放されても、箱は少しずつこちらを覚えていく。"
+        ),
+        color=0xf1c40f,
+    )
+
+class SkillExchangeSelect(discord.ui.Select):
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        opts = []
+        for sid in _gacha_skill3_pool()[:25]:
+            sk = VS.SKILLS[sid]
+            opts.append(discord.SelectOption(label=sk["name"][:100], value=sid, emoji=sk.get("emoji", "🌈"), description="☆3技 200枚"))
+        super().__init__(placeholder="🌈 交換する☆3技を選ぶ（200枚）", min_values=1, max_values=1, options=opts, row=0)
+    async def callback(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの交換所ではありません", ephemeral=True); return
+        vp = db.get_voyage(self.uid)
+        if vp.get("gacha_medals", 0) < V.GACHA_SKILL3_EXCHANGE_MEDALS:
+            await it.response.send_message(f"🎖️ メダルが足りない（必要 {V.GACHA_SKILL3_EXCHANGE_MEDALS}枚）", ephemeral=True); return
+        sid = self.values[0]
+        vp["gacha_medals"] -= V.GACHA_SKILL3_EXCHANGE_MEDALS
+        vp.setdefault("learned_skills", {})[sid] = vp.setdefault("learned_skills", {}).get(sid, 0) + 1
+        db.save_voyage(self.uid, vp)
+        db.add_zukan(self.uid, "skill_seen", sid)
+        sk = VS.SKILLS[sid]
+        await it.response.edit_message(embed=build_gacha_exchange_embed(self.uid), view=GachaExchangeView(self.uid, self.gid))
+        await it.followup.send(f"🌈 **{sk['emoji']} {sk['name']}** と交換した！（🎖️-{V.GACHA_SKILL3_EXCHANGE_MEDALS}）", ephemeral=True)
+
+class PetExchangeSelect(discord.ui.Select):
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        opts = [discord.SelectOption(label=p["name"], value=pid, emoji=p.get("emoji", "🐾"), description="ペット 400枚") for pid, p in V.PETS.items()]
+        super().__init__(placeholder="🐾 交換するペットを選ぶ（400枚）", min_values=1, max_values=1, options=opts, row=1)
+    async def callback(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの交換所ではありません", ephemeral=True); return
+        vp = db.get_voyage(self.uid)
+        if vp.get("gacha_medals", 0) < V.GACHA_PET_EXCHANGE_MEDALS:
+            await it.response.send_message(f"🎖️ メダルが足りない（必要 {V.GACHA_PET_EXCHANGE_MEDALS}枚）", ephemeral=True); return
+        pid = self.values[0]
+        vp["gacha_medals"] -= V.GACHA_PET_EXCHANGE_MEDALS
+        vp.setdefault("special_items", []).append(pid)
+        db.save_voyage(self.uid, vp)
+        db.add_zukan(self.uid, "item_seen", pid)
+        pet = V.PETS[pid]
+        await it.response.edit_message(embed=build_gacha_exchange_embed(self.uid), view=GachaExchangeView(self.uid, self.gid))
+        await it.followup.send(f"🐾 **{pet['emoji']} {pet['name']}** と交換した！（🎖️-{V.GACHA_PET_EXCHANGE_MEDALS}）", ephemeral=True)
+
+class GachaExchangeView(discord.ui.View):
+    def __init__(self, uid, gid):
+        super().__init__(timeout=900)
+        self.uid = str(uid); self.gid = str(gid)
+        self.add_item(SkillExchangeSelect(uid, gid))
+        self.add_item(PetExchangeSelect(uid, gid))
+    async def guard(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの交換所ではありません", ephemeral=True); return False
+        return True
+    @discord.ui.button(label="◀ ガチャ屋へ", style=discord.ButtonStyle.secondary, row=2)
+    async def back(self, it, b):
+        if not await self.guard(it): return
+        await it.response.edit_message(embed=build_skill_gacha_embed(self.uid, self.gid), view=SkillGachaView(self.uid, self.gid))
 
 async def open_skill_gacha(interaction, user_id=None):
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)

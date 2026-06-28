@@ -922,6 +922,7 @@ class Database:
             "level": 1, "xp": 0, "cur_hp": 100,
             "learned_skills": {},
             "unequip_kits": 0,
+            "gacha_medals": 0,         # 🎖️ 技ガチャ1回につき1枚。交換所で☆3技/ペットと交換
             "lottery_tickets": 0,      # 🎟️ 技ガチャのハズレ枠などで入手。所持品から使用
             "special_items": [],       # 全損しても持ち帰れる特殊アイテム（救済枠）
             "shards": 0,               # 🧭 羅針盤のカケラ（特殊ポーチ・永続・全損でもロストしない・航海をまたいで蓄積）
