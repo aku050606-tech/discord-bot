@@ -2134,6 +2134,9 @@ class SkillBuySelect(discord.ui.Select):
         self.user_id = str(user_id); self.gid = str(gid)
         opts = []
         for sid, s in VS.SKILLS.items():
+            # ☆3技はガチャ/メダル交換限定。装備屋では販売しない。
+            if int(s.get("rank", 1)) >= 3:
+                continue
             if s["slot"] == "weapon":
                 tags = "・".join(V.WEAPON_TYPES[w]["name"] for w in s["wtypes"])
             elif s["slot"] == "armor":

@@ -1,7 +1,7 @@
 """
 🛤️ 街道（陸の冒険）── 海の白兵戦エンジンを流用したレベル上げの場
 探索 → 敵(白兵戦)/陸ストーリー/採取/平穏。
-・HPは持ち越し（毎戦は回復しない）。タウンに戻れば全快、道中は🍖食料で回復。
+・HPは持ち越し（毎戦は回復しない）。タウンに戻っても全快しない。回復は🏠家/🍖食料で行う。
 ・敵の攻撃は低め＝あまり食らわない。きついのは「装備が足りない」とき。
 ・XPは一旦“海レンジ（数十）”。大きく稼ぐのはレアキャラで後から調整。
 ※ 今は管理者のみ解放（menu.py の街道ボタンでゲート）。
@@ -253,7 +253,7 @@ def build_land_home_embed(vp):
         else:
             rows.append(f"🔒 {a['emoji']} {a['name']}（Lv{a['req_lv']}で解放）")
     e.add_field(name="🗺️ 行き先", value="\n".join(rows), inline=False)
-    e.set_footer(text="HPは持ち越し。タウンに戻れば全快／道中は🍖食料で回復")
+    e.set_footer(text="HPは持ち越し。タウン帰還では回復しない／🏠家・🍖食料で回復")
     return e
 
 
@@ -350,10 +350,11 @@ async def open_land(interaction, user_id=None):
 
 
 async def _back_to_town(interaction, uid):
-    """陸→タウン：収穫を確定（コイン入金）→全快→タウンへ。"""
+    """陸→タウン：収穫を確定（コイン入金）してタウンへ。HPは回復しない。"""
     vp = db.get_voyage(uid)
     _run_settle_town(uid, str(interaction.guild.id), vp)
-    vp["cur_hp"] = max_hp(vp)
+    # タウン帰還ではHPを全快させない。回復は🏠家（CD5分）または食料で行う。
+    vp["cur_hp"] = max(1, min(_cur_hp(vp), max_hp(vp)))
     db.save_voyage(uid, vp)
     from cogs.menu import go_town
     await go_town(interaction, uid)
