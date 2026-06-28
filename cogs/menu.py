@@ -312,8 +312,8 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
         value=(
             "🎣　**釣り**　　　── 湖・川・海で大物を狙う\n"
             "⚓　**さびれた港**── 船で大海原へ。航海・白兵戦・財宝\n"
-            "🛒　**商店街**　　── 船・道具・装備・ガチャ\n"
-            "🏛️　**ギルド**　　── 討伐クエストで稼ぐ\n"
+            "🛒　**商店街**　　── 船・道具・装備・ガチャ（準備中）\n"
+            "🏛️　**ギルド**　　── 討伐クエストで稼ぐ（準備中）\n"
             "🛤️　**街道**　　　── 平原・森・山を徒歩で冒険\n"
             "🃏　**カジノ**　　── スロット＆テーブルで一攫千金\n"
             "📱　**スマホ**　　── 銀行・デイリー・クエスト・募集\n"
@@ -373,6 +373,9 @@ class MainMenuView(discord.ui.View):
     @discord.ui.button(label="⚔️ 装備屋", style=discord.ButtonStyle.secondary, row=1)
     async def equip_shop(self, interaction, button):
         if not await self._check(interaction): return
+        if str(interaction.user.id) not in ADMIN_USER_IDS:
+            await _coming_soon(interaction, "装備屋")
+            return
         from cogs.voyage import open_equip_shop
         await open_equip_shop(interaction, str(interaction.user.id))
 
@@ -391,8 +394,6 @@ class MainMenuView(discord.ui.View):
     @discord.ui.button(label="🛤️ 街道", style=discord.ButtonStyle.secondary, row=2)
     async def road(self, interaction, button):
         if not await self._check(interaction): return
-        if str(interaction.user.id) not in ADMIN_USER_IDS:
-            await _coming_soon(interaction, "街道"); return
         from cogs.land import open_land
         await open_land(interaction, str(interaction.user.id))
 
