@@ -1058,15 +1058,14 @@ class SailButton(discord.ui.Button):
 
 class ShopButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="🏪 ショップ", style=discord.ButtonStyle.secondary)
+        super().__init__(label="🏪 船装備ショップ", style=discord.ButtonStyle.secondary)
     async def callback(self, interaction):
         view: PortView = self.view
         if str(interaction.user.id) != view.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        await interaction.response.send_message(
-            embed=discord.Embed(title="🏪 ショップ ── 準備中",
-                                description="船・装備の品揃えは近日オープン予定。お楽しみに！",
-                                color=0x7F8C8D), ephemeral=True)
+        await interaction.response.edit_message(
+            embed=build_shop_embed(db.get_voyage(view.user_id)),
+            view=ShopView(view.user_id, view.gid))
 
 class RepairButton(discord.ui.Button):
     def __init__(self):
@@ -2519,23 +2518,33 @@ class InvBackButton(discord.ui.Button):
             from cogs.menu import go_town
             await go_town(it, self.user_id)
 
+async def _replace_or_send(interaction, *, embed, view=None, ephemeral=False):
+    """ボタン操作なら既存メッセージを編集。slash等で編集できない時だけ新規送信。"""
+    if interaction.response.is_done():
+        try:
+            await interaction.edit_original_response(embed=embed, view=view)
+        except Exception:
+            await interaction.followup.send(embed=embed, view=view, ephemeral=ephemeral)
+        return
+    try:
+        await interaction.response.edit_message(embed=embed, view=view)
+    except Exception:
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=ephemeral)
+
 async def open_inventory(interaction, user_id=None, back="town"):
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
     vp = db.get_voyage(uid)
-    embed = build_inv_embed(vp, "equip"); view = InventoryView(uid, gid, "equip", back)
-    if interaction.response.is_done():
-        await interaction.followup.send(embed=embed, view=view)
-    else:
-        await interaction.response.send_message(embed=embed, view=view)
+    await _replace_or_send(interaction, embed=build_inv_embed(vp, "equip"), view=InventoryView(uid, gid, "equip", back))
 
 async def open_equip_shop(interaction, user_id=None):
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
     vp = db.get_voyage(uid)
-    embed = build_equipshop_embed(vp, uid, gid); view = EquipShopView(uid, gid)
-    if interaction.response.is_done():
-        await interaction.followup.send(embed=embed, view=view)
-    else:
-        await interaction.response.send_message(embed=embed, view=view)
+    await _replace_or_send(interaction, embed=build_equipshop_embed(vp, uid, gid), view=EquipShopView(uid, gid))
+
+async def open_item_shop(interaction, user_id=None):
+    uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
+    vp = db.get_voyage(uid)
+    await _replace_or_send(interaction, embed=build_foodshop_embed(vp, uid, gid), view=FoodShopView(uid, gid))
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 🎰 技ガチャ屋
@@ -2656,10 +2665,7 @@ class SkillGachaView(discord.ui.View):
 
 async def open_skill_gacha(interaction, user_id=None):
     uid = str(user_id or interaction.user.id); gid = str(interaction.guild.id)
-    if interaction.response.is_done():
-        await interaction.followup.send(embed=build_skill_gacha_embed(uid, gid), view=SkillGachaView(uid, gid))
-    else:
-        await interaction.response.send_message(embed=build_skill_gacha_embed(uid, gid), view=SkillGachaView(uid, gid))
+    await _replace_or_send(interaction, embed=build_skill_gacha_embed(uid, gid), view=SkillGachaView(uid, gid))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ⚔️ 戦闘UI（CombatView）── エンジン voyage_combat を Discord で操作
