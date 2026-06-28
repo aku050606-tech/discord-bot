@@ -671,6 +671,11 @@ def pick_random_event(area):
 
 
 def pick_story(area):
+    # 🟣 観測者シリーズ：メインのstory出現率は変えず、story枠の中で低確率差し込み。
+    # 敵遭遇率・ホットイベント率・ドロップ率には触れない。
+    obs = OBSERVER_STORY_EVENTS.get(area, []) if "OBSERVER_STORY_EVENTS" in globals() else []
+    if obs and random.random() < OBSERVER_STORY_RATE:
+        return random.choice(obs)
     pool = LAND_STORY.get(area, [])
     return random.choice(pool) if pool else None
 
