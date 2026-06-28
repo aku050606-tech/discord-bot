@@ -70,19 +70,50 @@ def _run(vp):
 def _run_add_coin(vp, amount):
     _run(vp)["coin"] += int(amount)
 
+def _roll_star_from_distribution(distribution):
+    stars = [int(x[0]) for x in distribution]
+    weights = [float(x[1]) for x in distribution]
+    return random.choices(stars, weights=weights)[0]
+
+def _drop_rarity_text(star):
+    if star >= 3:
+        return "## 🌈 眩い光が辺りを包む……！"
+    if star == 2:
+        return "## ✨ 光る装備を発見！"
+    return "## 🎁 何かを見つけた"
+
 def _run_add_drop(uid, vp, area, spec=None):
     """装備ドロップ抽選（当たれば付与＆収穫に記録）。戻り＝表示名 or None。
-    中レアは spec['drop_table'] を使う／雑魚は LAND_EQUIP_DROP（0.1%）。"""
+
+    形式は2種類対応：
+      (star, rate)                        … 旧式。rateでstar装備。
+      ("dist", rate, [(star, weight), ...]) … 新式。rateで装備ドロップ後、星を重み抽選。
+
+    現行方針：
+      雑魚    0.1% → ☆1 99% / ☆2 1% / ☆3以上0%
+      中ボス  3.0% → ☆1 70% / ☆2 29% / ☆3 1%
+      大ボス 20.0% → ☆2 95% / ☆3 5%
+    """
     table = (spec or {}).get("drop_table") or L.LAND_EQUIP_DROP.get(area, [])
-    for star, rate in table:
-        if random.random() < rate:
-            part, ikey, label = _pick_equip(star)
-            if not ikey:
-                return None
-            vp.setdefault("inventory", {}).setdefault(part, []).append({"item": ikey, "skills": []})
-            db.add_zukan(uid, "equip_seen", ikey)
-            _run(vp)["drops"].append({"part": part, "item": ikey, "label": label})
-            return f"{label}（★{star}）"
+    for entry in table:
+        if not entry:
+            continue
+        if entry[0] == "dist":
+            _, rate, distribution = entry
+            if random.random() >= float(rate):
+                continue
+            star = _roll_star_from_distribution(distribution)
+        else:
+            star, rate = entry
+            if random.random() >= float(rate):
+                continue
+        part, ikey, label = _pick_equip(int(star))
+        if not ikey:
+            return None
+        vp.setdefault("inventory", {}).setdefault(part, []).append({"item": ikey, "skills": []})
+        db.add_zukan(uid, "equip_seen", ikey)
+        _run(vp)["drops"].append({"part": part, "item": ikey, "label": label, "star": int(star)})
+        return f"{_drop_rarity_text(int(star))}\n{label}（★{int(star)}）"
     return None
 
 def _pick_equip(star):
