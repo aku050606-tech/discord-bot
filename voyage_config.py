@@ -35,7 +35,7 @@ SEAS = {
     "ancient": {"name":"🏛️ 古代の海", "val_mult":6.5, "danger":3.4, "unlock_hull":4, "fuel":16000,
                 "flavor":"地図にない太古の海。理を超えた財宝と、それを守る者たち。"},
 }
-SEA_ORDER = ["ocean", "ice", "fire", "ancient"]
+SEA_ORDER = ["ocean", "ancient"]  # ice/fire are hidden until implemented
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 1回の「進む」で起きるエンカウント（重み％・合計100）

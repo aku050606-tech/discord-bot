@@ -304,6 +304,27 @@ def apply_event_effects(vp, effects, vm=1.0):
                 extra.append(f"🧭 カケラ {got}/{V.SHARD_NEEDED} ✨ **最深部への道が開いた！**")
             else:
                 extra.append(f"🧭 カケラ {got}/{V.SHARD_NEEDED}")
+    # ⚒️ 選択肢イベント専用の素材入手機会。
+    # 通常探索・敵ドロップ・発見系の全体供給率は触らず、
+    # 「選択した時だけ素材が混じる」体感を増やすための別枠。
+    craft = effects.get("craft")
+    if craft and hasattr(V, "roll_craft_material"):
+        area = int((v or {}).get("area", 1) or 1)
+        chance = float(craft.get("chance", 1.0))
+        rolls = int(craft.get("rolls", 1))
+        bonus = float(craft.get("bonus", 1.0))
+        amount = craft.get("amount", 1)
+        got_lines = []
+        for _ in range(max(0, rolls)):
+            if random.random() <= chance:
+                cmid = V.roll_craft_material("voyage", area, bonus=bonus)
+                if cmid:
+                    n = random.randint(int(amount[0]), int(amount[1])) if isinstance(amount, (list, tuple)) else int(amount)
+                    got = _add_craft_material(None, vp, cmid, n)
+                    if got:
+                        got_lines.append(got + (f" ×{n}" if n > 1 else ""))
+        if got_lines:
+            extra.append("⚒️ " + " / ".join(got_lines))
     txt = "\n".join(parts)
     if extra:
         txt += "\n\n" + "　".join(extra)
@@ -361,6 +382,16 @@ def roll_explore(vp):
     vm = s["val_mult"] * amult            # 報酬は海×エリア
     scale = s["danger"] * amult           # 敵強さ/危険度は海×エリア
     v["explores"] = v.get("explores", 0) + 1
+    buffs = vp.setdefault("voyage_buffs", {})
+    active_lucky = buffs.get("lucky_charm", 0) > 0
+    active_map = buffs.get("old_map", 0) > 0
+    active_lantern = buffs.get("lantern", 0) > 0
+    active_gold = buffs.get("gold_compass", 0) > 0
+    for _bk in ("lucky_charm", "old_map", "lantern", "gold_compass"):
+        if buffs.get(_bk, 0) > 0:
+            buffs[_bk] -= 1
+            if buffs[_bk] <= 0:
+                del buffs[_bk]
     for part in ("cannon", "armor"):
         inst = vp["ship_parts"].get(part)
         if inst:
@@ -371,6 +402,7 @@ def roll_explore(vp):
     if "treasure_lead" in flags:
         flags.remove("treasure_lead")
         val = _scaled(V.ISLAND_TREASURE, vm)
+        if active_gold: val = int(val * 1.6)
         return ("discover", {
             "kind": "island", "emoji": "🗺️", "title": "地図の×印",
             "flavor": "海図の×印の場所に着いた。波の下に、何かが沈んでいる――潜ってみるか？",
@@ -384,7 +416,18 @@ def roll_explore(vp):
     #   イベント(choice/auto)を1つのプールにまとめて1回で抽選。
     base = V.AREA_ENCOUNTERS[area]
     pool_keys = list(base.keys()); pool_wts = list(base.values())
+    for i, k in enumerate(pool_keys):
+        if active_lantern and k == "calm":
+            pool_wts[i] = max(0.1, pool_wts[i] * 0.25)
+        if active_lucky and k in ("fish", "island", "maelstrom", "abyss", "boss"):
+            pool_wts[i] *= 1.35
+        if active_map and k in ("island", "maelstrom", "abyss"):
+            pool_wts[i] *= 1.6
     for eid, w in VE.events_for_area(area):
+        if active_map:
+            w *= 1.8
+        if active_lucky:
+            w *= 1.15
         pool_keys.append(eid); pool_wts.append(w)
     enc = random.choices(pool_keys, weights=pool_wts)[0]
     BUILTIN = {"calm", "fish", "island", "maelstrom", "abyss", "boss", "pirate"}
@@ -397,6 +440,7 @@ def roll_explore(vp):
     if enc == "island":
         got = random.random() < V.ISLAND_TREASURE_RATE
         val = _scaled(V.ISLAND_TREASURE, vm) if got else 0
+        if active_gold and val: val = int(val * 1.6)
         return ("discover", {
             "kind": "island", "emoji": "🏝️", "title": "無人島",
             "flavor": "水平線に、ぽつんと無人島が見えてきた。寄ってみるか？",
@@ -408,6 +452,7 @@ def roll_explore(vp):
         })
     if enc == "maelstrom":
         val = _scaled(V.MAELSTROM_REWARD, vm)
+        if active_gold: val = int(val * 1.6)
         return ("discover", {
             "kind": "maelstrom", "emoji": "🌀", "title": "渦潮",
             "flavor": "前方に渦潮。中心に、何か漂流物が巻かれて光っている…突っ込むか？",
@@ -418,6 +463,7 @@ def roll_explore(vp):
         })
     if enc == "abyss":
         val = _scaled(V.ABYSS_TREASURE, vm)
+        if active_gold: val = int(val * 1.6)
         return ("discover", {
             "kind": "abyss", "emoji": "🕳️", "title": "光る海淵",
             "flavor": "海面の下に、ぼんやりと光る深い淵。何かが沈んでいる気配がする…覗くか？",
@@ -432,6 +478,11 @@ def roll_explore(vp):
             spec = dict(V.AREA_BOSS[area]); spec["is_boss"] = True; spec["tier"] = V.BOSS_TIER.get(area, 4)
         return ("combat", spec, scale, vm, True)
     # pirate枠＝エリアの敵プールから抽選（海賊・海獣・アンデッド・軍船・激レア）
+    if vp.setdefault("voyage_buffs", {}).get("smoke_bomb", 0) > 0:
+        vp["voyage_buffs"]["smoke_bomb"] -= 1
+        if vp["voyage_buffs"]["smoke_bomb"] <= 0:
+            del vp["voyage_buffs"]["smoke_bomb"]
+        return ("text", "💨 煙玉の煙が海霧に紛れた。敵影をやり過ごした。")
     spec = V.pick_enemy(area)
     if spec is None:   # フォールバック（旧PIRATE_RANKS）
         spec = dict(random.choices(V.PIRATE_RANKS, weights=V.pirate_weights(sea, area))[0])
@@ -666,7 +717,7 @@ def build_port_embed(vp):
                       description="航海の準備を整えよう。出航で船倉を満たし、引き返して入金だ。")
     e.add_field(name="🚢 船 攻/防",
                 value=f"⚔️{ship_attack(vp)} 🛡️{ship_defense(vp)}", inline=True)
-    e.add_field(name="❤️ HP", value=f"{vp.get('cur_hp', max_hp(vp))}/{max_hp(vp)}", inline=True)
+    e.add_field(name="❤️ 個人HP", value=f"{vp.get('cur_hp', max_hp(vp))}/{max_hp(vp)}", inline=True)
     e.add_field(name="🗡️ 個人 戦闘力", value=f"**{personal_power(vp)}**", inline=True)
     e.add_field(name="📊 レベル",
                 value=f"Lv.**{vp['level']}**" + (f"（XP {vp['xp']}/{lv_need}）" if lv_need else "（MAX）"),
@@ -674,7 +725,7 @@ def build_port_embed(vp):
     # ⚖️ カルマ ＋ 🧭 特殊ポーチ（永続ステータス）
     pouch = f"🧭 {shards_of(vp)}/{V.SHARD_NEEDED}" if shards_of(vp) > 0 else "🧭 0"
     e.add_field(name="⚖️ カルマ", value=karma_badge(vp), inline=True)
-    e.add_field(name="🎒 特殊ポーチ", value=f"{pouch}（カケラ）", inline=True)
+    e.add_field(name="🎒 特殊ポーチ", value=f"{pouch}", inline=True)
     # ⛽ 燃料タンク（給油した分だけ航海で進める）
     maxf = ship_max_fuel(vp); tank = vp.get("fuel_tank", 0)
     e.add_field(name="⛽ 燃料タンク", value=f"{tank:,}/{maxf:,}", inline=True)
@@ -734,12 +785,13 @@ def build_voyage_embed(vp, last_msg=None, title=None, color=None, footer=None):
         tag = ""
         if sh >= V.SHARD_NEEDED:
             tag = "　✨ 最深部へ進める！"
-        e.add_field(name="🧭 カケラ（ポーチ）", value=f"{sh}/{V.SHARD_NEEDED}{tag}", inline=True)
+        # カケラ詳細はネタバレ防止のため航海中UIでは非表示
     # ⛽ 燃料タンク（残量/容量＋バー＋次コスト）
     mxf = ship_max_fuel(vp)
     fuel = v.get("fuel", mxf)
     ecost = V.explore_fuel_cost(area)
-    fuel_line = f"{fuel:,}/{mxf:,}\n{hp_bar(fuel, mxf, 10)}\n🔍探索 -{ecost:,}"
+    home_cost = _voyage_return_home_cost(area)
+    fuel_line = f"{fuel:,}/{mxf:,}\n{hp_bar(fuel, mxf, 10)}\n🔍探索 -{ecost:,}／🏠帰港目安 -{home_cost:,}"
     if area < V.AREA_MAX:
         fuel_line += f"／⛵移動 -{V.move_fuel_cost(area+1):,}"
     e.add_field(name="⛽ 燃料", value=fuel_line, inline=True)
@@ -755,6 +807,20 @@ def build_voyage_embed(vp, last_msg=None, title=None, color=None, footer=None):
     e.add_field(name="⚖️ カルマ", value=karma_badge(vp), inline=True)
     e.set_footer(text=footer or "🔍探索＝その場を探る／⛵進む＝奥のエリアへ(探索10回)／⚓引き返す＝1つ手前へ")
     return e
+
+def _voyage_return_step_cost(area: int) -> int:
+    """現在エリアから1段戻る/帰港するための燃料。"""
+    return V.explore_fuel_cost(max(1, int(area)))
+
+def _voyage_return_home_cost(area: int) -> int:
+    """現在エリアから港まで戻る総燃料。"""
+    return sum(_voyage_return_step_cost(a) for a in range(1, max(1, int(area)) + 1))
+
+def _reset_retreat_chain(vp):
+    v = (vp or {}).get("voyage") or {}
+    if v.get("retreat_chain"):
+        v["retreat_chain"] = 0
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # View: 母港ハブ
@@ -863,35 +929,59 @@ class RefuelButton(discord.ui.Button):
     async def callback(self, interaction):
         view = self.view
         if not await view.guard(interaction): return
-        vp = db.get_voyage(view.user_id)
-        if not vp.get("has_ship"):
-            await interaction.response.send_message("船がない", ephemeral=True); return
-        maxf = ship_max_fuel(vp); tank = vp.get("fuel_tank", 0)
-        need = maxf - tank
-        if need <= 0:
-            await interaction.response.send_message("⛽ タンクはもう満タンだ。", ephemeral=True); return
-        full_cost = int(need * V.FUEL_PRICE_PER)
-        bal = db.get_balance(view.user_id, view.gid)
-        if bal >= full_cost:
-            vp["fuel_tank"] = maxf
-            db.update_balance(view.user_id, view.gid, -full_cost)
-            db.save_voyage(view.user_id, vp)
-            emb, dv = _back_to_dock(view)
-            await interaction.response.edit_message(embed=emb, view=dv)
-            await interaction.followup.send(f"⛽ 満タンまで給油した（**-{full_cost:,}** ナトコイン）。", ephemeral=True)
-        else:
-            buyable = int(bal / V.FUEL_PRICE_PER)
-            if buyable <= 0:
-                await interaction.response.send_message(
-                    f"⛽ コインが足りない（満タンに **{full_cost:,}** 必要）。", ephemeral=True); return
-            cost = int(buyable * V.FUEL_PRICE_PER)
-            vp["fuel_tank"] = tank + buyable
-            db.update_balance(view.user_id, view.gid, -cost)
-            db.save_voyage(view.user_id, vp)
-            emb, dv = _back_to_dock(view)
-            await interaction.response.edit_message(embed=emb, view=dv)
-            await interaction.followup.send(
-                f"⛽ ありったけ給油した（{buyable:,} 補充・**-{cost:,}**）。満タンには届かなかった…", ephemeral=True)
+        await interaction.response.edit_message(embed=build_dock_embed(db.get_voyage(view.user_id), view.user_id, view.gid),
+                                                view=RefuelView(view.user_id, view.gid))
+
+class RefuelView(discord.ui.View):
+    def __init__(self, uid, gid):
+        super().__init__(timeout=900)
+        self.user_id=str(uid); self.gid=str(gid)
+        self.add_item(RefuelFullButton())
+        self.add_item(RefuelAmountSelect(uid, gid))
+        back=discord.ui.Button(label="◀ ドックへ戻る", style=discord.ButtonStyle.secondary, row=2)
+        async def _back(it):
+            if str(it.user.id)!=self.user_id:
+                await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+            await it.response.edit_message(embed=build_dock_embed(db.get_voyage(self.user_id), self.user_id, self.gid), view=DockView(self.user_id,self.gid))
+        back.callback=_back; self.add_item(back)
+    async def guard(self, interaction):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return False
+        return True
+
+class RefuelFullButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="⛽ 満タン", style=discord.ButtonStyle.success, row=0)
+    async def callback(self, it):
+        view=self.view
+        if not await view.guard(it): return
+        await _buy_fuel(it, view.user_id, view.gid, None)
+
+class RefuelAmountSelect(discord.ui.Select):
+    def __init__(self, uid, gid):
+        self.user_id=str(uid); self.gid=str(gid)
+        opts=[]
+        for amount in (1000,3000,5000,10000,20000):
+            opts.append(discord.SelectOption(label=f"{amount:,} 給油", value=str(amount), description=f"約 {int(amount*V.FUEL_PRICE_PER):,} コイン"))
+        super().__init__(placeholder="数字で給油量を選ぶ", options=opts, row=1)
+    async def callback(self, it):
+        if str(it.user.id)!=self.user_id:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        await _buy_fuel(it, self.user_id, self.gid, int(self.values[0]))
+
+async def _buy_fuel(interaction, uid, gid, amount):
+    vp=db.get_voyage(uid); maxf=ship_max_fuel(vp); tank=vp.get('fuel_tank',0)
+    need=max(0, maxf-tank)
+    if need<=0:
+        await interaction.response.send_message("⛽ タンクはもう満タンだ。", ephemeral=True); return
+    buy=need if amount is None else min(int(amount), need)
+    cost=int(buy*V.FUEL_PRICE_PER)
+    if db.get_balance(uid,gid)<cost:
+        await interaction.response.send_message(f"💰 コインが足りない（{cost:,} 必要）", ephemeral=True); return
+    vp['fuel_tank']=tank+buy
+    db.update_balance(uid,gid,-cost); db.save_voyage(uid,vp)
+    await interaction.response.edit_message(embed=build_dock_embed(vp,uid,gid), view=DockView(uid,gid))
+    await interaction.followup.send(f"⛽ {buy:,} 給油した（-{cost:,}）。", ephemeral=True)
 
 def build_foodshop_embed(vp, uid, gid):
     e = discord.Embed(title="🍖 ドックの食料品店", color=0xe67e22,
@@ -917,7 +1007,7 @@ class FoodShopView(discord.ui.View):
     def __init__(self, uid, gid):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid)
-        self.add_item(FoodBuySelect(uid, gid))
+        self.add_item(FoodItemSelect(uid, gid))
         back = discord.ui.Button(label="◀ ドックへ戻る", style=discord.ButtonStyle.secondary, row=2)
         async def _back(it):
             if str(it.user.id) != self.uid:
@@ -927,34 +1017,50 @@ class FoodShopView(discord.ui.View):
         back.callback = _back
         self.add_item(back)
 
-class FoodBuySelect(discord.ui.Select):
+class FoodItemSelect(discord.ui.Select):
     def __init__(self, uid, gid):
         self.uid = str(uid); self.gid = str(gid)
-        opts = []
+        opts=[]
         for fid, f in V.FOODS.items():
-            for q in FOOD_QTY_STEPS:
-                opts.append(discord.SelectOption(
-                    label=f"{f['name']} ×{q}", emoji=f["emoji"], value=f"{fid}:{q}",
-                    description=f"{f['price']*q:,}コイン・HP+{int(f['heal_pct']*100)}%"))
-        super().__init__(placeholder="買う食料を選ぶ（まとめ買いOK）", options=opts, row=0)
+            opts.append(discord.SelectOption(label=f"{f['name']} を選ぶ", emoji=f['emoji'], value=fid,
+                description=f"{f['price']:,}コイン/個・HP+{int(f['heal_pct']*100)}%"))
+        super().__init__(placeholder="買う食料を選ぶ", options=opts[:25], row=0)
     async def callback(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        fid, q = self.values[0].split(":"); q = int(q); f = V.FOODS[fid]
-        cost = f["price"] * q
-        bal = db.get_balance(self.uid, self.gid)
-        if bal < cost:
-            can = bal // f["price"]
-            if can <= 0:
-                await it.response.send_message(f"💰 コインが足りない（{f['price']:,} 必要）", ephemeral=True); return
-            q = can; cost = f["price"] * q
-        db.update_balance(self.uid, self.gid, -cost)
-        vp = db.get_voyage(self.uid)
-        vp.setdefault("foods", {}); vp["foods"][fid] = vp["foods"].get(fid, 0) + q
-        db.add_zukan(self.uid, "item_seen", fid)
-        db.save_voyage(self.uid, vp)
-        await it.response.edit_message(embed=build_foodshop_embed(vp, self.uid, self.gid),
-                                       view=FoodShopView(self.uid, self.gid))
+        await it.response.edit_message(embed=build_foodshop_embed(db.get_voyage(self.uid), self.uid, self.gid),
+                                       view=FoodQtyView(self.uid, self.gid, self.values[0]))
+
+class FoodQtyView(discord.ui.View):
+    def __init__(self, uid, gid, fid):
+        super().__init__(timeout=900)
+        self.uid=str(uid); self.gid=str(gid); self.fid=fid
+        self.add_item(FoodQtySelect(uid, gid, fid))
+        back=discord.ui.Button(label="◀ 食料を選び直す", style=discord.ButtonStyle.secondary, row=1)
+        async def _back(it):
+            if str(it.user.id)!=self.uid:
+                await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+            await it.response.edit_message(embed=build_foodshop_embed(db.get_voyage(self.uid), self.uid, self.gid), view=FoodShopView(self.uid,self.gid))
+        back.callback=_back; self.add_item(back)
+
+class FoodQtySelect(discord.ui.Select):
+    def __init__(self, uid, gid, fid):
+        self.uid=str(uid); self.gid=str(gid); self.fid=fid
+        f=V.FOODS[fid]
+        opts=[discord.SelectOption(label=f"×{q}", value=str(q), description=f"{f['price']*q:,}コイン") for q in FOOD_QTY_STEPS]
+        super().__init__(placeholder=f"{f['name']}の個数を選ぶ", options=opts[:25], row=0)
+    async def callback(self, it):
+        if str(it.user.id)!=self.uid:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        q=int(self.values[0]); f=V.FOODS[self.fid]; cost=f['price']*q
+        bal=db.get_balance(self.uid,self.gid)
+        if bal<cost:
+            await it.response.send_message(f"💰 コインが足りない（{cost:,} 必要）", ephemeral=True); return
+        db.update_balance(self.uid,self.gid,-cost)
+        vp=db.get_voyage(self.uid)
+        vp.setdefault('foods',{})[self.fid]=vp.setdefault('foods',{}).get(self.fid,0)+q
+        db.add_zukan(self.uid,'item_seen',self.fid); db.save_voyage(self.uid,vp)
+        await it.response.edit_message(embed=build_foodshop_embed(vp,self.uid,self.gid), view=FoodShopView(self.uid,self.gid))
         await it.followup.send(f"{f['emoji']} **{f['name']} ×{q}** を買った（-{cost:,}）。", ephemeral=True)
 
 # ━━━ 🎣 航海の釣り竿（ドックで購入・永久・船に付ける）━━━
@@ -1258,6 +1364,58 @@ class VoyageTheaterView(discord.ui.View):
         self.add_item(discord.ui.Button(label="🏕️ 停泊", style=discord.ButtonStyle.secondary, disabled=True, row=0))
         self.add_item(discord.ui.Button(label="⚓ 引き返す", style=discord.ButtonStyle.secondary, disabled=True, row=0))
 
+
+class VoyageItemSelect(discord.ui.Select):
+    """航海中にも使える探索アイテム。"""
+    def __init__(self, uid, gid):
+        self.uid=str(uid); self.gid=str(gid)
+        vp=db.get_voyage(uid); opts=[]
+        for iid,n in vp.get('land_items',{}).items():
+            if n>0 and iid in getattr(L,'LAND_ITEMS',{}):
+                it=L.LAND_ITEMS[iid]
+                opts.append(discord.SelectOption(label=f"{it['name']} ×{n}", emoji=it['emoji'], value=iid, description=it.get('desc','')[:90]))
+        if not opts:
+            opts=[discord.SelectOption(label="探索アイテムがない", value="__none__")]
+        super().__init__(placeholder="🧭 探索アイテムを使う", options=opts[:25], row=1)
+    async def callback(self, itx):
+        if str(itx.user.id)!=self.uid:
+            await itx.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        iid=self.values[0]; vp=db.get_voyage(self.uid)
+        if iid=='__none__' or vp.get('land_items',{}).get(iid,0)<=0:
+            await itx.response.send_message("使える探索アイテムがない。", ephemeral=True); return
+        meta=L.LAND_ITEMS.get(iid)
+        msg=""
+        if iid=='bandage':
+            mh=max_hp(vp); cur=vp.get('cur_hp', mh)
+            if cur>=mh:
+                await itx.response.send_message("❤️ HPは満タンだ。", ephemeral=True); return
+            before=cur; vp['cur_hp']=min(mh, cur+int(mh*0.25))
+            msg=f"🩹 **包帯** を巻いた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
+        elif iid=='smoke_bomb':
+            vp.setdefault('voyage_buffs',{})['smoke_bomb']=vp.setdefault('voyage_buffs',{}).get('smoke_bomb',0)+1
+            msg="💨 **煙玉** を構えた。次の通常戦闘を避けやすくなる。"
+        elif iid=='lucky_charm':
+            vp.setdefault('voyage_buffs',{})['lucky_charm']=vp.setdefault('voyage_buffs',{}).get('lucky_charm',0)+10
+            msg="🍀 **幸運のお守り** が淡く光った。10探索のあいだ、良い発見の気配が濃くなる。"
+        elif iid=='old_map':
+            vp.setdefault('voyage_buffs',{})['old_map']=vp.setdefault('voyage_buffs',{}).get('old_map',0)+10
+            msg="🗺️ **古びた地図** を広げた。10探索のあいだ、選択イベントや発見を拾いやすくなる。"
+        elif iid=='lantern':
+            vp.setdefault('voyage_buffs',{})['lantern']=vp.setdefault('voyage_buffs',{}).get('lantern',0)+20
+            msg="🔦 **探索ランタン** に火を入れた。20探索のあいだ、何もない海を避けやすくなる。"
+        elif iid=='gold_compass':
+            vp.setdefault('voyage_buffs',{})['gold_compass']=vp.setdefault('voyage_buffs',{}).get('gold_compass',0)+20
+            msg="🧭 **黄金の羅針盤** が震えた。20探索のあいだ、コイン収穫が大きく増える。"
+        elif iid in ('decoy_doll','guardian_feather'):
+            await itx.response.send_message("これは死亡時に効果を発揮する貴重品。今は使わない方がいい。", ephemeral=True); return
+        else:
+            await itx.response.send_message("そのアイテムはまだ使えない。", ephemeral=True); return
+        vp['land_items'][iid]-=1
+        if vp['land_items'][iid]<=0: del vp['land_items'][iid]
+        _reset_retreat_chain(vp)
+        db.save_voyage(self.uid, vp)
+        await itx.response.edit_message(embed=build_voyage_embed(vp, f"## 🧭 探索アイテム使用\n{msg}"), view=VoyageView(self.uid,self.gid))
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # View: 航海中
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1275,6 +1433,11 @@ class VoyageView(discord.ui.View):
             if getattr(child, "label", "") == "⛵ 進む":
                 if area_of(v) >= V.AREA_MAX or not can_advance(v, shards_of(_vp)):
                     child.disabled = True
+        try:
+            if any(n > 0 for n in _vp.get("land_items", {}).values()):
+                self.add_item(VoyageItemSelect(user_id, gid))
+        except Exception:
+            pass
 
     async def guard(self, interaction):
         if str(interaction.user.id) != self.user_id:
@@ -1297,12 +1460,19 @@ class VoyageView(discord.ui.View):
         if v["fuel"] < cost:
             await interaction.response.send_message(
                 f"⛽ 燃料が足りない（探索に {cost:,} 必要・残 {v['fuel']:,}）。引き返すしかない…", ephemeral=True); return
+        if (not v.get("fuel_warned")) and (v["fuel"] - cost < _voyage_return_home_cost(area)):
+            v["fuel_warned"] = True
+            db.save_voyage(uid, vp)
+            await interaction.response.send_message(
+                f"⚠️ 次に探索すると、現在燃料では帰港目安 **{_voyage_return_home_cost(area):,}** を下回る。もう一度探索を押すと進む。",
+                ephemeral=True); return
         if any_part_broken(vp):
             await interaction.response.send_message(
                 "🛠️ 装備が壊れた！引き返して修理を。", ephemeral=True); return
         if vp.get("cur_hp", 1) <= 0:
             await interaction.response.send_message(
                 "🛠️ 船体が大破している！引き返して修理を。", ephemeral=True); return
+        _reset_retreat_chain(vp)
         v["fuel"] -= cost   # ⛽ タンクから探索ぶん消費
         res = roll_explore(vp)
         db.save_voyage(uid, vp)   # 探索カウント／航海消耗／非戦闘の獲得を確定
@@ -1417,6 +1587,7 @@ class VoyageView(discord.ui.View):
         if v["fuel"] < mcost:
             await interaction.response.send_message(
                 f"⛽ 燃料が足りず先へ進めない（移動に {mcost:,} 必要・残 {v['fuel']:,}）。引き返すしかない…", ephemeral=True); return
+        _reset_retreat_chain(vp)
         v["fuel"] -= mcost
         v["area"] += 1; v["explores"] = 0
         nm = f"{V.AREA_EMOJI[v['area']]} {V.AREA_NAMES[v['area']]}"
@@ -1440,6 +1611,7 @@ class VoyageView(discord.ui.View):
         vp = db.get_voyage(uid)
         if not vp.get("voyage"):
             await interaction.response.edit_message(embed=build_port_embed(vp), view=PortView(uid, gid)); return
+        _reset_retreat_chain(vp); db.save_voyage(uid, vp)
         await interaction.response.edit_message(
             embed=build_stopover_embed(vp), view=StopoverView(uid, gid))
 
@@ -1451,35 +1623,49 @@ class VoyageView(discord.ui.View):
         v = vp.get("voyage")
         if not v:
             await interaction.response.edit_message(embed=build_port_embed(vp), view=PortView(uid, gid)); return
-        if area_of(v) > 1:
-            # 1つ手前のエリアへ。戻り先は探索済み扱い＝すぐ進める。
+        area = area_of(v)
+        step_cost = _voyage_return_step_cost(area)
+        if "fuel" not in v:
+            v["fuel"] = ship_max_fuel(vp)
+        chain = int(v.get("retreat_chain", 0)) + 1
+        v["retreat_chain"] = chain
+        db.save_voyage(uid, vp)
+        if chain < 3:
+            await interaction.response.edit_message(
+                embed=build_voyage_embed(vp, f"⚓ 引き返す準備中…… **{chain}/3**。あと **{3-chain}回** 続けて押すと1エリア戻る。\n※探索・進む・停泊など別行動をすると中断される。"),
+                view=VoyageView(uid, gid))
+            return
+        v["retreat_chain"] = 0
+        if v["fuel"] < step_cost:
+            db.save_voyage(uid, vp)
+            await interaction.response.send_message(f"⛽ 引き返す燃料が足りない（必要 {step_cost:,}・残 {v['fuel']:,}）。", ephemeral=True); return
+        v["fuel"] -= step_cost
+        if area > 1:
             v["area"] -= 1
             v["explores"] = V.EXPLORE_TO_ADVANCE
             db.save_voyage(uid, vp)
             nm = f"{V.AREA_EMOJI[v['area']]} {V.AREA_NAMES[v['area']]}"
             await interaction.response.edit_message(
-                embed=build_voyage_embed(vp, f"⚓ 1つ手前へ。**{nm}** に戻った。"),
+                embed=build_voyage_embed(vp, f"⚓ 進路を切り直し、燃料 **-{step_cost:,}**。**{nm}** に戻った。"),
                 view=VoyageView(uid, gid))
             return
-        # エリア1で引き返す＝帰港・入金
+        # エリア1で3回引き返す＝帰港・入金
         hold = v["hold"]
         if hold > 0:
             db.update_balance(uid, gid, hold)
-        vp["fuel_tank"] = v.get("fuel", 0)   # ⛽ 余った燃料はタンクに戻る（無駄にしない）
+        vp["fuel_tank"] = v.get("fuel", 0)
         vp["voyage"] = None
-        vp["cur_hp"] = max_hp(vp)   # 帰港で個人HP全快（修理代は装備耐久のみ）
-        vp["last_voyage_end"] = time.time()   # ⏳ 5分クールダウン開始
+        vp["cur_hp"] = max_hp(vp)
+        vp["last_voyage_end"] = time.time()
         db.save_voyage(uid, vp)
-        # 📣 1回の航海で10万コイン以上持ち帰ったら告知
         if hold >= 100000:
             try:
                 from cogs.bigwin import announce_big_win
                 await announce_big_win(interaction, interaction.user, "航海", hold)
             except Exception:
                 pass
-        e = discord.Embed(
-            title="⚓ 帰港",
-            description=f"航海を終えた。\n船倉の **{hold:,}** ナトコインを銀行に入金した！",
+        e = discord.Embed(title="⚓ 帰港",
+            description=f"航海を終えた。\n帰港燃料 **-{step_cost:,}**。\n船倉の **{hold:,}** ナトコインを銀行に入金した！",
             color=discord.Color.gold())
         rc = repair_cost(vp)
         if rc > 0:
@@ -2144,6 +2330,9 @@ class SkillBuySelect(discord.ui.Select):
             # ☆3技はガチャ/メダル交換限定。装備屋では販売しない。
             if int(s.get("rank", 1)) >= 3:
                 continue
+            # 装備屋の「技を買う」には個人用だけ表示。船技は港の船装備側で扱う。
+            if str(s.get("slot", "")).startswith("ship_"):
+                continue
             if s["slot"] == "weapon":
                 tags = "・".join(V.WEAPON_TYPES[w]["name"] for w in s["wtypes"])
             elif s["slot"] == "armor":
@@ -2316,7 +2505,7 @@ def build_inv_embed(vp, tab):
             if n > 0 and iid in getattr(L, "LAND_ITEMS", {}):
                 it = L.LAND_ITEMS[iid]
                 land_lines.append(f"{it['emoji']} {it['name']} ×{n}（{it.get('desc','')}）")
-        e.add_field(name="🛤️ 街道アイテム", value="\n".join(land_lines) if land_lines else "なし", inline=False)
+        e.add_field(name="🧭 探索アイテム", value="\n".join(land_lines) if land_lines else "なし", inline=False)
         lottery = vp.get("lottery_tickets", 0)
         special = vp.get("special_items", []) or []
         other_lines = [f"技外しキット ×{vp.get('unequip_kits',0)}", f"🎖️ ガチャメダル ×{vp.get('gacha_medals',0)}"]
@@ -3215,7 +3404,8 @@ def _add_craft_material(uid, vp, mat_id, n=1):
         return None
     vp.setdefault("materials", {})
     vp["materials"][mat_id] = vp["materials"].get(mat_id, 0) + int(n)
-    db.add_zukan(uid, "item_seen", mat_id)
+    if uid is not None:
+        db.add_zukan(uid, "item_seen", mat_id)
     m = V.MATERIALS[mat_id]
     return f"{m['emoji']} **{m['name']}**（素材）"
 
@@ -3891,7 +4081,7 @@ def build_item_zukan_embed(uid=None):
         land_lines.append(f"{it['emoji']} **{it['name']}**" if iid in seen else "❔ ？？？")
     if land_lines:
         got_land = len([iid for iid in getattr(L, "LAND_ITEMS", {}) if iid in seen])
-        emb.add_field(name=f"🛤️ 街道アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）", value="\n".join(land_lines), inline=False)
+        emb.add_field(name=f"🧭 探索アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）", value="\n".join(land_lines), inline=False)
     return emb
 
 class SimpleZukanView(discord.ui.View):
