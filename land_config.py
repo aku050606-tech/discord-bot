@@ -158,19 +158,19 @@ LAND_MIDRARES = {
          "xp": [20, 40], "coin": [1000, 2500], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
     ],
     2: [  # 🌲 森 ☆3
-        {"name": "森の主・大熊",   "emoji": "🐻", "ratio": 1.7, "hp_mult": 1.7, "atk_mult": 0.40, "tier": 2, "stars": 3,
+        {"name": "森の主・大熊",   "emoji": "🐻", "ratio": 2.2, "hp_mult": 1.7, "atk_mult": 0.40, "tier": 2, "stars": 3,
          "xp": [45, 85], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
-        {"name": "毒蜘蛛の女王",   "emoji": "🕷️", "ratio": 1.6, "hp_mult": 1.6, "atk_mult": 0.42, "tier": 2, "stars": 3,
+        {"name": "毒蜘蛛の女王",   "emoji": "🕷️", "ratio": 2.0, "hp_mult": 1.6, "atk_mult": 0.42, "tier": 2, "stars": 3,
          "xp": [45, 85], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
-        {"name": "山賊の頭目",     "emoji": "🗡️", "ratio": 1.7, "hp_mult": 1.5, "atk_mult": 0.44, "tier": 2, "stars": 3,
+        {"name": "山賊の頭目",     "emoji": "🗡️", "ratio": 2.1, "hp_mult": 1.5, "atk_mult": 0.44, "tier": 2, "stars": 3,
          "xp": [45, 85], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
     ],
     3: [  # ⛰️ 山 ☆3
-        {"name": "古竜のなりそこない", "emoji": "🐲", "ratio": 1.6, "hp_mult": 1.6, "atk_mult": 0.46, "tier": 3, "stars": 3,
+        {"name": "古竜のなりそこない", "emoji": "🐲", "ratio": 2.5, "hp_mult": 1.6, "atk_mult": 0.46, "tier": 3, "stars": 3,
          "xp": [90, 160], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
-        {"name": "石の巨人",       "emoji": "🗿", "ratio": 1.5, "hp_mult": 1.8, "atk_mult": 0.42, "tier": 3, "stars": 3,
+        {"name": "石の巨人",       "emoji": "🗿", "ratio": 2.2, "hp_mult": 1.8, "atk_mult": 0.42, "tier": 3, "stars": 3,
          "xp": [90, 160], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
-        {"name": "山の魔女",       "emoji": "🧙", "ratio": 1.6, "hp_mult": 1.5, "atk_mult": 0.48, "tier": 3, "stars": 3,
+        {"name": "山の魔女",       "emoji": "🧙", "ratio": 2.4, "hp_mult": 1.5, "atk_mult": 0.48, "tier": 3, "stars": 3,
          "xp": [90, 160], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
     ],
 }
@@ -624,6 +624,7 @@ def make_land_enemy(area, force=None, buffs=None):
             "drop_table": RARE_BOSS["drop"],
             "rare_xp": e.get("xp"), "rare_coin": e.get("coin"),
             "rare_story": e.get("story", ""), "rare_intro": e.get("rare_intro", ""),
+            "reward_ratio": e.get("ratio", 1.0),
         }
     # 🔸 中レア
     if (force in ("midrare", "hot_midrare") or (force is None and roll < rare_rate + mid_rate)) and LAND_MIDRARES.get(area):
@@ -637,6 +638,7 @@ def make_land_enemy(area, force=None, buffs=None):
             "mid_xp": e.get("xp"), "mid_coin": e.get("coin"),
             "drop_table": HOT_EVENT_EQUIP_DROP if force == "hot_midrare" else e.get("drop"),
             "hot_event_enemy": force == "hot_midrare",
+            "reward_ratio": e.get("ratio", 1.0),
         }
     # 通常の雑魚
     e = random.choice(LAND_ENEMIES[area])
@@ -649,6 +651,7 @@ def make_land_enemy(area, force=None, buffs=None):
         "stars": e.get("stars", 1),
         "is_boss": False,
         "is_rare": False,
+        "reward_ratio": e.get("ratio", 1.0),
     }
 
 

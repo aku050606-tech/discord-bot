@@ -51,10 +51,10 @@ def _pet_line(vp):
     if not counts:
         return "なし"
     parts = []
-    for pid in ("pet_dog", "pet_cat"):
-        if counts.get(pid, 0) > 0 and pid in V.PETS:
+    for pid, n in counts.items():
+        if n > 0 and pid in V.PETS:
             p = V.PETS[pid]
-            parts.append(f"{p['emoji']} {p['name']}" + (f"×{counts[pid]}" if counts[pid] > 1 else ""))
+            parts.append(f"{p['emoji']} {p['name']}" + (f"×{n}" if n > 1 else ""))
     return " / ".join(parts) if parts else "なし"
 
 def _has_dog_and_cat(vp):
@@ -62,21 +62,30 @@ def _has_dog_and_cat(vp):
     return counts.get("pet_dog", 0) > 0 and counts.get("pet_cat", 0) > 0
 
 def _apply_pet_explore_heal(uid, vp):
-    """探索開始ごとにカウント。犬＋猫所持なら2探索に1回、最大HPの3%回復。"""
-    if not _has_dog_and_cat(vp):
-        return None
-    step = int(vp.get("land_pet_steps", 0)) + 1
-    vp["land_pet_steps"] = step
-    if step % 2 != 0:
-        return None
+    """探索開始ごとのペット回復。ハムスターは毎回3%、犬＋猫は2探索に1回3%。"""
+    notes = []
+    counts = _pet_counts(vp)
     mh = max_hp(vp)
-    cur = _cur_hp(vp)
-    if cur >= mh:
-        return None
-    heal = max(1, int(mh * 0.03))
-    before = cur
-    vp["cur_hp"] = min(mh, cur + heal)
-    return f"🐾 犬と猫が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
+
+    if counts.get("pet_hamster", 0) > 0:
+        cur = _cur_hp(vp)
+        if cur < mh:
+            heal = max(1, int(mh * 0.03))
+            before = cur
+            vp["cur_hp"] = min(mh, cur + heal)
+            notes.append(f"🐹 ハムスターが癒してくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
+
+    if _has_dog_and_cat(vp):
+        step = int(vp.get("land_pet_steps", 0)) + 1
+        vp["land_pet_steps"] = step
+        if step % 2 == 0:
+            cur = _cur_hp(vp)
+            if cur < mh:
+                heal = max(1, int(mh * 0.03))
+                before = cur
+                vp["cur_hp"] = min(mh, cur + heal)
+                notes.append(f"🐾 犬と猫が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
+    return "\n".join(notes) if notes else None
 
 def _heal_full(uid):
     """タウン帰還で全快。"""
@@ -698,14 +707,11 @@ class LandAreaView(discord.ui.View):
         spec = spec or L.make_land_enemy(self.area)
         if spec.get("key"):
             db.add_zukan(self.uid, "enemy_seen", spec["key"])   # 📖 図鑑：遭遇を記録
-        if spec.get("is_rare"):
-            # ✨ 激レア＝戦闘前に「挑む／見送る」を選べる（基本は見送り推奨の強敵）
-            intro = spec.get("rare_intro") or "見慣れない“なにか”が、行く手に立っている。"
-            st = "★" * int(spec.get("stars", 4))
-            note = (f"## ✨ {spec['emoji']} {spec['name']} {st}\n\n{intro}\n\n"
-                    f"⚠️ **見るからに強い。生半可な装備では、まず勝てない。**")
+        if _needs_danger_land_event(spec):
+            # ★4以上＋固有強敵＝専用演出イベントを挟む。戦闘は「挑む」選択時だけ開始。
+            note = _land_danger_note(self.area, spec)
             await interaction.edit_original_response(
-                embed=build_area_embed(vp, self.area, note, LAND_COL_EVENT),
+                embed=build_area_embed(vp, self.area, note, LAND_COL_RARE),
                 view=RareEncounterView(self.uid, self.gid, self.area, spec))
             return
         # 雑魚＝強制戦闘（戦闘中の🏳️撤退は可能）
@@ -831,12 +837,87 @@ def _land_flee_cb(uid, gid, area):
     return _flee
 
 
+def _needs_danger_land_event(spec):
+    """★4以上の敵と、固有名つき中ボスは通常戦闘前に専用イベント化する。"""
+    try:
+        stars = int(spec.get("stars", 1))
+    except Exception:
+        stars = 1
+    if stars >= 4:
+        return True
+    # 依頼文の例に合わせ、山の固有強敵など☆3中レアも「危険演出」対象にする。
+    return bool(spec.get("is_midrare"))
+
+
+def _land_danger_note(area, spec):
+    name = spec.get("name", "敵")
+    emoji = spec.get("emoji", "⚠️")
+    st = "★" * int(spec.get("stars", 4))
+    rare_intro = spec.get("rare_intro")
+    texts = {
+        "迷い込んだ白鹿": (
+            "草原を渡る風が、急に音を失った。\n"
+            "白い鹿がこちらを見る。獣の目ではない。こちらの罪まで見透かすような、静かな瞳だ。\n"
+            "不用意に踏み込めば、草原そのものを敵に回す気がする。"),
+        "森番のフードの男": (
+            "木々のざわめきが、一本ずつ消えていく。\n"
+            "フードを目深にかぶった男が、道の真ん中に立っていた。弓は構えていない。だが、すでに射抜かれているような圧がある。\n"
+            "この先へ行くなら、森の許しを得る必要がある。力ずくでも、沈黙でも。"),
+        "塔の伝令騎士": (
+            "山道の石が、かすかに震えた。\n"
+            "塔の紋章を掲げた騎士が、霧の中から現れる。剣は抜かれていない。抜かせた時点で、もう戻れない。\n"
+            "彼は伝令だ。だが、伝える相手を生かして帰す気があるのかはわからない。"),
+        "古竜のなりそこない": (
+            "崖の一部だと思っていた岩肌が、ゆっくりと呼吸した。\n"
+            "割れた鱗の奥で、古い火がくすぶっている。竜になれなかったもの――それでも、人が触れていい存在ではない。\n"
+            "一歩進めば、山そのものが牙を剥く。"),
+        "石の巨人": (
+            "谷底から、石臼を引きずるような音が響く。\n"
+            "巨大な岩が立ち上がった。苔むした顔の奥で、古い怒りだけがまだ動いている。\n"
+            "近づくなら、踏み潰される覚悟がいる。"),
+        "山の魔女": (
+            "山霧が、甘い薬草の匂いに変わった。\n"
+            "枯れ木の杖をついた女が、笑っている。親切そうな声なのに、足元の影だけがこちらへ伸びてくる。\n"
+            "会話で済むか、呪いで終わるか。判断を間違えるな。"),
+        "森の主・大熊": (
+            "枝が折れる音が、やけに大きく響いた。\n"
+            "森の奥から、異様に大きな熊が姿を現す。逃げる獲物を見る目ではない。縄張りを侵した者への裁きだ。"),
+        "毒蜘蛛の女王": (
+            "木漏れ日が、白い糸に遮られている。\n"
+            "足元の草まで粘つき、頭上で巨大な影が揺れた。巣の中心から、毒蜘蛛の女王が降りてくる。"),
+        "山賊の頭目": (
+            "獣道の両側から、笑い声がした。\n"
+            "道を塞ぐ男は、ただの山賊ではない。背後の部下たちが、彼の一挙手一投足を待っている。"),
+    }
+    body = texts.get(name) or rare_intro or "空気が重く沈む。目の前の相手は、普段の獣や賊とは明らかに違う。"
+    return (f"## ⚠️ {emoji} {name} {st}\n\n{body}\n\n"
+            "**この先は非常に危険そうだ。どう動く？**")
+
+
+def _land_minor_reward(uid, vp, area):
+    roll = random.random()
+    if roll < 0.34:
+        coin = max(50, random.randint(*L.LAND_COIN_EVENT.get(area, [300, 1000])) // 4)
+        _run_add_coin(vp, coin)
+        return f"💰 慎重に動いたおかげで、足元の古い革袋を拾った。 **+{coin:,}**"
+    if roll < 0.58:
+        got = _roll_land_craft_material(uid, vp, area, bonus=0.85)
+        return f"💎 気配が去ったあと、痕跡から {got} を拾った。" if got else "気配が去ったあと、折れた枝だけが残っていた。"
+    if roll < 0.78:
+        xp = _land_xp_amount(vp, area, random.randint(2, 5))
+        add_xp(vp, xp)
+        return f"✨ 危険を読む勘が少しだけ研ぎ澄まされた。 **XP +{xp}**"
+    return "何も得られなかった。だが、命を拾っただけでも十分だ。"
+
+
 class RareEncounterView(discord.ui.View):
-    """✨ 激レア遭遇：挑む／見送る（確実に逃げられる）。"""
+    """危険遭遇：3〜4択。戦闘は『挑む』選択時だけ開始。"""
     def __init__(self, uid, gid, area, spec):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid); self.area = area; self.spec = spec
         self.add_item(_RareFightBtn())
+        self.add_item(_RareObserveBtn())
+        self.add_item(_RareAvoidBtn())
         self.add_item(_RareFleeBtn())
 
     async def interaction_check(self, interaction):
@@ -852,14 +933,38 @@ class _RareFightBtn(discord.ui.Button):
         view: RareEncounterView = self.view
         await do_land_fight(interaction, view.uid, view.gid, view.area, view.spec)
 
+class _RareObserveBtn(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="👁️ 様子を見る", style=discord.ButtonStyle.secondary, row=0)
+    async def callback(self, interaction):
+        view: RareEncounterView = self.view
+        vp = db.get_voyage(view.uid)
+        line = _land_minor_reward(view.uid, vp, view.area)
+        db.save_voyage(view.uid, vp)
+        await interaction.response.edit_message(
+            embed=build_area_embed(vp, view.area, f"## 👁️ 様子を見る\n距離を保ち、相手の出方をうかがった。\n{line}", LAND_COL_EVENT),
+            view=LandResultView(view.uid, view.gid, view.area))
+
+class _RareAvoidBtn(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="🌿 やり過ごす", style=discord.ButtonStyle.secondary, row=0)
+    async def callback(self, interaction):
+        view: RareEncounterView = self.view
+        vp = db.get_voyage(view.uid)
+        line = _land_minor_reward(view.uid, vp, view.area) if random.random() < 0.45 else "息を殺して待つ。やがて危険な気配は、ゆっくりと遠ざかった。"
+        db.save_voyage(view.uid, vp)
+        await interaction.response.edit_message(
+            embed=build_area_embed(vp, view.area, f"## 🌿 やり過ごす\n{line}", LAND_COL_CALM),
+            view=LandResultView(view.uid, view.gid, view.area))
+
 class _RareFleeBtn(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="🏃 見送る", style=discord.ButtonStyle.secondary, row=0)
+        super().__init__(label="🏃 逃げる", style=discord.ButtonStyle.secondary, row=0)
     async def callback(self, interaction):
         view: RareEncounterView = self.view
         vp = db.get_voyage(view.uid)
         await interaction.response.edit_message(
-            embed=build_area_embed(vp, view.area, "🏃 関わらないのが賢明だ。そっと、その場を離れた。"),
+            embed=build_area_embed(vp, view.area, "## 🏃 逃げる\n関わらないのが賢明だ。背後を振り返らず、その場を離れた。", LAND_COL_CALM),
             view=LandResultView(view.uid, view.gid, view.area))
 
 
@@ -1027,6 +1132,8 @@ def land_on_end(uid, gid, area, spec):
                 coin = random.randint(*(spec.get("mid_coin") or a["coin"]))
             else:
                 xp = random.randint(*a["xp"]); coin = random.randint(*a["coin"])
+            if not spec.get("is_xp_runner"):
+                xp = int(xp * float(spec.get("reward_ratio", 1.0)))
             xp = _land_xp_amount(vp, area, xp)
             leveled = add_xp(vp, xp)
             _run_add_coin(vp, coin)                 # 💰 収穫に貯める（タウン帰還で確定／死ぬと半分失う）

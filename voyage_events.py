@@ -997,6 +997,86 @@ for _eid, _def in OBSERVER_VOYAGE_EVENTS.items():
     if _eid not in EVENT_DEFS:
         EVENT_DEFS[_eid] = _def
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 🌊 海探索を「平原式」に寄せる：自動イベントも必ず選択肢化
+#   既存の出現率・効果そのものは変えず、即時発生だけをやめる。
+#   auto → 「調べる/関わる」で従来効果、「見送る」で安全にスキップ。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 組み込みの魚影も、直接釣りに入らず「狙う/見送る」にする。
+if "builtin_fish_cue" not in EVENT_DEFS:
+    EVENT_DEFS["builtin_fish_cue"] = {
+        "name": "魚の群れ", "emoji": "🐟", "areas": [1, 2, 3, 4],
+        "weight": {1: 0, 2: 0, 3: 0, 4: 0},
+        "flavor": "海面に、魚の群れが現れた。水面がきらきらと揺れ、竿先がかすかに震える。\n群れが去る前に、糸を垂らすか？",
+        "choices": [
+            {"label": "🎣 糸を垂らす", "desc": "群れが去る前に釣る", "effects": {"text": "竿を構え、魚影の真ん中へ仕掛けを落とす。", "fish_school": {"casts": 3, "mode": "normal"}}},
+            {"label": "⚓ 見送る", "desc": "安全に通り過ぎる", "effects": {"text": "魚影は、ゆっくりと船の下を抜けていった。"}},
+        ],
+    }
+
+def _voyage_auto_to_choice():
+    """自動イベントを、平原っぽい複数選択肢に変換する。
+    既存の出現率・基本効果は変えず、プレイヤーが「どう関わるか」を選べる形にする。
+    """
+    import copy
+    for eid, d in list(EVENT_DEFS.items()):
+        if "auto" not in d or d.get("choices"):
+            continue
+        auto = d.pop("auto")
+        name = d.get("name", "漂流物")
+
+        def clone(extra=None):
+            e = copy.deepcopy(auto) if isinstance(auto, dict) else {"text": str(auto)}
+            if extra:
+                # text は上書きせず、追記のほうが安全
+                add_text = extra.pop("text", None)
+                if add_text:
+                    base = e.get("text") or (e.get("text_pool", [""])[0] if isinstance(e.get("text_pool"), list) else "")
+                    e.pop("text_pool", None)
+                    e["text"] = (base + "\n" + add_text).strip()
+                for k, v in extra.items():
+                    e[k] = v
+            return e
+
+        choices = []
+        if isinstance(auto, dict) and auto.get("combat"):
+            choices = [
+                {"label":"⚔️ 正面から挑む", "desc":"戦闘に入る", "effects":clone()},
+                {"label":"🛡️ 距離を取りつつ迎撃", "desc":"慎重に戦う", "effects":clone({"text":"船を横に流し、逃げ道だけは残しておいた。"})},
+                {"label":"⚓ やり過ごす", "desc":"危険を避ける", "effects":{"text":f"{name}には近づかず、帆を落としてやり過ごした。"}},
+            ]
+        elif isinstance(auto, dict) and auto.get("shard"):
+            choices = [
+                {"label":"🧭 かけらを追う", "desc":"特殊アイテムの気配", "effects":clone()},
+                {"label":"👁️ 周囲を観察する", "desc":"伏線を拾う", "effects":clone({"text":"その気配は、見つけた瞬間だけこちらを見返した気がした。"})},
+                {"label":"⚓ 今は離れる", "desc":"関わらない", "effects":{"text":f"{name}から距離を取り、羅針盤を布で覆った。"}},
+            ]
+        elif isinstance(auto, dict) and auto.get("coins"):
+            choices = [
+                {"label":"📦 回収する", "desc":"船倉に積み込む", "effects":clone()},
+                {"label":"🪝 鉤で引き寄せる", "desc":"安全寄りに回収", "effects":clone({"text":"鉤縄で慎重に引き寄せた。少し手間はかかったが、船体は傷つけずに済んだ。"})},
+                {"label":"🔍 中身だけ確認する", "desc":"軽く調べる", "effects":clone({"text":"重そうなものだけ選び、残りは海へ返した。"})},
+                {"label":"⚓ 見送る", "desc":"怪しいので放置", "effects":{"text":f"{name}は波に揺られながら、船尾の向こうへ流れていった。"}},
+            ]
+        elif isinstance(auto, dict) and auto.get("fuel"):
+            choices = [
+                {"label":"⛵ 帆を広げる", "desc":"燃料を節約できるかも", "effects":clone()},
+                {"label":"🧭 風向きを読む", "desc":"慎重に進む", "effects":clone({"text":"帆の角度を細かく合わせ、無駄な燃料を抑えた。"})},
+                {"label":"⚓ 無理せず進む", "desc":"通常航行", "effects":{"text":f"{name}を深追いせず、安定した航路を選んだ。"}},
+            ]
+        else:
+            choices = [
+                {"label":"🔍 近づいて調べる", "desc":"何か起きるかも", "effects":clone()},
+                {"label":"👀 遠目に観察する", "desc":"安全寄り", "effects":clone({"text":"距離を保ったまま観察した。すべては分からないが、見落としは減らせた。"})},
+                {"label":"🧭 航路に活かす", "desc":"旅の判断材料にする", "effects":clone({"text":"その違和感を、次の航路選びの材料にした。"})},
+                {"label":"⚓ 見送る", "desc":"関わらない", "effects":{"text":f"{name}には関わらず、先を急いだ。"}},
+            ]
+        d["choices"] = choices
+
+_voyage_auto_to_choice()
+
 def events_for_area(area):
     """そのエリアに出る選択肢イベントの (id, 重み) リスト。"""
     out = []

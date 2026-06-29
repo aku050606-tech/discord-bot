@@ -70,6 +70,22 @@ SKILL_CAP = 5
 def max_hp(vp):
     return 100 + (vp.get("level", 1) - 1) * 10
 
+
+
+def _apply_hamster_voyage_heal(vp):
+    """ハムスター所持時、航海探索1回ごとに最大HPの3%回復。"""
+    specials = vp.get("special_items", []) or []
+    if "pet_hamster" not in specials:
+        return None
+    mh = max_hp(vp)
+    cur = max(0, min(mh, vp.get("cur_hp", mh)))
+    if cur >= mh:
+        return None
+    heal = max(1, int(mh * 0.03))
+    before = cur
+    vp["cur_hp"] = min(mh, cur + heal)
+    return f"🐹 ハムスターが癒してくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
+
 def equipped_inst(vp, part):
     """装備中インスタンス {"item":id,"skills":[...]} を返す（未装備=None）。"""
     idx = vp["equipped"].get(part)
@@ -150,8 +166,10 @@ def any_part_broken(vp):
             return True
     return False
 
+VOYAGE_COIN_REWARD_MULT = 1.0 / 3.0  # 航海報酬のナトコインだけ控えめにする（基本抽選率・XP等は不変）
+
 def _scaled(rng, vm):
-    return int(random.uniform(rng["base_min"], rng["base_max"]) * vm)
+    return int(random.uniform(rng["base_min"], rng["base_max"]) * vm * VOYAGE_COIN_REWARD_MULT)
 
 # ━━━ 🎣 海の釣り（航海専用の竿のみ／演出＝魚影の時だけ／回数制限）━━━
 #   レア度＝エリア依存（VOYAGE_FISH_RARITY）。リール/ラインは無効だが金冠（基礎確率）は健在。竿は永久。
@@ -163,7 +181,7 @@ def roll_voyage_fish(uid, area, mode="normal"):
     rarity = V.voyage_fish_rarity_pick(area, mode)
     pool = V.voyage_fish_pool(area, rarity)
     fish = random.choice(pool)
-    value = fish["value"]
+    value = int(fish["value"] * VOYAGE_COIN_REWARD_MULT)
     # 👑 金冠（基礎確率のみ＝リール/ラインは海の釣りでは効かない）。trash対象外・売値2倍
     is_golden = (rarity != "trash" and value > 0) and (random.random() < GOLDEN_CROWN_CHANCE)
     if is_golden:
@@ -201,7 +219,7 @@ def check_voyage_fish_complete(uid, gid, area):
     first = db.add_zukan(uid, "voyage_fish_complete", f"area{area}")
     if not first:
         return 0
-    reward = V.VOYAGE_FISH_COMPLETE_REWARD.get(area, 0)
+    reward = int(V.VOYAGE_FISH_COMPLETE_REWARD.get(area, 0) * VOYAGE_COIN_REWARD_MULT)
     if reward > 0:
         db.update_balance(uid, gid, reward)
     return reward
@@ -279,7 +297,7 @@ def apply_event_effects(vp, effects, vm=1.0):
     if "coins" in effects:
         lo, hi = effects["coins"]
         if lo >= 0 and hi >= 0:
-            amt = int(random.uniform(lo, hi) * vm); v["hold"] = v.get("hold", 0) + amt
+            amt = int(random.uniform(lo, hi) * vm * VOYAGE_COIN_REWARD_MULT); v["hold"] = v.get("hold", 0) + amt
             if amt: extra.append(f"📦 船倉 +{amt:,}")
         else:
             amt = int(random.uniform(lo, hi)); v["hold"] = max(0, v.get("hold", 0) + amt)
@@ -435,8 +453,8 @@ def roll_explore(vp):
         return ("choice", enc, vm)
 
     if enc == "fish":
-        # 🎣 魚を釣れる演出（魚影）。釣れるのは伝説の釣り竿のみ／回数制限あり＝呼び出し側で処理
-        return ("fish_cue", None)
+        # 🎣 魚影も平原式に「狙う/見送る」を選ばせる
+        return ("choice", "builtin_fish_cue", vm)
     if enc == "island":
         got = random.random() < V.ISLAND_TREASURE_RATE
         val = _scaled(V.ISLAND_TREASURE, vm) if got else 0
@@ -649,14 +667,24 @@ class FishingSchoolView(discord.ui.View):
         from config import SUSPENSE_COLOR, FISHING_WAIT_NORMAL, FISHING_WAIT_SUPER
         from cogs import fish_assets as FA
         roll = roll_voyage_fish(self.uid, self.area, self.mode)
-        # 当たり待ち：航海と同じ固定情報枠で、魚影だけ水色演出にする
+        # 当たり待ち：通常の釣り演出（情景画像＋中立色）を航海釣りにも流用
         wait = FISHING_WAIT_SUPER if roll["rarity"] in ("super_rare", "legend") else FISHING_WAIT_NORMAL
-        vp_wait = db.get_voyage(self.uid)
-        fish_note = _emph(roll.get("effect_text") or "🎣 糸を垂らす……")
-        await it.response.edit_message(
-            embed=build_voyage_embed(vp_wait, fish_note, title="🎣 魚影を追う", color=VOYAGE_COL_FISH),
-            view=VoyageTheaterView(self.uid, self.gid))
+        wait_embed = discord.Embed(color=SUSPENSE_COLOR)
+        wait_embed.set_footer(text=f"{V.AREA_EMOJI.get(self.area, '🌊')} {V.AREA_NAMES.get(self.area, '海')}")
+        scene = FA.scene_url(roll.get("effect_key"))
+        if scene:
+            wait_embed.set_image(url=scene)
+        else:
+            wait_embed.description = roll.get("effect_text") or "🎣 糸を垂らす……"
+        await it.response.edit_message(embed=wait_embed, view=VoyageTheaterView(self.uid, self.gid))
         await asyncio.sleep(wait)
+        if roll["rarity"] in ("super_rare", "legend"):
+            shadow_embed = discord.Embed(color=SUSPENSE_COLOR)
+            shadow_embed.set_image(url=FA.shadow_url())
+            shadow_embed.set_footer(text=f"{V.AREA_EMOJI.get(self.area, '🌊')} {V.AREA_NAMES.get(self.area, '海')}")
+            await it.edit_original_response(embed=shadow_embed, view=VoyageTheaterView(self.uid, self.gid))
+            from config import FISHING_SHADOW_WAIT
+            await asyncio.sleep(FISHING_SHADOW_WAIT)
         # 結果確定
         vp = db.get_voyage(self.uid); v = vp["voyage"]
         v["hold"] += roll["value"]
@@ -1474,12 +1502,16 @@ class VoyageView(discord.ui.View):
                 "🛠️ 船体が大破している！引き返して修理を。", ephemeral=True); return
         _reset_retreat_chain(vp)
         v["fuel"] -= cost   # ⛽ タンクから探索ぶん消費
+        pet_note = _apply_hamster_voyage_heal(vp)
         res = roll_explore(vp)
         db.save_voyage(uid, vp)   # 探索カウント／航海消耗／非戦闘の獲得を確定
         # 🔍 探索ウェイト演出（種類別の色・見出し／UI高さは固定）
         theater_kind = _voyage_kind_for_result(res)
+        theater_embed = build_voyage_theater_embed(vp, theater_kind)
+        if pet_note:
+            theater_embed.description += f"\n{pet_note}"
         await interaction.response.edit_message(
-            embed=build_voyage_theater_embed(vp, theater_kind),
+            embed=theater_embed,
             view=VoyageTheaterView(uid, gid))
         await asyncio.sleep(2)
         if res[0] == "combat":
@@ -3542,8 +3574,47 @@ def build_approach_embed(vp, spec):
     body += "\n\n*――押したら、何があるんだ……？*"
     return build_result_embed(vp, body, title=title)
 
+def _danger_sea_story(spec, cat):
+    """★4以上の海敵用：敵ごとの専用演出。未定義はカテゴリ文へフォールバック。"""
+    name = spec.get("name", "敵")
+    stories = {
+        "血錨のレヴィアタン": ("海面が、不自然なほど平らになった。\n"
+            "次の瞬間、船底の下を**島ほどの影**が横切る。錨のような赤い鱗が、深みでぎらりと光った。\n"
+            "帆布が震えている。風ではない。船そのものが、恐怖を覚えている。"),
+        "大洋艦隊の軍人": ("霧の向こうから、規則正しい櫂の音が近づいてくる。\n"
+            "軍艦の砲門が、こちらへ静かに向いた。号砲は威嚇ではない。命令だ。\n"
+            "従うか、欺くか、撃つか。ここでの判断は、海の評判に残る。"),
+        "大型商船の護衛団": ("水平線に、豪奢な帆が並んだ。だが宝船ではない。\n"
+            "周囲を固める護衛船の甲板には、弩と大盾が隙間なく並んでいる。\n"
+            "欲を出せば、船ごと蜂の巣になる。それでも積荷の匂いは甘い。"),
+        "深淵のクラーケン": ("海面に、丸い波紋がいくつも開いた。\n"
+            "やがて黒い腕が、音もなく海から持ち上がる。一本ではない。船を数えるように、何本も。\n"
+            "この海域では、逃げ道すら触手の影に沈む。"),
+        "古き海龍ヨルムン": ("空と海の境界が、ぐにゃりと歪んだ。\n"
+            "海の果てから、龍の背が連なって現れる。長すぎて、どこまでが胴なのか見えない。\n"
+            "伝説は近づいてきたのではない。こちらが、伝説の腹の中へ迷い込んだのだ。"),
+        "呑まれた提督": ("沈んだはずの軍楽が、海中から聞こえる。\n"
+            "朽ちた軍帽をかぶった影が、舳先の前に立っていた。背後には、沈没船の乗組員たち。\n"
+            "彼はまだ、終わった戦争の号令を待っている。"),
+        "巨大な影": ("船の下で、夜より黒い何かが反転した。\n"
+            "姿は見えない。だが水面に浮かぶ泡だけで、その大きさがわかってしまう。\n"
+            "追えば深淵。退けば生還。そういう類の影だ。"),
+    }
+    if name in stories:
+        return stories[name]
+    if int(spec.get("stars", 1)) >= 4:
+        return ("波音が低く沈み、甲板の空気が一気に重くなる。\n"
+                f"{spec.get('emoji','⚠️')} **{name}** は、普段の敵とは明らかに格が違う。\n"
+                "近づけば戦いになる。だが、海はまだ引き返す余地を残している。")
+    return None
+
 def build_reveal_embed(vp, spec, cat):
     st = "★" * int(spec.get("stars", 1))
+    danger = _danger_sea_story(spec, cat)
+    if danger:
+        body = (f"{spec.get('emoji','⚠️')} **{spec.get('name','敵')}** {st}\n\n{danger}\n\n"
+                "**この先は非常に危険そうだ。どう動く？**")
+        return build_result_embed(vp, body, title="⚠️ 危険な遭遇")
     if cat == "boss":
         body = (f"{spec['emoji']} **……これは、何だ。** {st}\n"
                 "見たこともない巨大な気配が、すぐそこまで来ている。\n"
@@ -3692,12 +3763,54 @@ class TradeFoodSelect(discord.ui.Select):
             embed=build_trade_embed(vp, f"{f['emoji']} **{f['name']} ×{q}** を買った（-{cost:,}）。"),
             view=TradeView(self.uid, str(self.view.gid)))
 
+def _voyage_minor_reward(uid, vp, vm, label="痕跡"): 
+    """危険海敵を戦わず処理した時の小さな揺らぎ。戦闘報酬とは別の軽量報酬。"""
+    v = vp.get("voyage") or {}
+    roll = random.random()
+    if roll < 0.34:
+        val = max(100, int(_scaled((180, 520), vm) * 0.35))
+        v["hold"] = v.get("hold", 0) + val
+        return f"💰 {label}から、流された小箱を回収した。船倉に **+{val:,}**"
+    if roll < 0.58:
+        area = area_of(v) if v else 1
+        cmid = V.roll_craft_material("voyage", area, bonus=0.8) if hasattr(V, "roll_craft_material") else None
+        got = _add_craft_material(uid, vp, cmid, 1) if cmid else None
+        return f"💎 {label}を調べ、{got} を拾った。" if got else f"{label}を調べたが、使えそうなものは無かった。"
+    if roll < 0.78:
+        xp = max(1, int(V.XP_PER_ISLAND * 0.35))
+        leveled = add_xp(vp, xp)
+        return f"✨ 危険を読む勘が磨かれた。 **XP +{xp}**" + (f"\n## 🎉 レベルアップ！ → Lv{vp['level']}" if leveled else "")
+    return "何も得られなかった。だが、船を沈めずに済んだ。"
+
 class EncounterChoiceView(discord.ui.View):
     """段階2：正体判明→種別ごとの対応。"""
     def __init__(self, uid, gid, spec, scale, vm, is_boss, cat):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid); self.spec = spec
         self.scale = scale; self.vm = vm; self.is_boss = is_boss; self.cat = cat
+        if int(spec.get("stars", 1)) >= 4:
+            # ★4以上は必ず3〜4択。戦闘は「戦う/挑む/襲撃」選択時のみ。
+            if cat == "merchant":
+                self._add("👁️ 様子を見る", discord.ButtonStyle.secondary, self._observe)
+                self._add("💰 取引を試す", discord.ButtonStyle.success, self._trade)
+                self._add("⚔️ 襲撃する", discord.ButtonStyle.danger, self._fight)
+                self._add("⛵ 遠回りする", discord.ButtonStyle.secondary, self._ignore)
+            elif cat == "military":
+                self._add("🪖 検品を受ける", discord.ButtonStyle.primary, self._inspect)
+                self._add("👁️ 旗と進路を見る", discord.ButtonStyle.secondary, self._observe)
+                self._add("⚔️ 強行突破", discord.ButtonStyle.danger, self._fight)
+                self._add("⛵ 航路を逸らす", discord.ButtonStyle.secondary, self._ignore)
+            elif cat == "boss":
+                self._add("👁️ 様子を見る", discord.ButtonStyle.secondary, self._observe)
+                self._add("⚔️ 挑む", discord.ButtonStyle.danger, self._fight)
+                self._add("🌫️ やり過ごす", discord.ButtonStyle.secondary, self._hide)
+                self._add("🏃 退く", discord.ButtonStyle.secondary, self._ignore)
+            else:
+                self._add("👁️ 様子を見る", discord.ButtonStyle.secondary, self._observe)
+                self._add("⚔️ 戦う", discord.ButtonStyle.danger, self._fight)
+                self._add("🌫️ やり過ごす", discord.ButtonStyle.secondary, self._hide)
+                self._add("🏳️ 逃げる", discord.ButtonStyle.secondary, self._flee)
+            return
         if cat in ("pirate", "undead", "beast", "castaway"):
             self._add("⚔️ 戦う", discord.ButtonStyle.danger, self._fight)
             self._add("🏳️ 逃げる", discord.ButtonStyle.secondary, self._flee)
@@ -3744,6 +3857,29 @@ class EncounterChoiceView(discord.ui.View):
         msg = "🏃 深追いはせず、そっと進路を変えた。" if self.cat == "boss" else "⛵ 関わらず、静かに航路を逸らした。"
         await it.response.edit_message(
             embed=build_result_embed(db.get_voyage(self.uid), msg, title="⛵ 見送り"),
+            view=ContinueVoyageView(self.uid, self.gid, ""))
+
+    async def _observe(self, it):
+        if not self._chk(it):
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        vp = db.get_voyage(self.uid)
+        line = _voyage_minor_reward(self.uid, vp, self.vm, "危険な航跡")
+        db.save_voyage(self.uid, vp)
+        await it.response.edit_message(
+            embed=build_result_embed(vp, f"👁️ 距離を保って、相手の出方を見た。\n{line}", title="👁️ 様子を見る"),
+            view=ContinueVoyageView(self.uid, self.gid, ""))
+
+    async def _hide(self, it):
+        if not self._chk(it):
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        vp = db.get_voyage(self.uid)
+        if random.random() < 0.45:
+            line = _voyage_minor_reward(self.uid, vp, self.vm, "去った後の波間")
+        else:
+            line = "帆を落とし、波音に紛れる。危険な気配は、こちらを見失ったように遠ざかった。"
+        db.save_voyage(self.uid, vp)
+        await it.response.edit_message(
+            embed=build_result_embed(vp, line, title="🌫️ やり過ごす"),
             view=ContinueVoyageView(self.uid, self.gid, ""))
 
     async def _trade(self, it):
@@ -4025,47 +4161,64 @@ def build_skill_zukan_embed(uid=None):
     emb.description = "\n".join(lines)
     return emb
 
-MATERIAL_GROUP_LABELS = {
-    "spoils": "⚔️ 戦利品",
-    "common": "🧰 共通素材",
-    "rare": "💠 魔性素材",
-    "plain": "🛤️ 平原の素材",
-    "shallow": "🌊 浅瀬の素材",
-    "forest": "🌲 森の素材",
-    "ocean": "⚓ 大洋の素材",
-    "mountain": "⛰️ 山の素材",
-    "offshore": "🌫️ 沖合の素材",
+# 図鑑の素材表示は、細かいエリア別にバラすと縦に伸びすぎるため大分類にまとめる。
+MATERIAL_CATEGORY_DEFS = {
+    "road": {
+        "label": "🛤️ 街道素材",
+        "groups": ("plain", "forest", "mountain", "common"),
+    },
+    "ocean": {
+        "label": "🌊 大洋素材",
+        "groups": ("shallow", "ocean", "offshore"),
+    },
+    "special_material": {
+        "label": "💠 特殊素材",
+        "groups": ("rare", "spoils"),
+    },
 }
-MATERIAL_GROUP_ORDER = ["spoils", "common", "rare", "plain", "shallow", "forest", "ocean", "mountain", "offshore"]
+
+def _compact_lines(lines, per_line=3):
+    """Embedの縦伸び防止。3個ずつ横並びにする。"""
+    return "\n".join("　".join(lines[i:i+per_line]) for i in range(0, len(lines), per_line))
 
 def build_item_zukan_embed(uid=None):
     seen = set(db.get_zukan(uid, "item_seen")) if uid else set()
     emb = discord.Embed(
         title="🎒 アイテム図鑑",
-        description="見つけた品だけ記録される。空白の名前は、まだ旅のどこかに眠っている。",
+        description="見つけた品だけ記録される。種類ごとにまとめて表示する。",
         color=0xe67e22)
-    # ✨ 特殊アイテム
+
+    # 🧪 消費アイテム：食料・燃料樽・抽選券など
+    consumable_lines = []
+    for fid, f in V.FOODS.items():
+        consumable_lines.append(f"{f['emoji']} **{f['name']}**" if fid in seen else "❔ ？？？")
+    consumable_lines.append("🛢️ **燃料樽**" if "fuel_barrel" in seen else "❔ ？？？")
+    consumable_lines.append(f"{V.LOTTERY_ITEM['emoji']} **{V.LOTTERY_ITEM['name']}**" if getattr(V, "LOTTERY_ITEM_ID", "lottery_ticket") in seen else "❔ ？？？")
+    emb.add_field(name="🧪 消費アイテム", value=_compact_lines(consumable_lines), inline=False)
+
+    # 🧭 探索アイテム：街道・航海どちらでも使う小道具
+    land_lines = []
+    for iid, it in getattr(L, "LAND_ITEMS", {}).items():
+        land_lines.append(f"{it['emoji']} **{it['name']}**" if iid in seen else "❔ ？？？")
+    if land_lines:
+        got_land = len([iid for iid in getattr(L, "LAND_ITEMS", {}) if iid in seen])
+        emb.add_field(name=f"🧭 探索アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）", value=_compact_lines(land_lines), inline=False)
+
+    # ✨ 特殊アイテム：かけら・ペット・特殊ポーチ系
     sp_lines = [
         V.SHARD_NAME if "shard" in seen else "❔ ？？？",
         SHADOW_DARK_SHARD if "shadow_dark_shard" in seen else "❔ ？？？",
     ]
     for pid, pet in getattr(V, "PETS", {}).items():
         sp_lines.append(f"{pet['emoji']} **{pet['name']}**" if pid in seen else "❔ ？？？")
-    sp_lines.append(f"{V.LOTTERY_ITEM['emoji']} **{V.LOTTERY_ITEM['name']}**" if getattr(V, "LOTTERY_ITEM_ID", "lottery_ticket") in seen else "❔ ？？？")
-    emb.add_field(name="✨ 特殊アイテム", value="\n".join(sp_lines), inline=False)
-    # 🍖 食料
-    food_lines = []
-    for fid, f in V.FOODS.items():
-        food_lines.append(f"{f['emoji']} **{f['name']}**" if fid in seen else "❔ ？？？")
-    emb.add_field(name="🍖 食料", value="\n".join(food_lines), inline=False)
-    # ⛽ 補給
-    barrel = "🛢️ **燃料樽**" if "fuel_barrel" in seen else "❔ ？？？"
-    emb.add_field(name="⛽ 補給品", value=barrel, inline=False)
-    # 💎 素材：場所別に整理。未取得は名前を伏せる。
+    emb.add_field(name="✨ 特殊アイテム", value=_compact_lines(sp_lines), inline=False)
+
+    # 💎 素材：街道／大洋／特殊素材に圧縮
     total_mats = len(V.MATERIALS)
     got_mats = len([mid for mid in V.MATERIALS if mid in seen])
-    for group in MATERIAL_GROUP_ORDER:
-        mids = [mid for mid, m in V.MATERIALS.items() if (m.get("group") or "spoils") == group]
+    for cat in ("road", "ocean", "special_material"):
+        meta = MATERIAL_CATEGORY_DEFS[cat]
+        mids = [mid for mid, m in V.MATERIALS.items() if (m.get("group") or "spoils") in meta["groups"]]
         if not mids:
             continue
         lines = []
@@ -4073,15 +4226,9 @@ def build_item_zukan_embed(uid=None):
             m = V.MATERIALS[mid]
             lines.append(f"{m['emoji']} **{m['name']}**" if mid in seen else "❔ ？？？")
         got = len([mid for mid in mids if mid in seen])
-        emb.add_field(name=f"{MATERIAL_GROUP_LABELS.get(group, group)}（{got}/{len(mids)}）", value="\n".join(lines), inline=False)
-    emb.set_footer(text=f"素材記録 {got_mats}/{total_mats}。名前の分からない素材は、まだ手元にない。")
-    # 🛤️ 街道アイテム
-    land_lines = []
-    for iid, it in getattr(L, "LAND_ITEMS", {}).items():
-        land_lines.append(f"{it['emoji']} **{it['name']}**" if iid in seen else "❔ ？？？")
-    if land_lines:
-        got_land = len([iid for iid in getattr(L, "LAND_ITEMS", {}) if iid in seen])
-        emb.add_field(name=f"🧭 探索アイテム（{got_land}/{len(getattr(L, 'LAND_ITEMS', {}))}）", value="\n".join(land_lines), inline=False)
+        emb.add_field(name=f"{meta['label']}（{got}/{len(mids)}）", value=_compact_lines(lines), inline=False)
+
+    emb.set_footer(text=f"素材記録 {got_mats}/{total_mats}。海素材は浅瀬5・大洋5・沖合5の計15種。必要ならE3/E4用に追加可能。")
     return emb
 
 class SimpleZukanView(discord.ui.View):
@@ -4133,7 +4280,7 @@ def build_voyage_fish_zukan_embed(uid, area=1):
     trash_seen = set(db.get_zukan(uid, f"voyage_fish_{area}_trash")) if uid else set()
     fish_total = len([f for f in lst if f["rarity"] != "trash"])
     got = len([f for f in lst if f["rarity"] != "trash" and f["name"] in seen])
-    reward = V.VOYAGE_FISH_COMPLETE_REWARD.get(area, 0)
+    reward = int(V.VOYAGE_FISH_COMPLETE_REWARD.get(area, 0) * VOYAGE_COIN_REWARD_MULT)
     if got >= fish_total and fish_total > 0:
         comp_txt = f"　🏆 **コンプリート！**（報酬 {reward:,}）"
     else:

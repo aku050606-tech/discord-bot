@@ -431,12 +431,6 @@ class MainMenuView(discord.ui.View):
         if not await self._check(interaction): return
         await open_shopping_street(interaction, str(interaction.user.id), str(interaction.guild.id))
 
-    @discord.ui.button(label="🎰 ノワール（ガチャ屋）", style=discord.ButtonStyle.secondary, row=1)
-    async def gacha(self, interaction, button):
-        if not await self._check(interaction): return
-        from cogs.voyage import open_skill_gacha
-        await open_skill_gacha(interaction, str(interaction.user.id))
-
     # ── 3段目：冒険（ギルド・街道）──
     @discord.ui.button(label="🛤️ 街道", style=discord.ButtonStyle.secondary, row=2)
     async def road(self, interaction, button):
