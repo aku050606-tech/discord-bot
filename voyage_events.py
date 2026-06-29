@@ -1058,7 +1058,6 @@ def _voyage_auto_to_choice():
                 {"label":"📦 回収する", "desc":"船倉に積み込む", "effects":clone()},
                 {"label":"🪝 鉤で引き寄せる", "desc":"安全寄りに回収", "effects":clone({"text":"鉤縄で慎重に引き寄せた。少し手間はかかったが、船体は傷つけずに済んだ。"})},
                 {"label":"🔍 中身だけ確認する", "desc":"軽く調べる", "effects":clone({"text":"重そうなものだけ選び、残りは海へ返した。"})},
-                {"label":"⚓ 見送る", "desc":"怪しいので放置", "effects":{"text":f"{name}は波に揺られながら、船尾の向こうへ流れていった。"}},
             ]
         elif isinstance(auto, dict) and auto.get("fuel"):
             choices = [
@@ -1071,7 +1070,6 @@ def _voyage_auto_to_choice():
                 {"label":"🔍 近づいて調べる", "desc":"何か起きるかも", "effects":clone()},
                 {"label":"👀 遠目に観察する", "desc":"安全寄り", "effects":clone({"text":"距離を保ったまま観察した。すべては分からないが、見落としは減らせた。"})},
                 {"label":"🧭 航路に活かす", "desc":"旅の判断材料にする", "effects":clone({"text":"その違和感を、次の航路選びの材料にした。"})},
-                {"label":"⚓ 見送る", "desc":"関わらない", "effects":{"text":f"{name}には関わらず、先を急いだ。"}},
             ]
         d["choices"] = choices
 

@@ -125,6 +125,10 @@ def resolve_action(state, side, action):
     elif kind == "defend":
         attacker["guard"] = 0.5
         state["log"].append(f"🛡️ {attacker['name']} は身を守った（次の被弾-50%）")
+    elif kind == "item":
+        # 探索アイテム使用も1ターン行動として扱う。
+        # 効果自体（回復・消費など）はUI側で適用済み。ここではログと敵ターン発生を担当。
+        state["log"].append(action.get("text") or f"🎒 {attacker['name']} は探索アイテムを使った。")
     elif kind == "skill":
         return _use_skill(state, attacker, defender, action["sid"])
     _post(state)

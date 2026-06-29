@@ -1,7 +1,7 @@
 """
 🛤️ 街道（陸の冒険）── 海の白兵戦エンジンを流用したレベル上げの場
 探索 → 敵(白兵戦)/陸ストーリー/採取/平穏。
-・HPは持ち越し（毎戦は回復しない）。タウンに戻っても全快しない。回復は🏠家/🍖食料で行う。
+・HPは持ち越し（毎戦は回復しない）。タウンに戻っても全快しない。回復は🏨宿屋/🍖食料で行う。
 ・敵の攻撃は低め＝あまり食らわない。きついのは「装備が足りない」とき。
 ・XPは一旦“海レンジ（数十）”。大きく稼ぐのはレアキャラで後から調整。
 ※ 今は管理者のみ解放（menu.py の街道ボタンでゲート）。
@@ -262,7 +262,7 @@ def build_land_home_embed(vp):
         else:
             rows.append(f"🔒 {a['emoji']} {a['name']}（Lv{a['req_lv']}で解放）")
     e.add_field(name="🗺️ 行き先", value="\n".join(rows), inline=False)
-    e.set_footer(text="HPは持ち越し。タウン帰還では回復しない／🏠家・🍖食料で回復")
+    e.set_footer(text="HPは持ち越し。タウン帰還では回復しない／🏨宿屋・🍖食料で回復")
     return e
 
 
@@ -368,7 +368,7 @@ async def _back_to_town(interaction, uid):
     """陸→タウン：収穫を確定（コイン入金）してタウンへ。HPは回復しない。"""
     vp = db.get_voyage(uid)
     _run_settle_town(uid, str(interaction.guild.id), vp)
-    # タウン帰還ではHPを全快させない。回復は🏠家（CD5分）または食料で行う。
+    # タウン帰還ではHPを全快させない。回復は🏨宿屋（有料・時間制限なし）または食料で行う。
     vp["cur_hp"] = max(1, min(_cur_hp(vp), max_hp(vp)))
     db.save_voyage(uid, vp)
     from cogs.menu import go_town
@@ -537,15 +537,15 @@ class LandItemSelect(discord.ui.Select):
                 it = L.LAND_ITEMS[iid]
                 opts.append(discord.SelectOption(label=f"{it['name']} ×{n}", emoji=it['emoji'], value=iid, description=it.get('desc','')[:90]))
         if not opts:
-            opts=[discord.SelectOption(label="街道アイテムがない", value="__none__")]
-        super().__init__(placeholder="🎒 街道アイテムを使う", options=opts[:25], row=3)
+            opts=[discord.SelectOption(label="探索アイテムがない", value="__none__")]
+        super().__init__(placeholder="🎒 探索アイテムを使う", options=opts[:25], row=3)
     async def callback(self, itx):
         if str(itx.user.id) != self.uid:
             await itx.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
         iid = self.values[0]
         vp = db.get_voyage(self.uid)
         if iid == "__none__" or vp.get("land_items", {}).get(iid, 0) <= 0:
-            await itx.response.send_message("使える街道アイテムがない。", ephemeral=True); return
+            await itx.response.send_message("使える探索アイテムがない。", ephemeral=True); return
         meta = L.LAND_ITEMS.get(iid)
         if not meta:
             await itx.response.send_message("そのアイテムは使えない。", ephemeral=True); return
@@ -792,6 +792,7 @@ def _build_fight(uid, gid, area, spec):
     scale = spec.get("scale_override", a["scale"])   # レアは共通ボスscale
     enemy = make_board_enemy(spec, scale)
     state = C.new_battle("board", ally, enemy)
+    state["land_spec"] = dict(spec)
     st = "★" * int(spec.get("stars", 1))
     emb = build_combat_embed(state)
     if spec.get("is_xp_runner"):
@@ -815,7 +816,8 @@ def _build_fight(uid, gid, area, spec):
         emb.description = f"{spec['emoji']} **{spec['name']}** {st} が現れた！"
     view = CombatView(uid, gid, state,
                       on_end=land_on_end(uid, gid, area, spec),
-                      flee_cb=_land_flee_cb(uid, gid, area))
+                      flee_cb=_land_flee_cb(uid, gid, area),
+                      flee_pct=_land_flee_pct(uid, area, state))
     return emb, view
 
 
@@ -825,15 +827,66 @@ async def do_land_fight(interaction, uid, gid, area, spec):
     await interaction.response.edit_message(embed=emb, view=view)
 
 
+def _land_escape_power(vp):
+    """陸の逃走判定に使うプレイヤー側戦力。海の ship_power と同じく攻＋防で見る。"""
+    return max(1.0, float(attack_power(vp) + defense_power(vp)))
+
+
+def _land_enemy_escape_power(area, spec):
+    """陸敵の逃走判定用戦力。実戦用ステータスを作り、攻＋防で海と同じ式に渡す。"""
+    a = L.LAND_AREAS[area]
+    scale = spec.get("scale_override", a["scale"])
+    enemy = make_board_enemy(spec, scale)
+    return max(1.0, float(enemy.get("atk", 1) + enemy.get("def", 0)))
+
+
+def _land_flee_pct(uid, area, spec_or_state):
+    vp = db.get_voyage(uid)
+    enemy_power = None
+    if isinstance(spec_or_state, dict) and "enemy" in spec_or_state:
+        e = spec_or_state.get("enemy", {})
+        enemy_power = float(e.get("atk", 1) + e.get("def", 0))
+    elif isinstance(spec_or_state, dict):
+        enemy_power = _land_enemy_escape_power(area, spec_or_state)
+    chance = V.flee_success_chance(_land_escape_power(vp), max(1.0, enemy_power or 1.0))
+    return min(0.95, chance + 0.15)
+
+
+def _land_apply_enemy_first_strike(state):
+    """逃走失敗時の敵先制行動。海の撤退失敗と同じ流れで戦闘継続させる。"""
+    state["log"] = ["🏃💨 逃走失敗！隙を突かれた…"]
+    if not state.get("over"):
+        C.resolve_action(state, "enemy", C.enemy_action(state))
+    if not state.get("over"):
+        C.end_round(state)
+
+
 def _land_flee_cb(uid, gid, area):
-    """戦闘中の🏳️撤退：陸は確実に逃げられる（HPはそのまま持ち越し）。"""
+    """戦闘中の🏳️撤退：海と同じ成功率判定。煙玉だけは state フラグで100%成功。"""
     async def _flee(it, state):
         vp = db.get_voyage(uid)
-        vp["cur_hp"] = max(1, state["ally"]["hp"])  # 逃げてもHPは戦闘時点のまま
+        force_success = bool(state.pop("_force_flee_success_once", False))
+        chance = 1.0 if force_success else _land_flee_pct(uid, area, state)
+        if force_success or random.random() < chance:
+            vp["cur_hp"] = max(1, state["ally"]["hp"])  # 逃げてもHPは戦闘時点のまま
+            db.save_voyage(uid, vp)
+            title = "💨 煙玉" if force_success else "🏳️ 撤退成功"
+            body = "煙に紛れて、確実にその場を離脱した。" if force_success else "隙を突いて、その場を離脱した。"
+            await it.response.edit_message(
+                embed=build_area_embed(vp, area, f"## {title}\n{body}"),
+                view=LandResultView(uid, gid, area))
+            return
+
+        _land_apply_enemy_first_strike(state)
+        vp["cur_hp"] = max(1, state["ally"]["hp"])
         db.save_voyage(uid, vp)
-        await it.response.edit_message(
-            embed=build_area_embed(vp, area, "🏳️ 隙を突いて、その場を離脱した。"),
-            view=LandResultView(uid, gid, area))
+        spec = state.get("land_spec") or {"name": state["enemy"].get("name", "敵"), "emoji": state["enemy"].get("emoji", "⚔️"), "no_item_drop": True}
+        if state.get("over"):
+            await land_on_end(uid, gid, area, spec)(it, state)
+        else:
+            await it.response.edit_message(
+                embed=build_combat_embed(state),
+                view=CombatView(uid, gid, state, on_end=land_on_end(uid, gid, area, spec), flee_cb=_land_flee_cb(uid, gid, area), flee_pct=chance))
     return _flee
 
 
@@ -963,9 +1016,20 @@ class _RareFleeBtn(discord.ui.Button):
     async def callback(self, interaction):
         view: RareEncounterView = self.view
         vp = db.get_voyage(view.uid)
+        chance = _land_flee_pct(view.uid, view.area, view.spec)
+        if random.random() < chance:
+            await interaction.response.edit_message(
+                embed=build_area_embed(vp, view.area, f"## 🏳️ 逃走成功（成功率{int(round(chance * 100))}%）\n関わらないのが賢明だ。背後を振り返らず、その場を離れた。", LAND_COL_CALM),
+                view=LandResultView(view.uid, view.gid, view.area))
+            return
+
         await interaction.response.edit_message(
-            embed=build_area_embed(vp, view.area, "## 🏃 逃げる\n関わらないのが賢明だ。背後を振り返らず、その場を離れた。", LAND_COL_CALM),
-            view=LandResultView(view.uid, view.gid, view.area))
+            embed=build_area_embed(vp, view.area, f"## 🏃💨 逃走失敗（成功率{int(round(chance * 100))}%）\n背を向けた瞬間、敵に距離を詰められた。", LAND_COL_COMBAT),
+            view=LandTheaterView(view.uid, view.gid, view.area))
+        await asyncio.sleep(1.0)
+        emb, fight_view = _build_fight(view.uid, view.gid, view.area, view.spec)
+        _land_apply_enemy_first_strike(fight_view.state)
+        await interaction.edit_original_response(embed=build_combat_embed(fight_view.state), view=fight_view)
 
 
 
@@ -1018,6 +1082,13 @@ def _apply_event_outcome(uid, gid, vp, area, outcome, event=None, choice=None):
         lines.append("## 📖 塔の痕跡\n古い文字が残っている。意味はわからない。だが、海を嫌っていることだけは伝わってくる。")
     return lines, start_combat
 
+
+
+def _is_land_escape_choice(label):
+    """イベント選択肢の逃げる系を通常撤退と同じ判定に統一する。"""
+    text = str(label or "")
+    return any(k in text for k in ("逃げ", "立ち去", "撤退", "退く", "離れる", "やめる"))
+
 # ━━━ 陸ストーリー（選択肢）━━━
 class LandStoryView(discord.ui.View):
     def __init__(self, uid, gid, area, ev):
@@ -1051,6 +1122,28 @@ class _StoryChoiceBtn(discord.ui.Button):
         if prelude:
             lines += ["", *[f"> {x}" for x in prelude]]
         lines += ["", ch["result"]]
+
+        # 「逃げる／立ち去る／撤退する」系のイベント選択肢も、通常戦闘の撤退と同じ成功率判定に統一。
+        # 成功時だけ元の選択肢処理へ進む。失敗時は報酬や安全な離脱を無効化し、敵の先制行動つきで戦闘へ。
+        if _is_land_escape_choice(ch.get("label")):
+            flee_spec = L.make_land_enemy(view.area, force=("hot_midrare" if view.ev.get("hot") else "combat"), buffs=vp.get("land_buffs", {}))
+            chance = _land_flee_pct(view.uid, view.area, flee_spec)
+            if random.random() >= chance:
+                lines.append("")
+                lines.append(f"## 🏃💨 逃走失敗（成功率{int(round(chance * 100))}%）")
+                lines.append("背を向けた瞬間、敵に距離を詰められた。")
+                db.save_voyage(view.uid, vp)
+                await interaction.response.edit_message(
+                    embed=build_area_embed(vp, view.area, "\n".join(lines), LAND_COL_COMBAT),
+                    view=LandTheaterView(view.uid, view.gid, view.area))
+                await asyncio.sleep(1.0)
+                emb, fight_view = _build_fight(view.uid, view.gid, view.area, flee_spec)
+                _land_apply_enemy_first_strike(fight_view.state)
+                await interaction.edit_original_response(embed=build_combat_embed(fight_view.state), view=fight_view)
+                return
+            lines.append("")
+            lines.append(f"## 🏳️ 逃走成功（成功率{int(round(chance * 100))}%）")
+
         hot_reward_mult = int(view.ev.get("reward_mult", 1) or 1)
         hot_risk_mult = int(view.ev.get("risk_mult", 1) or 1)
         if ch.get("coin"):
@@ -1166,7 +1259,7 @@ def land_on_end(uid, gid, area, spec):
             view = LandResultView(uid, gid, area)
         else:
             xp = _land_xp_amount(vp, area, max(2, a_lose_xp(area))); add_xp(vp, xp)
-            vp["cur_hp"] = max(1, max_hp(vp) // 4)   # 帰宅後の残HP（家マークや食料で立て直す）
+            vp["cur_hp"] = max(1, max_hp(vp) // 4)   # 帰還後の残HP（宿屋や食料で立て直す）
             if vp.get("land_items", {}).get("decoy_doll", 0) > 0:
                 vp["land_items"]["decoy_doll"] -= 1
                 if vp["land_items"]["decoy_doll"] <= 0: del vp["land_items"]["decoy_doll"]
@@ -1325,20 +1418,23 @@ def build_land_zukan_embed(uid, area=1):
     killed = set(db.get_zukan(uid, "enemy_kill")) if uid else set()
     cat = [(f"land{area}_{e['name']}", e, "zako") for e in L.LAND_ENEMIES[area]]
     cat += [(f"landmid{area}_{e['name']}", e, "mid") for e in L.LAND_MIDRARES.get(area, [])]
+    # 💎 経験値逃走モンスターも、遭遇/討伐時に記録される key と同じ形式で図鑑に載せる
+    for _runner_kind, e in (L.XP_RUNNERS.get(area, {}) or {}).items():
+        cat.append((f"landrunner{area}_{e['name']}", e, "runner"))
     cat += [(f"land{area}_{e['name']}", e, "rare") for e in L.LAND_RARES.get(area, [])]
     total = len(cat)
     seen_n = len([1 for k, _, _ in cat if k in seen])
     kill_n = len([1 for k, _, _ in cat if k in killed])
     emb = discord.Embed(
         title=f"📖 街道図鑑 — {a['emoji']} {a['name']}",
-        description=f"遭遇 **{seen_n}/{total}** ・ 討伐 **{kill_n}/{total}**\n（★は強さ。🔸中レア／✨レア＝ボス級）",
+        description=f"遭遇 **{seen_n}/{total}** ・ 討伐 **{kill_n}/{total}**\n（★は強さ。🔸中レア／💎経験値／✨レア＝ボス級）",
         color=LAND_ZUKAN_COLOR.get(area, 0x4f9d69))
     by_star = {}
     for k, e, kind in cat:
         star = int(e.get("stars", 1))
         if k in seen:
             mark = " ⚔️**討伐済**" if k in killed else ""
-            pre = {"mid": "🔸", "rare": "✨"}.get(kind, "")
+            pre = {"mid": "🔸", "runner": "💎", "rare": "✨"}.get(kind, "")
             nm = f"{pre}{e['emoji']} {e['name']}{mark}"
         else:
             nm = "❔ ？？？"

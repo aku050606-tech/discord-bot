@@ -20,7 +20,7 @@ db = Database()
 # 🍖 まとめ買いの個数ステップ（ドック食料店／商船取引で共用）
 FOOD_QTY_STEPS = [1, 10, 50]
 # ⛽ 商船での給油ステップ（1000刻み・最大5000/回）
-TRADE_FUEL_STEPS = [1000, 2000, 3000, 4000, 5000]
+TRADE_FUEL_STEPS = [1000, 2000, 3000]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 計算ヘルパ
@@ -575,8 +575,10 @@ def build_discover_embed(vp, payload):
         footer="さあ、どうする？")
 
 def build_result_embed(vp, body, title="🌊 結果"):
-    """報酬確定の『結果』段階。航海中と同じ固定情報枠で見せる。"""
-    return build_voyage_embed(vp, _emph(body), title=title, color=0xf1c40f)
+    """報酬確定の『結果』段階。航海中と同じ固定情報枠で見せる。
+    釣り/探索/結果のEmbed高さがガタつかないよう、結果本文は少し大きめに固定する。
+    """
+    return build_voyage_embed(vp, _pad_voyage_note(_emph(body), 8), title=title, color=0xf1c40f)
 
 def build_voyage_theater_embed(vp, kind):
     col, note = _voyage_theater_note(kind)
@@ -652,10 +654,11 @@ def build_fish_monster_embed(vp, spec):
 
 class FishingSchoolView(discord.ui.View):
     """魚影演出のミニ釣りループ。回数ぶん釣る／いつでも切り上げ可。mode='rumor'で伝説出やすい。"""
-    def __init__(self, uid, gid, area, remaining, total, mode="normal"):
+    def __init__(self, uid, gid, area, remaining, total, mode="normal", legend_hit=False):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid)
         self.area = area; self.remaining = remaining; self.total = total; self.mode = mode
+        self.legend_hit = bool(legend_hit)
     async def _guard(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return False
@@ -696,8 +699,10 @@ class FishingSchoolView(discord.ui.View):
         remaining = self.remaining - 1
         body = voyage_catch_body(roll, is_new, new_crown, comp) + shard
         if remaining <= 0:
-            tail = ("\n\n🌈 噂は、本物だった――群れは静かに、深みへ帰っていった。" if self.mode == "rumor"
-                    else "\n\n🐟 群れは、ゆっくりと深みへ去っていった。")
+            legend_hit = self.legend_hit or (roll.get("rarity") == "legend")
+            tail = ("\n\n🌈 噂は、本物だった――群れは静かに、深みへ帰っていった。" if self.mode == "rumor" and legend_hit
+                    else ("\n\n🌫️ 噂ほどではなかった。群れは静かに、深みへ帰っていった。" if self.mode == "rumor"
+                          else "\n\n🐟 群れは、ゆっくりと深みへ去っていった。"))
             e = build_result_embed(vp, body + tail)
             e.color = roll["color"]
             await it.edit_original_response(embed=e, view=ContinueVoyageView(self.uid, self.gid, ""))
@@ -705,7 +710,7 @@ class FishingSchoolView(discord.ui.View):
         e = build_fish_school_embed(vp, remaining, self.total, body)
         e.color = roll["color"]
         await it.edit_original_response(
-            embed=e, view=FishingSchoolView(self.uid, self.gid, self.area, remaining, self.total, self.mode))
+            embed=e, view=FishingSchoolView(self.uid, self.gid, self.area, remaining, self.total, self.mode, self.legend_hit or (roll.get("rarity") == "legend")))
 
     @discord.ui.button(label="🚶 切り上げる", style=discord.ButtonStyle.secondary)
     async def leave(self, it, button):
@@ -2113,7 +2118,7 @@ def build_equipshop_embed(vp, uid=None, gid=None):
     e = discord.Embed(title="⚔️ リディア（装備屋）",
                       color=discord.Color.dark_orange(),
                       description="武器・防具・技を買い、装備に技を刻もう。\n"
-                                  "武器の種別に合う技だけ刻める（杖＝回復専用 等）。持ち替え・売却はインベントリで。")
+                                  "武器の種別に合う技だけ刻める（杖＝回復専用 等）。装備売却は定価＋刻印技価格の1/10。")
     if uid and gid:
         e.add_field(name="💰 所持金", value=f"**{db.get_balance(uid, gid):,}** ナトコイン", inline=False)
     for part in ("weapon", "torso", "legs"):
@@ -2250,6 +2255,14 @@ class EquipShopView(discord.ui.View):
         vp = db.get_voyage(uid); vp["unequip_kits"] = vp.get("unequip_kits", 0) + 1; db.save_voyage(uid, vp)
         await it.response.edit_message(embed=build_equipshop_embed(vp, self.user_id, self.gid), view=self)
         await it.followup.send(f"🧰 技外しキット購入（-{VS.UNEQUIP_KIT_PRICE:,}）", ephemeral=True)
+    @discord.ui.button(label="💰 装備を売る", style=discord.ButtonStyle.danger, row=2)
+    async def sell(self, it, b):
+        if not await self.guard(it): return
+        view = SellEquipView(self.user_id, self.gid)
+        if not view.has_items:
+            await it.response.send_message("売れる装備がないよ。", ephemeral=True); return
+        await it.response.edit_message(embed=build_equipshop_embed(db.get_voyage(self.user_id), self.user_id, self.gid),
+                                       view=view)
     @discord.ui.button(label="📦 インベントリ", style=discord.ButtonStyle.primary, row=2)
     async def inv(self, it, b):
         if not await self.guard(it): return
@@ -2259,6 +2272,55 @@ class EquipShopView(discord.ui.View):
         if not await self.guard(it): return
         from cogs.menu import open_shopping_street
         await open_shopping_street(it, self.user_id, self.gid)
+
+# ── 装備売却（定価＋刻印技価格の1/10。刻んだ技は手元に戻す）──
+class SellEquipView(discord.ui.View):
+    def __init__(self, user_id, gid):
+        super().__init__(timeout=900)
+        self.user_id = str(user_id); self.gid = str(gid)
+        vp = db.get_voyage(user_id)
+        self.has_items = any(vp["inventory"].get(p) for p in ("weapon", "torso", "legs"))
+        if self.has_items:
+            self.add_item(SellEquipSelect(user_id, gid))
+        self.add_item(_eqshop_back(user_id, gid))
+
+class SellEquipSelect(discord.ui.Select):
+    def __init__(self, user_id, gid):
+        self.user_id = str(user_id); self.gid = str(gid)
+        vp = db.get_voyage(user_id); opts = []
+        for part in ("weapon", "torso", "legs"):
+            for i, inst in enumerate(vp["inventory"].get(part, [])):
+                d = item_def(part, inst["item"])
+                nm = d["name"] if d else inst["item"]
+                eqmark = "✅装備中 " if vp["equipped"].get(part) == i else ""
+                skills = inst.get("skills", [])
+                skill_txt = f"・刻印技{len(skills)}個は手元に戻る" if skills else ""
+                opts.append(discord.SelectOption(
+                    label=f"{PART_NAMES[part]}：{eqmark}{nm}"[:90],
+                    value=f"{part}:{i}",
+                    description=f"売値 {inst_sell_value(part, inst):,} コイン（価格の1/10）{skill_txt}"[:100]))
+        super().__init__(placeholder="売る装備を選ぶ（売値は10分の1）", options=opts[:25])
+
+    async def callback(self, it):
+        if str(it.user.id) != self.user_id:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        uid, gid = self.user_id, self.gid
+        part, idx_s = self.values[0].split(":"); idx = int(idx_s)
+        vp = db.get_voyage(uid)
+        if idx < 0 or idx >= len(vp["inventory"].get(part, [])):
+            await it.response.send_message("その装備はもう見つからない。画面を開き直してね。", ephemeral=True); return
+        inst = vp["inventory"][part][idx]
+        d = item_def(part, inst["item"])
+        name = d["name"] if d else inst["item"]
+        sell = inst_sell_value(part, inst)
+        had_skills = len(inst.get("skills", []))
+        _return_skills(vp, inst)
+        _remove_item(vp, part, idx)
+        db.update_balance(uid, gid, sell)
+        db.save_voyage(uid, vp)
+        await it.response.edit_message(embed=build_equipshop_embed(vp, uid, gid), view=SellEquipView(uid, gid))
+        extra = f" 刻印技{had_skills}個は手元に戻した。" if had_skills else ""
+        await it.followup.send(f"💰 **{name}** を売却した。+{sell:,} ナトコイン。{extra}", ephemeral=True)
 
 # ── 装備購入（武器/防具）。満杯なら入れ替え ──
 class BuyView(discord.ui.View):
@@ -2809,7 +2871,7 @@ def build_itemshop_embed(vp, uid, gid):
             value=f"HP+{int(f['heal_pct']*100)}%・**{f['price']:,}**コイン",
             inline=True,
         )
-    # 常設：街道アイテム（包帯）
+    # 常設：探索アイテム（包帯）
     always = [iid for iid, it in getattr(L, "LAND_ITEMS", {}).items() if it.get("shop") == "always"]
     daily = _daily_random_shop_items(gid)
     lines = []
@@ -3031,8 +3093,8 @@ def build_skill_gacha_embed(uid: str, gid: str):
             f"🎖️ **ガチャメダル**：1回につき +{V.GACHA_MEDAL_PER_PULL}枚\n\n"
             "🌈 **☆3技**：0.2%\n"
             "🐾 **ペット**：0.1%\n"
-            "🟣 **幻の街道アイテム**：0.1%（身代わり人形 / 守護の羽）\n"
-            "🔵 **レア街道アイテム**：2.2%（煙玉 / お守り / 地図）\n"
+            "🟣 **幻の探索アイテム**：0.1%（身代わり人形 / 守護の羽）\n"
+            "🔵 **レア探索アイテム**：2.2%（煙玉 / お守り / 地図）\n"
             "🟢 **探索アイテム**：4.0%（ランタン / 羅針盤）\n"
             "⚪ **食料・包帯**：45.0%\n"
             "🎟️ **宝くじ**：残り\n\n"
@@ -3315,6 +3377,54 @@ async def _advance(interaction, holder, action):
             view=CombatView(holder.user_id, holder.gid, state,
                             on_end=holder.on_end, flee_cb=holder.flee_cb, flee_pct=holder.flee_pct))
 
+
+class CombatItemSelect(discord.ui.Select):
+    """戦闘中に使える探索アイテム（包帯/煙玉のみ）。食事は使わせない。"""
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        vp = db.get_voyage(self.uid)
+        opts = []
+        for iid in ("bandage", "smoke_bomb"):
+            n = vp.get("land_items", {}).get(iid, 0)
+            if n > 0 and iid in getattr(L, "LAND_ITEMS", {}):
+                it = L.LAND_ITEMS[iid]
+                desc = "戦闘中にHPを25%回復" if iid == "bandage" else "この戦闘から即撤退（ボス以外）"
+                opts.append(discord.SelectOption(label=f"{it['name']} ×{n}", emoji=it.get("emoji"), value=iid, description=desc))
+        if not opts:
+            opts = [discord.SelectOption(label="使える探索アイテムがない", value="__none__")]
+        super().__init__(placeholder="🎒 探索アイテムを使う", options=opts[:25], row=3)
+
+    async def callback(self, it):
+        view: CombatView = self.view
+        if str(it.user.id) != view.user_id:
+            await it.response.send_message("これはあなたの戦闘ではありません", ephemeral=True); return
+        iid = self.values[0]
+        vp = db.get_voyage(view.user_id)
+        if iid == "__none__" or vp.get("land_items", {}).get(iid, 0) <= 0:
+            await it.response.send_message("使える探索アイテムがない。", ephemeral=True); return
+        a = view.state["ally"]
+        if iid == "bandage":
+            if a.get("hp", 0) >= a.get("max_hp", 1):
+                await it.response.send_message("❤️ HPは満タンだ。", ephemeral=True); return
+            heal = max(1, int(a["max_hp"] * 0.25)); before = a["hp"]
+            a["hp"] = min(a["max_hp"], a["hp"] + heal)
+            item_log = f"🩹 包帯を使った。HP {before}→{a['hp']}"
+        elif iid == "smoke_bomb":
+            if view.flee_cb is None:
+                await it.response.send_message("💨 この戦闘では煙玉を使えない。", ephemeral=True); return
+            vp["land_items"][iid] -= 1
+            if vp["land_items"][iid] <= 0: del vp["land_items"][iid]
+            db.save_voyage(view.user_id, vp)
+            view.state["_force_flee_success_once"] = True
+            await view.flee_cb(it, view.state)
+            return
+        else:
+            await it.response.send_message("そのアイテムは戦闘中には使えない。", ephemeral=True); return
+        vp["land_items"][iid] -= 1
+        if vp["land_items"][iid] <= 0: del vp["land_items"][iid]
+        db.save_voyage(view.user_id, vp)
+        await _advance(it, view, {"kind": "item", "text": item_log})
+
 class CombatView(discord.ui.View):
     def __init__(self, user_id, gid, state, on_end=None, flee_cb=None, flee_pct=None):
         super().__init__(timeout=900)
@@ -3332,6 +3442,12 @@ class CombatView(discord.ui.View):
                 self.add_item(SkillCommandSelect(us))
         if flee_cb is not None and not a.get("charging"):
             self.add_item(FleeButton(flee_pct))
+        try:
+            vp = db.get_voyage(self.user_id)
+            if any(vp.get("land_items", {}).get(iid, 0) > 0 for iid in ("bandage", "smoke_bomb")) and not a.get("charging"):
+                self.add_item(CombatItemSelect(self.user_id, self.gid))
+        except Exception:
+            pass
 
 class CmdButton(discord.ui.Button):
     def __init__(self, label, style, action):
@@ -3705,7 +3821,7 @@ class TradeFuelSelect(discord.ui.Select):
         opts = [discord.SelectOption(label=f"⛽ 燃料 +{step:,}", value=str(step),
                                      description=f"{int(step*unit):,}コイン")
                 for step in TRADE_FUEL_STEPS]
-        super().__init__(placeholder="⛽ 給油する（1000刻み・最大5000）", options=opts, row=0)
+        super().__init__(placeholder="⛽ 給油する（1000刻み・最大3000）", options=opts, row=0)
     async def callback(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
@@ -3958,12 +4074,13 @@ class NavalEncounter:
 
     async def on_flee(self, interaction, state):
         vp = db.get_voyage(self.uid)
-        chance = self._flee_pct(vp)
-        if random.random() < chance:
+        force_success = bool(state.pop("_force_flee_success_once", False))
+        chance = 1.0 if force_success else self._flee_pct(vp)
+        if force_success or random.random() < chance:
             # 撤退成功：離脱（報酬なし）
             await interaction.response.edit_message(
-                embed=_result_embed(state, "🏳️ 撤退成功",
-                                    f"{self.spec['name']} を振り切って離脱した。（報酬なし）"),
+                embed=_result_embed(state, "💨 煙玉" if force_success else "🏳️ 撤退成功",
+                                    ("煙に紛れて、確実に離脱した。（報酬なし）" if force_success else f"{self.spec['name']} を振り切って離脱した。（報酬なし）")),
                 view=ContinueVoyageView(self.uid, self.gid, "🏳️ 戦いを避けて航海を続ける。"))
             return
         # 撤退失敗：隙を突かれ敵の一撃。戦闘続行

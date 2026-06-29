@@ -317,7 +317,7 @@ def build_menu_embed(user: discord.abc.User = None, guild_id: str = None):
             "🛤️　**街道**　　　── 平原・森・山を徒歩で冒険\n"
             "🃏　**カジノ**　　── スロット＆テーブルで一攫千金\n"
             "📱　**スマホ**　　── 銀行・デイリー・クエスト・募集\n"
-            "🏠　**家**　　　　── 休んでHPを全快（3分ごと）"
+            "🏨　**宿屋**　　　── ナトコインを払ってHPを全快"
         ),
         inline=False,
     )
@@ -438,30 +438,46 @@ class MainMenuView(discord.ui.View):
         from cogs.land import open_land
         await open_land(interaction, str(interaction.user.id))
 
-    @discord.ui.button(label="🏠", style=discord.ButtonStyle.secondary, row=2)
-    async def house(self, interaction, button):
+    @discord.ui.button(label="🏨 宿屋", style=discord.ButtonStyle.secondary, row=2)
+    async def inn(self, interaction, button):
         if not await self._check(interaction): return
         uid = str(interaction.user.id)
         gid = str(interaction.guild.id)
         vp = db.get_voyage(uid)
-        HOME_HEAL_CD = 180  # 3分
-        last = vp.get("last_home_heal", 0)
-        left = HOME_HEAL_CD - (time.time() - last)
-        mh = 100 + (vp.get("level", 1) - 1) * 10
-        if left > 0:
-            m, s = divmod(int(left) + 1, 60)
-            await interaction.response.send_message(
-                f"🏠 まだ休めない。次に休めるまで **あと {m}分{s}秒**。", ephemeral=True); return
+        level = int(vp.get("level", 1))
+        mh = 100 + (level - 1) * 10
+        if level < 10:
+            cost = 3000
+        elif level < 20:
+            cost = 10000
+        elif level < 30:
+            cost = 20000
+        else:
+            cost = 30000
         if vp.get("cur_hp", mh) >= mh:
-            # 満タンでもCDは消費しない（無駄打ち防止）。一応知らせる。
             await interaction.response.send_message(
-                "🏠 もうHPは満タンだ。よく休めている。", ephemeral=True); return
+                "🏨 宿屋の女将ミツネ『あんた、もう元気そうじゃないか。布団より冒険だねぇ』\nHPはすでに満タンです。", ephemeral=True); return
+        bal = db.get_balance(uid, gid)
+        if bal < cost:
+            await interaction.response.send_message(
+                f"🏨 宿屋の女将ミツネ『悪いね、ここも商売なんだ。出世払いは帳簿が荒れるからねぇ』\n"
+                f"宿泊費 **{cost:,}ナトコイン** が足りません。現在: **{bal:,}ナトコイン**", ephemeral=True); return
+        lines = [
+            "宿屋の女将ミツネ『湯は沸いてるよ。命を張った日は、ちゃんと寝るんだ』",
+            "宿屋の女将ミツネ『顔色が悪いねぇ。今日は上等な枕を出しとくよ』",
+            "宿屋の女将ミツネ『また傷だらけかい。冒険者ってのは本当に困った客だねぇ』",
+            "宿屋の女将ミツネ『金は取るよ。でも、朝まで生きて起きられるなら安いもんさ』",
+            "宿屋の女将ミツネ『寝床で見る夢には気をつけな。たまに、夢の方がこっちを見てるからね』",
+        ]
+        db.update_balance(uid, gid, -cost)
         vp["cur_hp"] = mh
-        vp["last_home_heal"] = time.time()
+        # 宿屋化により時間制限は廃止。旧last_home_healは互換用に残しても参照しない。
         db.save_voyage(uid, vp)
+        new_bal = db.get_balance(uid, gid)
         await interaction.response.send_message(
-            f"🏠 家でゆっくり休んだ。**HPが全快した！**（{mh}/{mh}）\n"
-            f"次に休めるのは5分後。", ephemeral=True)
+            f"🏨 {random.choice(lines)}\n"
+            f"**HPが全快した！**（{mh}/{mh}）\n"
+            f"宿泊費: **-{cost:,}ナトコイン** / 残高: **{new_bal:,}ナトコイン**", ephemeral=True)
 
     # ── 4段目：カジノ・スマホ ──
     @discord.ui.button(label="🃏 カジノ", style=discord.ButtonStyle.success, row=3)

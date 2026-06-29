@@ -7,7 +7,7 @@
 ・山＝海のE3くらいの“手応え”。
 ・全体方針：敵の攻撃力は低め（＝あまりダメージを食らわない）。きついのは「装備が足りない」とき。
 ・HPは毎戦は回復しない（持ち越し）。タウンに戻っても全快しない。回復は家/食料で行う。
-・XPは渋め＝雑魚およそ200匹で1レベルの体感。大きく稼ぐのはレアキャラ（激レア）。
+・XPはエリアごとの想定周回数で調整。森はLv10〜20を約1500探索、山はLv20〜30を約2000探索の体感。
 ・船・燃料・カケラは無い。
 
 敵スペックは make_board_enemy(spec, scale) がそのまま食える形。
@@ -19,7 +19,7 @@ import random
 
 # ── エリア定義 ──
 #   req_lv：解放レベル（想定レベル）。base：crew_power の底上げ。scale：戦闘スケール。
-#   xp/coin：撃破報酬の範囲（雑魚）。XPは渋め＝約200匹で1レベル。
+#   xp/coin：撃破報酬の範囲（雑魚）。森/山は想定探索回数から逆算。
 LAND_AREAS = {
     1: {"name": "平原", "emoji": "🌿", "req_lv": 1,  "base": 8,  "scale": 1.0,
         "xp": [4, 6],     "coin": [200, 600],
@@ -27,12 +27,12 @@ LAND_AREAS = {
                   "弱い魔物がぽつぽつと現れる――腕慣らしには、ちょうどいい。\n"
                   "……ふと、草の向こうで何かが動いた気がした。気のせいか。")},
     2: {"name": "森", "emoji": "🌲", "req_lv": 8,  "base": 30, "scale": 1.8,
-        "xp": [6, 10],   "coin": [450, 1100],
+        "xp": [120, 180], "coin": [450, 1100],
         "intro": ("木々が空を覆い、足元は薄暗い。獣の気配が、あちこちに。\n"
                   "平原より、ずっと手強い――ちゃんと武器と防具を整えてこい。\n"
                   "奥には、人の手が入った痕跡。誰かが、この森を“管理”している。")},
     3: {"name": "山", "emoji": "⛰️", "req_lv": 15, "base": 36, "scale": 2.8,
-        "xp": [10, 14],  "coin": [900, 2000],
+        "xp": [220, 300], "coin": [900, 2000],
         "intro": ("切り立った岩肌と、薄い空気。棲むものは、どれも一筋縄ではいかない。\n"
                   "尾根の向こうに、ぽつんと立つ塔の影。\n"
                   "あれが――海と戦い続けているという、“陸のやつら”の根城か。")},
@@ -121,7 +121,7 @@ LAND_RARES = {
     ],
     2: [
         {"name": "森番のフードの男",  "emoji": "🧥", "ratio": 2.2, "hp_mult": 1.8, "atk_mult": 0.50, "tier": 3, "stars": 4,
-         "xp": [900, 1500], "coin": [9000, 16000],
+         "xp": [1500, 2300], "coin": [9000, 16000],
          "rare_intro": ("森のざわめきが、ふっと止んだ。\n"
                         "フードを目深にかぶった男が、音もなく行く手を塞ぐ。\n"
                         "……こいつは、これまでの獣とは“格”が違う。"),
@@ -129,7 +129,7 @@ LAND_RARES = {
     ],
     3: [
         {"name": "塔の伝令騎士",      "emoji": "🛡️", "ratio": 1.7, "hp_mult": 1.7, "atk_mult": 0.60, "tier": 4, "stars": 4,
-         "xp": [3000, 5000], "coin": [18000, 35000],
+         "xp": [4000, 6000], "coin": [18000, 35000],
          "rare_intro": ("空気が、軋んだ。\n"
                         "塔の紋章を掲げた騎士が、ゆっくりと剣を抜く。\n"
                         "ひと目でわかる――まともにやり合えば、ただでは済まない。"),
@@ -159,19 +159,19 @@ LAND_MIDRARES = {
     ],
     2: [  # 🌲 森 ☆3
         {"name": "森の主・大熊",   "emoji": "🐻", "ratio": 2.2, "hp_mult": 1.7, "atk_mult": 0.40, "tier": 2, "stars": 3,
-         "xp": [45, 85], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
+         "xp": [300, 480], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
         {"name": "毒蜘蛛の女王",   "emoji": "🕷️", "ratio": 2.0, "hp_mult": 1.6, "atk_mult": 0.42, "tier": 2, "stars": 3,
-         "xp": [45, 85], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
+         "xp": [300, 480], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
         {"name": "山賊の頭目",     "emoji": "🗡️", "ratio": 2.1, "hp_mult": 1.5, "atk_mult": 0.44, "tier": 2, "stars": 3,
-         "xp": [45, 85], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
+         "xp": [300, 480], "coin": [2200, 4800], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
     ],
     3: [  # ⛰️ 山 ☆3
         {"name": "古竜のなりそこない", "emoji": "🐲", "ratio": 2.5, "hp_mult": 1.6, "atk_mult": 0.46, "tier": 3, "stars": 3,
-         "xp": [90, 160], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
+         "xp": [750, 1050], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
         {"name": "石の巨人",       "emoji": "🗿", "ratio": 2.2, "hp_mult": 1.8, "atk_mult": 0.42, "tier": 3, "stars": 3,
-         "xp": [90, 160], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
+         "xp": [750, 1050], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
         {"name": "山の魔女",       "emoji": "🧙", "ratio": 2.4, "hp_mult": 1.5, "atk_mult": 0.48, "tier": 3, "stars": 3,
-         "xp": [90, 160], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
+         "xp": [750, 1050], "coin": [4500, 9000], "drop": [("dist", 0.03, [(1, 0.70), (2, 0.29), (3, 0.01)])]},
     ],
 }
 MIDRARE_SPAWN_RATE = 0.05   # 戦闘のうち中レアに化ける確率（5%）
@@ -597,8 +597,8 @@ def make_land_enemy(area, force=None, buffs=None):
     runner_roll = random.random()
     # 💎 経験値逃走モンスター（ドロップ無し・XP専用）
     runner_pack = XP_RUNNERS.get(area, {})
-    if force in ("xprunner", "kingrunner") or (force is None and runner_pack and runner_roll < (XP_RUNNER_RATE + XP_RUNNER_KING_RATE)):
-        kind = "king" if force == "kingrunner" or (force is None and runner_roll < XP_RUNNER_KING_RATE) else "normal"
+    if force in ("xprunner", "kingrunner") or (force in (None, "combat") and runner_pack and runner_roll < (XP_RUNNER_RATE + XP_RUNNER_KING_RATE)):
+        kind = "king" if force == "kingrunner" or (force in (None, "combat") and runner_roll < XP_RUNNER_KING_RATE) else "normal"
         e = runner_pack.get(kind) or runner_pack.get("normal")
         return {
             "name": e["name"], "emoji": e["emoji"], "key": f"landrunner{area}_{e['name']}",
@@ -912,3 +912,18 @@ for _area, _events in LAND_RANDOM_EVENT_PACK_V9.items():
             _seen.add(_ev.get("id"))
 
 # v9の目安：既存8件前後＋追加 平原10/森8/山8。ここからJSON化/外部化しやすい形に寄せていく。
+
+# ── v23 森・山 難易度微調整 ──
+# 戦闘中に包帯/煙玉を使えるようになったぶん、森山は少しだけ危険寄りへ。
+# 食料は戦闘中に使わせない（CombatItemSelect側は LAND_ITEMS の bandage/smoke_bomb のみ）。
+def _apply_v23_forest_mountain_difficulty():
+    tables = [LAND_ENEMIES, LAND_RARES, LAND_MIDRARES]
+    # 森：HP+15% / 攻撃+20%、山：HP+20% / 攻撃+25%
+    mults = {2: (1.15, 1.20), 3: (1.20, 1.25)}
+    for area, (hp_mul, atk_mul) in mults.items():
+        for table in tables:
+            for spec in table.get(area, []) or []:
+                spec["hp_mult"] = round(float(spec.get("hp_mult", 1.0)) * hp_mul, 3)
+                spec["atk_mult"] = round(float(spec.get("atk_mult", 1.0)) * atk_mul, 3)
+
+_apply_v23_forest_mountain_difficulty()
