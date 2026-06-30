@@ -144,6 +144,7 @@ VOYAGE_FISH_BY_AREA = {
         {"name":"カツオ",         "rarity":"common", "value":360, "emoji":"🐟"},
         {"name":"カンパチ",       "rarity":"common", "value":460, "emoji":"🐟"},
         {"name":"アオリイカ",     "rarity":"common", "value":650, "emoji":"🦑"},
+        {"name":"潮騒サヨリ",     "rarity":"common", "value":520, "emoji":"🐟"},
         {"name":"キハダマグロ",   "rarity":"uncommon", "value":850,  "emoji":"🐟"},
         {"name":"大マダイ",       "rarity":"uncommon", "value":1200, "emoji":"🐟"},
         {"name":"座布団ヒラメ",   "rarity":"uncommon", "value":1450, "emoji":"🐟"},
@@ -168,6 +169,7 @@ VOYAGE_FISH_BY_AREA = {
         {"name":"オナガザメ",     "rarity":"common", "value":800,  "emoji":"🦈"},
         {"name":"ヨゴレ",         "rarity":"common", "value":1000, "emoji":"🦈"},
         {"name":"寒サワラ",       "rarity":"common", "value":1250, "emoji":"🐟"},
+        {"name":"外洋シイラ",     "rarity":"common", "value":1350, "emoji":"🐟"},
         {"name":"メカジキ",       "rarity":"uncommon", "value":1800, "emoji":"🐟"},
         {"name":"シュモクザメ",   "rarity":"uncommon", "value":2300, "emoji":"🦈"},
         {"name":"イトマキエイ",   "rarity":"uncommon", "value":2800, "emoji":"🐟"},
@@ -192,6 +194,7 @@ VOYAGE_FISH_BY_AREA = {
         {"name":"ミツクリザメ",     "rarity":"common", "value":1800, "emoji":"🦈"},
         {"name":"オニキンメ",       "rarity":"common", "value":2200, "emoji":"🐟"},
         {"name":"ホウライエソ",     "rarity":"common", "value":2700, "emoji":"🐟"},
+        {"name":"深海ハダカイワシ", "rarity":"common", "value":3100, "emoji":"🐟"},
         {"name":"ラブカ",           "rarity":"uncommon", "value":3800, "emoji":"🦈"},
         {"name":"ダイオウグソクムシ","rarity":"uncommon", "value":4600, "emoji":"🦐"},
         {"name":"メンダコ",         "rarity":"uncommon", "value":5400, "emoji":"🐙"},
@@ -216,6 +219,7 @@ VOYAGE_FISH_BY_AREA = {
         {"name":"目のない魚",       "rarity":"common", "value":3600, "emoji":"🐟"},
         {"name":"影だけの魚",       "rarity":"common", "value":4300, "emoji":"🌑"},
         {"name":"静寂を纏う魚",     "rarity":"common", "value":5500, "emoji":"🤍"},
+        {"name":"記憶をなぞる魚",   "rarity":"common", "value":6200, "emoji":"👁️"},
         {"name":"骨だけで泳ぐ魚",   "rarity":"uncommon", "value":8000,  "emoji":"🦴"},
         {"name":"二つの顔を持つ魚", "rarity":"uncommon", "value":10500, "emoji":"🎭"},
         {"name":"囁く貝の群れ",     "rarity":"uncommon", "value":12500, "emoji":"🐚"},
@@ -449,12 +453,20 @@ ENEMY_TYPES = {
     # ── 🦈 海獣系 ──
     "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.52,"hp_mult":0.75,"atk_mult":1.45,"reward":0.65,"tier_add":-1, "stars":1},  # 群れ・紙・速攻
     "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.62,"hp_mult":0.82,"atk_mult":1.5, "reward":0.85,"tier_add":-1, "stars":1, "note":"紙装甲・高火力の短期決戦"},
+    "jelly_swarm":   {"name":"電気クラゲの群れ", "emoji":"🪼", "ratio":0.50,"hp_mult":0.70,"atk_mult":1.25,"reward":0.75,"tier_add":-1, "stars":1, "note":"低HPだが出血で削る群れ敵"},
+    "salt_buccaneer":{"name":"塩まみれの小海賊", "emoji":"🧂", "ratio":0.66,"hp_mult":0.92,"atk_mult":1.05,"reward":0.82,"tier_add":-1, "stars":1, "note":"E1の標準寄り人型。強撃で圧を出す"},
     "shellback":     {"name":"甲羅背負いの海亀", "emoji":"🐢", "ratio":0.78,"hp_mult":1.65,"atk_mult":0.62,"reward":0.95,"tier_add":0,  "stars":2, "note":"高HP・低火力。鉄壁で粘る"},
     "razor_ray":     {"name":"刃尾エイ",         "emoji":"🪽", "ratio":0.82,"hp_mult":0.90,"atk_mult":1.18,"reward":1.05,"tier_add":0,  "stars":2, "note":"出血で削る中型海獣"},
     "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3, "note":"毒・出血特化"},
     "coral_golem":   {"name":"珊瑚の巨兵",       "emoji":"🪸", "ratio":1.25,"hp_mult":1.75,"atk_mult":0.75,"reward":1.35,"tier_add":1,  "stars":3, "note":"硬い壁役。防御と反撃"},
     "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":1.55,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
     "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3, "note":"連撃と出血の中型海獣"},
+    "harpooner":     {"name":"銛投げの略奪者",   "emoji":"🪝", "ratio":0.98,"hp_mult":0.95,"atk_mult":1.25,"reward":1.15,"tier_add":0,  "stars":2, "note":"攻撃寄り。強撃で削る中堅海賊"},
+    "reef_manta":    {"name":"岩礁マンタ",       "emoji":"🪽", "ratio":0.88,"hp_mult":1.35,"atk_mult":0.82,"reward":1.05,"tier_add":0,  "stars":2, "note":"やや硬い海獣。防御で粘る"},
+    "abyss_lamprey": {"name":"深淵ヤツメ",       "emoji":"🪱", "ratio":1.18,"hp_mult":0.95,"atk_mult":1.28,"reward":1.45,"tier_add":1,  "stars":3, "note":"出血特化の深海魚"},
+    "drowned_knight":{"name":"沈んだ甲冑騎士",   "emoji":"🛡️", "ratio":1.22,"hp_mult":1.55,"atk_mult":0.86,"reward":1.50,"tier_add":1,  "stars":3, "undead":True, "note":"硬い亡者。鉄壁で長期戦にする"},
+    "void_squid":    {"name":"虚海の黒イカ",     "emoji":"🦑", "ratio":1.45,"hp_mult":1.05,"atk_mult":1.35,"reward":1.75,"tier_add":1,  "stars":4, "note":"高火力の虚海生物。連撃で事故を作る"},
+    "observer_drifter":{"name":"観測される漂流者", "emoji":"👁️", "ratio":1.55,"hp_mult":1.20,"atk_mult":1.15,"reward":1.85,"tier_add":1,  "stars":4, "shard_hint":True, "note":"観測者伏線。強撃と出血を混ぜる"},
     # ── 🐙🐲 ボス級 ──
     "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
     "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True, "note":"最深部ボス。圧倒的HPと大技"},
@@ -493,6 +505,14 @@ ENEMY_SKILLS_BY_TYPE = {
     "coral_golem":   ["teppeki", "kyougeki"],          # 固い・重い
     "siren_hunter":  ["rengeki", "shukketsu"],         # 手数と出血
     "serpent":       ["rengeki", "shukketsu"],
+    "jelly_swarm":   ["shukketsu"],
+    "salt_buccaneer":["kyougeki"],
+    "harpooner":     ["kyougeki"],
+    "reef_manta":    ["teppeki"],
+    "abyss_lamprey": ["shukketsu", "rengeki"],
+    "drowned_knight":["teppeki", "shukketsu"],
+    "void_squid":    ["rengeki", "kyougeki"],
+    "observer_drifter":["kyougeki", "shukketsu"],
     "kraken":        ["kyougeki", "konshin"],
     "yormun":        ["kyougeki", "konshin", "shukketsu"],
     "castaway_foe":  [],                               # 弱い・技なし
@@ -532,10 +552,10 @@ def make_enemy_spec(combat_key, area):
 # ── エリア別の敵プール（出現率テーブルの "pirate" 枠がこれを引く）──
 #   激レア(leviathan/admiral)は重み1-5で本当に薄く。E3/E4は★3実装後に重み再調整。
 ENEMY_POOL_BY_AREA = {
-    1: [("pirate_old",20),("reef_bandit",15),("hook_raider",14),("shark",18),("piranha",18),("castaway_foe",15)],   # E1=入口だが敵ごとに個性あり
-    2: [("pirate_old",9),("reef_bandit",10),("hook_raider",10),("pirate_drifter",13),("pirate_washout",12),("pirate_rogue",13),("shark",9),("piranha",6),("shellback",7),("razor_ray",7),("drowned",9),("wight",7)],
-    3: [("pirate_washout",9),("pirate_rogue",13),("pirate_bounty",15),("drowned",9),("wight",6),("ghost",10),("serpent",8),("venom_serpent",9),("coral_golem",8),("siren_hunter",6),("navy",6),("merchant_big",7),("leviathan",1)],
-    4: [("pirate_bounty",20),("ghost",17),("hands",13),("navy",13),("merchant_big",9),("venom_serpent",6),("coral_golem",8),("siren_hunter",7),("leviathan",5),("admiral",3)],
+    1: [("pirate_old",16),("reef_bandit",13),("hook_raider",12),("shark",15),("piranha",15),("castaway_foe",12),("jelly_swarm",9),("salt_buccaneer",8)],   # E1=入口だが敵ごとに個性あり
+    2: [("pirate_old",8),("reef_bandit",8),("hook_raider",8),("pirate_drifter",11),("pirate_washout",10),("pirate_rogue",11),("shark",8),("piranha",5),("shellback",6),("razor_ray",6),("drowned",8),("wight",6),("harpooner",8),("reef_manta",7)],
+    3: [("pirate_washout",8),("pirate_rogue",11),("pirate_bounty",13),("drowned",8),("wight",5),("ghost",9),("serpent",7),("venom_serpent",8),("coral_golem",7),("siren_hunter",5),("navy",5),("merchant_big",6),("abyss_lamprey",5),("drowned_knight",4),("leviathan",1)],
+    4: [("pirate_bounty",17),("ghost",14),("hands",11),("navy",11),("merchant_big",8),("venom_serpent",5),("coral_golem",7),("siren_hunter",6),("void_squid",8),("observer_drifter",5),("leviathan",5),("admiral",3)],
 }
 # ── エリアボス（"boss" 枠）──
 ENEMY_BOSS_BY_AREA = {
@@ -1057,12 +1077,20 @@ ENEMY_TYPES = {
     # ── 🦈 海獣系 ──
     "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.52,"hp_mult":0.75,"atk_mult":1.45,"reward":0.65,"tier_add":-1, "stars":1},  # 群れ・紙・速攻
     "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.62,"hp_mult":0.82,"atk_mult":1.5, "reward":0.85,"tier_add":-1, "stars":1, "note":"紙装甲・高火力の短期決戦"},
+    "jelly_swarm":   {"name":"電気クラゲの群れ", "emoji":"🪼", "ratio":0.50,"hp_mult":0.70,"atk_mult":1.25,"reward":0.75,"tier_add":-1, "stars":1, "note":"低HPだが出血で削る群れ敵"},
+    "salt_buccaneer":{"name":"塩まみれの小海賊", "emoji":"🧂", "ratio":0.66,"hp_mult":0.92,"atk_mult":1.05,"reward":0.82,"tier_add":-1, "stars":1, "note":"E1の標準寄り人型。強撃で圧を出す"},
     "shellback":     {"name":"甲羅背負いの海亀", "emoji":"🐢", "ratio":0.78,"hp_mult":1.65,"atk_mult":0.62,"reward":0.95,"tier_add":0,  "stars":2, "note":"高HP・低火力。鉄壁で粘る"},
     "razor_ray":     {"name":"刃尾エイ",         "emoji":"🪽", "ratio":0.82,"hp_mult":0.90,"atk_mult":1.18,"reward":1.05,"tier_add":0,  "stars":2, "note":"出血で削る中型海獣"},
     "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3, "note":"毒・出血特化"},
     "coral_golem":   {"name":"珊瑚の巨兵",       "emoji":"🪸", "ratio":1.25,"hp_mult":1.75,"atk_mult":0.75,"reward":1.35,"tier_add":1,  "stars":3, "note":"硬い壁役。防御と反撃"},
     "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":1.55,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
     "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3, "note":"連撃と出血の中型海獣"},
+    "harpooner":     {"name":"銛投げの略奪者",   "emoji":"🪝", "ratio":0.98,"hp_mult":0.95,"atk_mult":1.25,"reward":1.15,"tier_add":0,  "stars":2, "note":"攻撃寄り。強撃で削る中堅海賊"},
+    "reef_manta":    {"name":"岩礁マンタ",       "emoji":"🪽", "ratio":0.88,"hp_mult":1.35,"atk_mult":0.82,"reward":1.05,"tier_add":0,  "stars":2, "note":"やや硬い海獣。防御で粘る"},
+    "abyss_lamprey": {"name":"深淵ヤツメ",       "emoji":"🪱", "ratio":1.18,"hp_mult":0.95,"atk_mult":1.28,"reward":1.45,"tier_add":1,  "stars":3, "note":"出血特化の深海魚"},
+    "drowned_knight":{"name":"沈んだ甲冑騎士",   "emoji":"🛡️", "ratio":1.22,"hp_mult":1.55,"atk_mult":0.86,"reward":1.50,"tier_add":1,  "stars":3, "undead":True, "note":"硬い亡者。鉄壁で長期戦にする"},
+    "void_squid":    {"name":"虚海の黒イカ",     "emoji":"🦑", "ratio":1.45,"hp_mult":1.05,"atk_mult":1.35,"reward":1.75,"tier_add":1,  "stars":4, "note":"高火力の虚海生物。連撃で事故を作る"},
+    "observer_drifter":{"name":"観測される漂流者", "emoji":"👁️", "ratio":1.55,"hp_mult":1.20,"atk_mult":1.15,"reward":1.85,"tier_add":1,  "stars":4, "shard_hint":True, "note":"観測者伏線。強撃と出血を混ぜる"},
     # ── 🐙🐲 ボス級 ──
     "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
     "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True, "note":"最深部ボス。圧倒的HPと大技"},
@@ -1101,6 +1129,14 @@ ENEMY_SKILLS_BY_TYPE = {
     "coral_golem":   ["teppeki", "kyougeki"],          # 固い・重い
     "siren_hunter":  ["rengeki", "shukketsu"],         # 手数と出血
     "serpent":       ["rengeki", "shukketsu"],
+    "jelly_swarm":   ["shukketsu"],
+    "salt_buccaneer":["kyougeki"],
+    "harpooner":     ["kyougeki"],
+    "reef_manta":    ["teppeki"],
+    "abyss_lamprey": ["shukketsu", "rengeki"],
+    "drowned_knight":["teppeki", "shukketsu"],
+    "void_squid":    ["rengeki", "kyougeki"],
+    "observer_drifter":["kyougeki", "shukketsu"],
     "kraken":        ["kyougeki", "konshin"],
     "yormun":        ["kyougeki", "konshin", "shukketsu"],
     "castaway_foe":  [],                               # 弱い・技なし
@@ -1140,10 +1176,10 @@ def make_enemy_spec(combat_key, area):
 # ── エリア別の敵プール（出現率テーブルの "pirate" 枠がこれを引く）──
 #   激レア(leviathan/admiral)は重み1-5で本当に薄く。E3/E4は★3実装後に重み再調整。
 ENEMY_POOL_BY_AREA = {
-    1: [("pirate_old",20),("reef_bandit",15),("hook_raider",14),("shark",18),("piranha",18),("castaway_foe",15)],   # E1=入口だが敵ごとに個性あり
-    2: [("pirate_old",9),("reef_bandit",10),("hook_raider",10),("pirate_drifter",13),("pirate_washout",12),("pirate_rogue",13),("shark",9),("piranha",6),("shellback",7),("razor_ray",7),("drowned",9),("wight",7)],
-    3: [("pirate_washout",9),("pirate_rogue",13),("pirate_bounty",15),("drowned",9),("wight",6),("ghost",10),("serpent",8),("venom_serpent",9),("coral_golem",8),("siren_hunter",6),("navy",6),("merchant_big",7),("leviathan",1)],
-    4: [("pirate_bounty",20),("ghost",17),("hands",13),("navy",13),("merchant_big",9),("venom_serpent",6),("coral_golem",8),("siren_hunter",7),("leviathan",5),("admiral",3)],
+    1: [("pirate_old",16),("reef_bandit",13),("hook_raider",12),("shark",15),("piranha",15),("castaway_foe",12),("jelly_swarm",9),("salt_buccaneer",8)],   # E1=入口だが敵ごとに個性あり
+    2: [("pirate_old",8),("reef_bandit",8),("hook_raider",8),("pirate_drifter",11),("pirate_washout",10),("pirate_rogue",11),("shark",8),("piranha",5),("shellback",6),("razor_ray",6),("drowned",8),("wight",6),("harpooner",8),("reef_manta",7)],
+    3: [("pirate_washout",8),("pirate_rogue",11),("pirate_bounty",13),("drowned",8),("wight",5),("ghost",9),("serpent",7),("venom_serpent",8),("coral_golem",7),("siren_hunter",5),("navy",5),("merchant_big",6),("abyss_lamprey",5),("drowned_knight",4),("leviathan",1)],
+    4: [("pirate_bounty",17),("ghost",14),("hands",11),("navy",11),("merchant_big",8),("venom_serpent",5),("coral_golem",7),("siren_hunter",6),("void_squid",8),("observer_drifter",5),("leviathan",5),("admiral",3)],
 }
 # ── エリアボス（"boss" 枠）──
 ENEMY_BOSS_BY_AREA = {

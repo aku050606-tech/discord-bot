@@ -834,6 +834,7 @@ LAKE_FISH = [
     {"name":"カワムツ", "rarity":"common", "value":8, "emoji":"🐟"},
     {"name":"フナ", "rarity":"common", "value":9, "emoji":"🐟"},
     {"name":"コイ", "rarity":"common", "value":12, "emoji":"🐠"},
+    {"name":"ワカサギ", "rarity":"common", "value":11, "emoji":"🐟"},
     {"name":"ザリガニ", "rarity":"common", "value":15, "emoji":"🦞"},
     # --- uncommon ---
     {"name":"アメリカザリガニ", "rarity":"uncommon", "value":5, "emoji":"🦞"},
@@ -890,6 +891,7 @@ RIVER_FISH = [
     {"name":"イチモンジタナゴ", "rarity":"common", "value":34, "emoji":"🐟"},
     {"name":"カネヒラ", "rarity":"common", "value":37, "emoji":"🐟"},
     {"name":"カジカ", "rarity":"common", "value":45, "emoji":"🐟"},
+    {"name":"ウグイ", "rarity":"common", "value":48, "emoji":"🐟"},
     # --- uncommon ---
     {"name":"オヤニラミ", "rarity":"uncommon", "value":30, "emoji":"🐟"},
     {"name":"ギギ", "rarity":"uncommon", "value":40, "emoji":"🐟"},
@@ -945,6 +947,7 @@ SEA_FISH = [
     {"name":"メバル", "rarity":"common", "value":82, "emoji":"🐟"},
     {"name":"カサゴ", "rarity":"common", "value":88, "emoji":"🐡"},
     {"name":"クロダイ", "rarity":"common", "value":95, "emoji":"🐟"},
+    {"name":"マイワシ", "rarity":"common", "value":72, "emoji":"🐟"},
     # --- uncommon ---
     {"name":"イカ", "rarity":"uncommon", "value":80, "emoji":"🦑"},
     {"name":"タコ", "rarity":"uncommon", "value":100, "emoji":"🐙"},

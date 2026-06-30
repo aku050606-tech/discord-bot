@@ -45,6 +45,24 @@ def dmg_calc(atk, defn, mult, pierce=0.0, variance=True):
     return max(1, round(dealt))
 
 
+def _xp_runner_action_budget(defender):
+    """経験値逃走モンスター用。
+    通常攻撃・多段技・貫通技でも、1アクション合計で1〜2ダメージに固定する。
+    """
+    if defender.get("xp_damage_cap"):
+        return random.randint(1, 2)
+    return None
+
+
+def _xp_runner_hit_damage(remaining_budget):
+    """多段ヒット用。残り予算を超えないよう、1ヒット0〜1で刻む。"""
+    if remaining_budget is None:
+        return None
+    if remaining_budget <= 0:
+        return 0
+    return min(remaining_budget, random.randint(0, 1))
+
+
 def _deal(state, attacker, defender, amount):
     """ガード軽減・反撃を適用して defender にダメージ。"""
     amount = round(amount * (1.0 - defender.get("guard", 0.0)))
@@ -113,10 +131,17 @@ def resolve_action(state, side, action):
         base_hits = max(1, attacker.get("base_hits", 1))
         offhand = attacker.get("offhand_power", 0)
         total = 0
+        xp_budget = _xp_runner_action_budget(defender)
         for i in range(base_hits):
             atk = attacker["atk"] if i == 0 else offhand
             if atk <= 0: break
-            d = dmg_calc(atk, defender["def"], 1.0)
+            if xp_budget is not None:
+                # 多段通常攻撃でも1アクション合計1〜2。各ヒットは0〜1で刻む。
+                d = _xp_runner_hit_damage(xp_budget - total)
+                if i == base_hits - 1 and total == 0:
+                    d = max(1, d)
+            else:
+                d = dmg_calc(atk, defender["def"], 1.0)
             amt, line = _deal(state, attacker, defender, d)
             total += amt
             if defender["hp"] <= 0: break
@@ -155,13 +180,23 @@ def _fire_skill(state, attacker, defender, sid, released=False):
         hits = s.get("hits", 1)
         pierce = s.get("pierce", 0.0)
         total = 0; hit_n = 0; miss_n = 0
-        for _ in range(hits):
+        xp_budget = _xp_runner_action_budget(defender)
+        for i in range(hits):
             if random.random() > s.get("acc", 1.0):
                 miss_n += 1
                 continue
-            d = dmg_calc(skatk, defender["def"], s["power"], pierce)
+            if xp_budget is not None:
+                # 経験値モンスターには、貫通・高倍率・多段技でも合計1〜2まで。
+                # 各ヒットは0〜1で、最後まで0なら最低1だけ通す。
+                d = _xp_runner_hit_damage(xp_budget - total)
+                if i == hits - 1 and total == 0:
+                    d = max(1, d)
+            else:
+                d = dmg_calc(skatk, defender["def"], s["power"], pierce)
             amt, line = _deal(state, attacker, defender, d)
             total += amt; hit_n += 1
+            if defender["hp"] <= 0:
+                break
         if hit_n == 0:
             state["log"].append(f"💨 {pre}{attacker['name']} の【{s['name']}】は すべて外した！")
         elif miss_n == 0:
@@ -171,9 +206,13 @@ def _fire_skill(state, attacker, defender, sid, released=False):
                 f"{pre}{s['emoji']} {attacker['name']} の【{s['name']}】！ "
                 f"{hit_n}ヒット（{miss_n}回外し）・計{total}ダメージ")
     elif t == "dot":
-        d = dmg_calc(skatk, defender["def"], s["power"])
+        if defender.get("xp_damage_cap"):
+            d = random.randint(1, 2)
+            dd = 1  # DoT本体は end_round 側で0〜1に抑える
+        else:
+            d = dmg_calc(skatk, defender["def"], s["power"])
+            dd = max(1, round(skatk * s.get("dot_power", 0.3)))
         amt, line = _deal(state, attacker, defender, d)
-        dd = max(1, round(skatk * s.get("dot_power", 0.3)))
         defender["dots"].append({"dmg": dd, "turns": s.get("dot_turns", 3), "name": s["name"]})
         state["log"].append(f"{s['emoji']} {attacker['name']} の【{s['name']}】！{line}（出血{s.get('dot_turns',3)}T）")
     elif t == "heal":
@@ -206,9 +245,10 @@ def end_round(state):
         # DoT
         rem = []
         for dot in c["dots"]:
-            c["hp"] -= dot["dmg"]
+            dmg = random.randint(0, 1) if c.get("xp_damage_cap") else dot["dmg"]
+            c["hp"] -= dmg
             dot["turns"] -= 1
-            state["log"].append(f"🩸 {c['name']} は{dot['name']}の出血で {dot['dmg']}")
+            state["log"].append(f"🩸 {c['name']} は{dot['name']}の出血で {dmg}")
             if dot["turns"] > 0:
                 rem.append(dot)
         c["dots"] = rem

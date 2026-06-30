@@ -61,30 +61,45 @@ def _has_dog_and_cat(vp):
     counts = _pet_counts(vp)
     return counts.get("pet_dog", 0) > 0 and counts.get("pet_cat", 0) > 0
 
+def _pet_effect_line(vp):
+    counts = _pet_counts(vp)
+    effects = []
+    h = counts.get("pet_hamster", 0)
+    if h:
+        effects.append(f"🐹 探索ごとHP{3*h}%回復")
+    pairs = min(counts.get("pet_dog", 0), counts.get("pet_cat", 0))
+    if pairs:
+        effects.append(f"🐶🐱 2探索ごとHP{3*pairs}%回復")
+    return " / ".join(effects) if effects else "なし"
+
 def _apply_pet_explore_heal(uid, vp):
-    """探索開始ごとのペット回復。ハムスターは毎回3%、犬＋猫は2探索に1回3%。"""
+    """探索開始ごとのペット回復。複数所持は複数ぶん発動する。"""
     notes = []
     counts = _pet_counts(vp)
     mh = max_hp(vp)
 
-    if counts.get("pet_hamster", 0) > 0:
+    hamster_count = counts.get("pet_hamster", 0)
+    if hamster_count > 0:
         cur = _cur_hp(vp)
         if cur < mh:
-            heal = max(1, int(mh * 0.03))
+            heal = max(1, int(mh * 0.03)) * hamster_count
             before = cur
             vp["cur_hp"] = min(mh, cur + heal)
-            notes.append(f"🐹 ハムスターが癒してくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
+            suffix = f"×{hamster_count}" if hamster_count > 1 else ""
+            notes.append(f"🐹 ハムスター{suffix}が癒してくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
 
-    if _has_dog_and_cat(vp):
+    pair_count = min(counts.get("pet_dog", 0), counts.get("pet_cat", 0))
+    if pair_count > 0:
         step = int(vp.get("land_pet_steps", 0)) + 1
         vp["land_pet_steps"] = step
         if step % 2 == 0:
             cur = _cur_hp(vp)
             if cur < mh:
-                heal = max(1, int(mh * 0.03))
+                heal = max(1, int(mh * 0.03)) * pair_count
                 before = cur
                 vp["cur_hp"] = min(mh, cur + heal)
-                notes.append(f"🐾 犬と猫が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
+                suffix = f"×{pair_count}" if pair_count > 1 else ""
+                notes.append(f"🐶🐱 犬と猫{suffix}が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
     return "\n".join(notes) if notes else None
 
 def _heal_full(uid):
@@ -254,7 +269,7 @@ def build_land_home_embed(vp):
         description="徒歩で冒険に出る。倒した敵から経験値がもらえる。\nどの地へ向かう？",
         color=0x8d6e63)
     e.add_field(name="📊 あなた", value=_stat_line(vp), inline=False)
-    e.add_field(name="🐾 所持ペット", value=_pet_line(vp), inline=False)
+    e.add_field(name="🐾 所持ペット", value=f"{_pet_line(vp)}\n効果：{_pet_effect_line(vp)}", inline=False)
     rows = []
     for area, a in L.LAND_AREAS.items():
         if vp["level"] >= a["req_lv"]:
@@ -310,7 +325,7 @@ def build_area_embed(vp, area, note="", color=LAND_COL_NORMAL):
     e.add_field(name="❤️ HP", value=f"{cur}/{mh}\n{hp_bar(cur, mh, 12)}", inline=True)
     e.add_field(name="📊 レベル", value=f"Lv{vp['level']}\nXP {vp['xp']}/{C_xp(vp)}", inline=True)
     e.add_field(name="🎒 装備", value=_gear_line(vp), inline=True)
-    e.add_field(name="🐾 所持ペット", value=_pet_line(vp), inline=False)
+    e.add_field(name="🐾 所持ペット", value=f"{_pet_line(vp)}\n効果：{_pet_effect_line(vp)}", inline=False)
     buffs = vp.get("land_buffs", {}) or {}
     if buffs:
         bmeta = {"lucky_charm":"🍀幸運", "old_map":"🗺️地図", "lantern":"🔦ランタン", "gold_compass":"🧭羅針盤", "smoke_bomb":"💨煙玉"}

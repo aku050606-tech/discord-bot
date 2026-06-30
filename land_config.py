@@ -190,16 +190,16 @@ XP_RUNNER_RATE = 0.02
 XP_RUNNER_KING_RATE = 0.001
 XP_RUNNERS = {
     1: {
-        "normal": {"name":"黄金スライム", "emoji":"💎", "ratio":2.8, "hp_mult":2.8, "atk_mult":0.35, "def_mult":7.0, "tier":1, "stars":2, "xp_mult":20, "coin_mult":0.25},
-        "king":   {"name":"黄金キングスライム", "emoji":"👑", "ratio":4.2, "hp_mult":4.0, "atk_mult":0.45, "def_mult":9.0, "tier":2, "stars":4, "xp_mult":100, "coin_mult":0.50},
+        "normal": {"name":"黄金スライム", "emoji":"💎", "ratio":2.8, "fixed_hp":6, "hp_mult":1.0, "atk_mult":0.35, "def_mult":12.0, "tier":1, "stars":2, "xp_mult":20, "coin_mult":0.25},
+        "king":   {"name":"黄金キングスライム", "emoji":"👑", "ratio":4.2, "fixed_hp":6, "hp_mult":1.0, "atk_mult":0.45, "def_mult":14.0, "tier":2, "stars":4, "xp_mult":100, "coin_mult":0.50},
     },
     2: {
-        "normal": {"name":"翡翠の妖精虫", "emoji":"💎", "ratio":1.8, "hp_mult":2.4, "atk_mult":0.34, "def_mult":7.5, "tier":2, "stars":3, "xp_mult":20, "coin_mult":0.25},
-        "king":   {"name":"翡翠の女王虫", "emoji":"👑", "ratio":2.8, "hp_mult":3.6, "atk_mult":0.44, "def_mult":9.5, "tier":3, "stars":4, "xp_mult":100, "coin_mult":0.50},
+        "normal": {"name":"翡翠の妖精虫", "emoji":"💎", "ratio":1.8, "fixed_hp":6, "hp_mult":1.0, "atk_mult":0.34, "def_mult":13.0, "tier":2, "stars":3, "xp_mult":20, "coin_mult":0.25},
+        "king":   {"name":"翡翠の女王虫", "emoji":"👑", "ratio":2.8, "fixed_hp":6, "hp_mult":1.0, "atk_mult":0.44, "def_mult":15.0, "tier":3, "stars":4, "xp_mult":100, "coin_mult":0.50},
     },
     3: {
-        "normal": {"name":"結晶岩ゴーレム", "emoji":"💎", "ratio":1.6, "hp_mult":2.2, "atk_mult":0.34, "def_mult":8.0, "tier":3, "stars":3, "xp_mult":20, "coin_mult":0.25},
-        "king":   {"name":"水晶巨人", "emoji":"👑", "ratio":2.5, "hp_mult":3.4, "atk_mult":0.46, "def_mult":10.0, "tier":4, "stars":4, "xp_mult":100, "coin_mult":0.50},
+        "normal": {"name":"結晶岩ゴーレム", "emoji":"💎", "ratio":1.6, "fixed_hp":6, "hp_mult":1.0, "atk_mult":0.34, "def_mult":14.0, "tier":3, "stars":3, "xp_mult":20, "coin_mult":0.25},
+        "king":   {"name":"水晶巨人", "emoji":"👑", "ratio":2.5, "fixed_hp":6, "hp_mult":1.0, "atk_mult":0.46, "def_mult":16.0, "tier":4, "stars":4, "xp_mult":100, "coin_mult":0.50},
     },
 }
 
@@ -604,6 +604,7 @@ def make_land_enemy(area, force=None, buffs=None):
             "name": e["name"], "emoji": e["emoji"], "key": f"landrunner{area}_{e['name']}",
             "crew_power": max(1, round(a["base"] * e["ratio"])),
             "hp_mult": e.get("hp_mult", 1.0), "atk_mult": e.get("atk_mult", 1.0), "def_mult": e.get("def_mult", 1.0),
+            "fixed_hp": e.get("fixed_hp"),
             "tier": e.get("tier", 1), "stars": e.get("stars", 2),
             "is_boss": False, "is_rare": False, "is_midrare": False,
             "is_xp_runner": True, "is_king_runner": kind == "king",

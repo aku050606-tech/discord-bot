@@ -20,7 +20,7 @@ db = Database()
 # 🍖 まとめ買いの個数ステップ（ドック食料店／商船取引で共用）
 FOOD_QTY_STEPS = [1, 10, 50]
 # ⛽ 商船での給油ステップ（航海中の緊急補給。港より割高）
-TRADE_FUEL_STEPS = [1000, 3000, 5000, 10000, 20000]
+TRADE_FUEL_STEPS = [500, 1000, 2000, 5000]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 計算ヘルパ
@@ -72,19 +72,85 @@ def max_hp(vp):
 
 
 
-def _apply_hamster_voyage_heal(vp):
-    """ハムスター所持時、航海探索1回ごとに最大HPの3%回復。"""
-    specials = vp.get("special_items", []) or []
-    if "pet_hamster" not in specials:
-        return None
+def _pet_counts(vp):
+    """所持ペット数。special_itemsに同じペットが複数あれば複数効果として数える。"""
+    counts = {}
+    for pid in vp.get("special_items", []) or []:
+        if pid in getattr(V, "PETS", {}):
+            counts[pid] = counts.get(pid, 0) + 1
+    return counts
+
+def _pet_line(vp):
+    counts = _pet_counts(vp)
+    if not counts:
+        return "なし"
+    parts = []
+    for pid, n in counts.items():
+        p = V.PETS.get(pid, {})
+        parts.append(f"{p.get('emoji','🐾')} {p.get('name', pid)}" + (f"×{n}" if n > 1 else ""))
+    return " / ".join(parts) if parts else "なし"
+
+def _pet_effect_line(vp):
+    counts = _pet_counts(vp)
+    effects = []
+    h = counts.get("pet_hamster", 0)
+    if h:
+        effects.append(f"🐹 探索ごとHP{3*h}%回復")
+    pairs = min(counts.get("pet_dog", 0), counts.get("pet_cat", 0))
+    if pairs:
+        effects.append(f"🐶🐱 2探索ごとHP{3*pairs}%回復")
+    return " / ".join(effects) if effects else "なし"
+
+def _active_voyage_buffs_line(vp):
+    buffs = vp.get("voyage_buffs", {}) or {}
+    bmeta = {
+        "smoke_bomb": "💨煙玉",
+        "lucky_charm": "🍀幸運",
+        "old_map": "🗺️地図",
+        "lantern": "🔦ランタン",
+        "gold_compass": "🧭羅針盤",
+    }
+    lines = []
+    for k in ("smoke_bomb", "lucky_charm", "old_map", "lantern", "gold_compass"):
+        v = int(buffs.get(k, 0) or 0)
+        if v > 0:
+            unit = "回避" if k == "smoke_bomb" else "探索"
+            lines.append(f"{bmeta.get(k,k)} 残り{v}{unit}")
+    return " / ".join(lines)
+
+def _apply_voyage_pet_effects(vp):
+    """航海探索開始ごとのペット効果。複数所持は複数ぶん発動する。"""
+    notes = []
+    counts = _pet_counts(vp)
     mh = max_hp(vp)
-    cur = max(0, min(mh, vp.get("cur_hp", mh)))
-    if cur >= mh:
-        return None
-    heal = max(1, int(mh * 0.03))
-    before = cur
-    vp["cur_hp"] = min(mh, cur + heal)
-    return f"🐹 ハムスターが癒してくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）"
+
+    hamster_count = counts.get("pet_hamster", 0)
+    if hamster_count > 0:
+        cur = max(0, min(mh, vp.get("cur_hp", mh)))
+        if cur < mh:
+            heal = max(1, int(mh * 0.03)) * hamster_count
+            before = cur
+            vp["cur_hp"] = min(mh, cur + heal)
+            suffix = f"×{hamster_count}" if hamster_count > 1 else ""
+            notes.append(f"🐹 ハムスター{suffix}が癒してくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
+
+    pair_count = min(counts.get("pet_dog", 0), counts.get("pet_cat", 0))
+    if pair_count > 0:
+        step = int(vp.get("voyage_pet_steps", 0)) + 1
+        vp["voyage_pet_steps"] = step
+        if step % 2 == 0:
+            cur = max(0, min(mh, vp.get("cur_hp", mh)))
+            if cur < mh:
+                heal = max(1, int(mh * 0.03)) * pair_count
+                before = cur
+                vp["cur_hp"] = min(mh, cur + heal)
+                suffix = f"×{pair_count}" if pair_count > 1 else ""
+                notes.append(f"🐶🐱 犬と猫{suffix}が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
+    return "\n".join(notes) if notes else None
+
+def _apply_hamster_voyage_heal(vp):
+    """互換用。現在は全ペット効果をここで処理する。"""
+    return _apply_voyage_pet_effects(vp)
 
 def equipped_inst(vp, part):
     """装備中インスタンス {"item":id,"skills":[...]} を返す（未装備=None）。"""
@@ -848,6 +914,10 @@ def build_voyage_embed(vp, last_msg=None, title=None, color=None, footer=None):
     e.add_field(name="❤️ HP",
                 value=f"{max(0,curhp)}/{mxhp}\n{hp_bar(curhp, mxhp, 10)}", inline=True)
     e.add_field(name="⚖️ カルマ", value=karma_badge(vp), inline=True)
+    e.add_field(name="🐾 所持ペット", value=f"{_pet_line(vp)}\n効果：{_pet_effect_line(vp)}", inline=False)
+    active_buffs = _active_voyage_buffs_line(vp)
+    if active_buffs:
+        e.add_field(name="✨ 発動中の探索アイテム", value=active_buffs, inline=False)
     e.set_footer(text=footer or "🔍探索＝その場を探る／⛵進む＝奥のエリアへ(探索10回)／⚓引き返す＝1つ手前へ")
     return e
 
@@ -3362,13 +3432,20 @@ def make_board_enemy(spec, scale, defense=False):
     # 乗り込む側(攻)=敵全員で強い／乗り込まれる側(防衛)=敵一部で弱い
     mult = V.BOARD_DEFENSE_CREW_MULT if defense else 1.0
     Cw = spec["crew_power"] * V.combat_scale(scale) * mult
-    hp = max(1, round(Cw * V.BOARD_E_HP_MULT * spec.get("hp_mult", 1.0)))
+    # 経験値逃走モンスターなどは「硬くて1〜2ダメずつ削る」専用HPを持てる。
+    # fixed_hp がある場合でも攻撃力・防御力はエリア基準のまま作る。
+    hp = int(spec.get("fixed_hp")) if spec.get("fixed_hp") is not None else max(1, round(Cw * V.BOARD_E_HP_MULT * spec.get("hp_mult", 1.0)))
     atk = max(1, round(Cw * V.BOARD_E_ATK_MULT * spec.get("atk_mult", 1.0)))
     dfn = max(0, round(Cw * V.BOARD_E_DEF_MULT * spec.get("def_mult", 1.0)))
     tier = spec.get("tier", 3)
     skills = spec.get("skills") or _ENEMY_SKILLS.get(tier, [])
     c = C.make_combatant(spec["name"], spec["emoji"], hp, atk, dfn,
                          skills=skills, ai_tier=tier)
+    # 💎 経験値逃走モンスター専用：どれだけ攻撃力・技倍率・貫通が高くても、
+    # プレイヤー側から受けるダメージを戦闘エンジン側で固定化する。
+    # 防御力だけで調整すると多段技・貫通・DoTで壊れるため、ここで明示フラグを渡す。
+    if spec.get("is_xp_runner"):
+        c["xp_damage_cap"] = True
     c["first_strike"] = spec.get("first_strike", False)   # 伏兵＝先制攻撃
     if spec.get("escape_chance"):
         c["escape_chance"] = float(spec.get("escape_chance", 0))
@@ -3831,6 +3908,7 @@ def build_trade_embed(vp, note=None):
     e = discord.Embed(title="💰 商船との取引", description=desc, color=0xf1c40f)
     e.add_field(name="📦 船倉", value=f"**{v.get('hold',0):,}**", inline=True)
     e.add_field(name="⛽ 燃料", value=f"{cur:,}/{maxf:,}", inline=True)
+    e.add_field(name="⛽ 商船給油", value=" / ".join(f"+{x:,}" for x in TRADE_FUEL_STEPS), inline=False)
     foods = v and vp.get("foods", {}) or {}
     if any(foods.get(fid, 0) for fid in V.FOODS):
         fl = "・".join(f"{V.FOODS[fid]['emoji']}{n}" for fid, n in foods.items() if n)
