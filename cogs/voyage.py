@@ -1518,12 +1518,16 @@ class VoyageView(discord.ui.View):
         await interaction.response.edit_message(
             embed=theater_embed,
             view=VoyageTheaterView(uid, gid))
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         if res[0] == "combat":
             _, spec, scale, vm, is_boss = res
+            cat = enemy_category(spec)
+            ek = spec.get("key")
+            if ek and cat != "boss":   # ボスは挑むまで図鑑に伏せる
+                db.add_zukan(uid, "enemy_seen", ek)
             await interaction.edit_original_response(
-                embed=build_approach_embed(vp, spec),
-                view=ShipApproachView(uid, gid, spec, scale, vm, is_boss))
+                embed=build_reveal_embed(vp, spec, cat),
+                view=EncounterChoiceView(uid, gid, spec, scale, vm, is_boss, cat))
             return
         if res[0] == "choice":
             _, eid, vm = res
@@ -3790,14 +3794,11 @@ class ShipApproachView(discord.ui.View):
         ek = self.spec.get("key")
         if ek and cat != "boss":   # ボスは挑むまで図鑑に伏せる
             db.add_zukan(self.uid, "enemy_seen", ek)
-        # 🌊 遭遇ウェイト演出（3秒・固定UI）
+        # ⚡ テンポ改善：正体判明前の「息を殺す……」中継演出は挟まない。
         await it.response.edit_message(
-            embed=build_voyage_theater_embed(vp, "reveal"),
-            view=VoyageTheaterView(self.uid, self.gid))
-        await asyncio.sleep(3)
-        await it.edit_original_response(
             embed=build_reveal_embed(vp, self.spec, cat),
             view=EncounterChoiceView(self.uid, self.gid, self.spec, self.scale, self.vm, self.is_boss, cat))
+
 
 # ━━━ 💰 商船との取引（食料まとめ買い＋燃料1000刻み）━━━
 TRADE_UNIT = lambda: V.FUEL_PRICE_PER * 1.3   # 商船は港よりやや割高
