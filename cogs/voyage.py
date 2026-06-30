@@ -481,6 +481,9 @@ def roll_explore(vp):
     active_map = buffs.get("old_map", 0) > 0
     active_lantern = buffs.get("lantern", 0) > 0
     active_gold = buffs.get("gold_compass", 0) > 0
+    # 🧭 黄金の羅針盤：海探索でも「船倉コイン系報酬」に反映する。
+    # choiceイベント/敵撃破報酬は vm を通じて精算されるため、ここで報酬用倍率を分ける。
+    reward_vm = vm * (1.6 if active_gold else 1.0)
     for _bk in ("lucky_charm", "old_map", "lantern", "gold_compass"):
         if buffs.get(_bk, 0) > 0:
             buffs[_bk] -= 1
@@ -495,8 +498,7 @@ def roll_explore(vp):
     flags = v.setdefault("flags", [])
     if "treasure_lead" in flags:
         flags.remove("treasure_lead")
-        val = _scaled(V.ISLAND_TREASURE, vm)
-        if active_gold: val = int(val * 1.6)
+        val = _scaled(V.ISLAND_TREASURE, reward_vm)
         return ("discover", {
             "kind": "island", "emoji": "🗺️", "title": "地図の×印",
             "flavor": "海図の×印の場所に着いた。波の下に、何かが沈んでいる――潜ってみるか？",
@@ -526,27 +528,25 @@ def roll_explore(vp):
     enc = random.choices(pool_keys, weights=pool_wts)[0]
     BUILTIN = {"calm", "fish", "island", "maelstrom", "abyss", "boss", "pirate"}
     if enc not in BUILTIN:
-        return ("choice", enc, vm)
+        return ("choice", enc, reward_vm)
 
     if enc == "fish":
         # 🎣 魚影も平原式に「狙う/見送る」を選ばせる
-        return ("choice", "builtin_fish_cue", vm)
+        return ("choice", "builtin_fish_cue", reward_vm)
     if enc == "island":
-        got = random.random() < V.ISLAND_TREASURE_RATE
-        val = _scaled(V.ISLAND_TREASURE, vm) if got else 0
-        if active_gold and val: val = int(val * 1.6)
+        # 上陸後の中身はボタンを押した瞬間に抽選。
+        # 無人島の出現率自体は変えず、「宝だけでなく伏兵/罠もある」設計にする。
         return ("discover", {
             "kind": "island", "emoji": "🏝️", "title": "無人島",
-            "flavor": "水平線に、ぽつんと無人島が見えてきた。寄ってみるか？",
+            "flavor": "水平線に、ぽつんと無人島が見えてきた。寄ってみるか？\n宝の匂いもするが、木陰の奥が妙に静かだ。",
             "take_label": "🏝️ 上陸する", "skip_label": "⛵ 通り過ぎる",
-            "reward": val, "xp": V.XP_PER_ISLAND, "shard": "island",
-            "take_text": (f"島を歩き回ると…**お宝発見！** 船倉に **+{val:,}**" if got
-                          else "島を歩き回ったが…めぼしい物は無かった。"),
+            "reward": 0, "xp": 0, "shard": "island",
+            "island_landing_roll": True,
+            "area": area, "scale": scale, "reward_vm": reward_vm,
             "skip_text": "島には寄らず、先を急いだ。",
         })
     if enc == "maelstrom":
-        val = _scaled(V.MAELSTROM_REWARD, vm)
-        if active_gold: val = int(val * 1.6)
+        val = _scaled(V.MAELSTROM_REWARD, reward_vm)
         return ("discover", {
             "kind": "maelstrom", "emoji": "🌀", "title": "渦潮",
             "flavor": "前方に渦潮。中心に、何か漂流物が巻かれて光っている…突っ込むか？",
@@ -556,8 +556,7 @@ def roll_explore(vp):
             "skip_text": "無理せず、渦を大きく迂回した。",
         })
     if enc == "abyss":
-        val = _scaled(V.ABYSS_TREASURE, vm)
-        if active_gold: val = int(val * 1.6)
+        val = _scaled(V.ABYSS_TREASURE, reward_vm)
         return ("discover", {
             "kind": "abyss", "emoji": "🕳️", "title": "光る海淵",
             "flavor": "海面の下に、ぼんやりと光る深い淵。何かが沈んでいる気配がする…覗くか？",
@@ -570,7 +569,7 @@ def roll_explore(vp):
         spec = V.pick_boss(area)
         if spec is None:   # フォールバック（旧AREA_BOSS）
             spec = dict(V.AREA_BOSS[area]); spec["is_boss"] = True; spec["tier"] = V.BOSS_TIER.get(area, 4)
-        return ("combat", spec, scale, vm, True)
+        return ("combat", spec, scale, reward_vm, True)
     # pirate枠＝エリアの敵プールから抽選（海賊・海獣・アンデッド・軍船・激レア）
     if vp.setdefault("voyage_buffs", {}).get("smoke_bomb", 0) > 0:
         vp["voyage_buffs"]["smoke_bomb"] -= 1
@@ -580,7 +579,7 @@ def roll_explore(vp):
     spec = V.pick_enemy(area)
     if spec is None:   # フォールバック（旧PIRATE_RANKS）
         spec = dict(random.choices(V.PIRATE_RANKS, weights=V.pirate_weights(sea, area))[0])
-    return ("combat", spec, scale, vm, spec.get("is_boss", False))
+    return ("combat", spec, scale, reward_vm, spec.get("is_boss", False))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Embed ビルダー
@@ -673,6 +672,59 @@ class DiscoverView(discord.ui.View):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
         vp = db.get_voyage(self.uid); v = vp["voyage"]; p = self.payload
+
+        # 🏝️ 無人島：上陸してから宝/空振り/伏兵/罠を抽選する。
+        # 出現率は変えず、良イベント一辺倒にならないようにする。
+        if p.get("island_landing_roll"):
+            outcome = V.roll_island_landing()
+            area = int(p.get("area") or v.get("area") or 1)
+            scale = p.get("scale", 1.0)
+            vm = p.get("reward_vm", 1.0)
+            if outcome == "treasure":
+                val = _scaled(V.ISLAND_TREASURE, vm)
+                v["hold"] += val
+                add_xp(vp, V.XP_PER_ISLAND)
+                stxt = _try_shard(vp, "island")
+                drop = _discover_drop(self.uid, vp, "island")
+                db.save_voyage(self.uid, vp)
+                await it.response.edit_message(
+                    embed=build_result_embed(vp, f"🏝️ 島を歩き回ると…**お宝発見！** 船倉に **+{val:,}**{stxt}{drop}"),
+                    view=ContinueVoyageView(self.uid, self.gid, ""))
+                return
+            if outcome == "empty":
+                db.save_voyage(self.uid, vp)
+                await it.response.edit_message(
+                    embed=build_result_embed(vp, "🏝️ 島を歩き回ったが…めぼしい物は無かった。波の音だけが妙に大きい。"),
+                    view=ContinueVoyageView(self.uid, self.gid, ""))
+                return
+            if outcome == "penalty":
+                mh = max_hp(vp)
+                hp_before = vp.get("cur_hp", mh)
+                fuel_before = vp.get("fuel_tank", 0)
+                hp_loss = max(1, int(max(1, hp_before) * V.ISLAND_PENALTY_HP_PCT))
+                fuel_loss = max(100, int(max(0, fuel_before) * V.ISLAND_PENALTY_FUEL_PCT))
+                vp["cur_hp"] = max(1, hp_before - hp_loss)
+                vp["fuel_tank"] = max(0, fuel_before - fuel_loss)
+                db.save_voyage(self.uid, vp)
+                await it.response.edit_message(
+                    embed=build_result_embed(
+                        vp,
+                        f"🏝️ 茂みの奥で古い罠が弾けた！\n❤️ HP **-{hp_before - vp['cur_hp']}** ／ ⛽ 燃料 **-{fuel_before - vp['fuel_tank']:,}**"),
+                    view=ContinueVoyageView(self.uid, self.gid, ""))
+                return
+            # ambush
+            spec = V.pick_enemy(area)
+            if spec is None:
+                spec = dict(random.choice(V.PIRATE_RANKS))
+            spec = dict(spec)
+            spec["name"] = "島影の伏兵・" + spec.get("name", "海賊")
+            spec["flavor"] = "無人島に潜んでいた伏兵。宝を漁る獲物を待っていた。"
+            db.save_voyage(self.uid, vp)
+            await it.response.edit_message(
+                embed=build_result_embed(vp, f"🏝️ 宝箱に手を伸ばした瞬間、木陰から殺気。\n⚔️ **{spec['name']}** が飛び出してきた！", title="⚠️ 伏兵！"),
+                view=ProceedCombatView(self.uid, self.gid, spec, scale, vm, spec.get("is_boss", False)))
+            return
+
         v["hold"] += p["reward"]
         if p.get("xp"): add_xp(vp, p["xp"])
         stxt = _try_shard(vp, p["shard"]) if p.get("shard") else ""
@@ -1459,7 +1511,8 @@ class SeaButton(discord.ui.Button):
         vp["voyage"] = {"sea": self.sea, "area": 1, "explores": 0, "hold": 0,
                         "fuel": vp.get("fuel_tank", 0)}   # ⛽ タンクの中身を積んで出航（給油した分だけ進める）
         vp["fuel_tank"] = 0                              # タンクは空に（全部船に積んだ）
-        vp["cur_hp"] = max_hp(vp)   # 出航で個人HP全快
+        # 出航時にHPを全回復しない。港での現在HPをそのまま航海へ持ち込む。
+        vp["cur_hp"] = max(1, min(max_hp(vp), vp.get("cur_hp", max_hp(vp))))
         db.save_voyage(uid, vp)
         await interaction.response.edit_message(
             embed=build_voyage_embed(vp, f"⛵ {V.SEAS[self.sea]['name']} へ出航した！"),
@@ -1620,7 +1673,7 @@ class VoyageView(discord.ui.View):
                     v = vp.get("voyage") or {}; area = area_of(v); sea = v["sea"]
                     spec = V.make_enemy_spec(combat, area) or dict(random.choice(V.PIRATE_RANKS))
                     scale = V.SEAS[sea]["danger"] * V.AREA_MULT[area]
-                    cvm = V.SEAS[sea]["val_mult"] * V.AREA_MULT[area]
+                    cvm = vm  # 羅針盤などで補正済みの報酬倍率を引き継ぐ
                     await interaction.edit_original_response(
                         embed=build_ambush_embed(vp, spec),
                         view=ProceedCombatView(uid, gid, spec, scale, cvm, spec.get("is_boss", False)))
@@ -1776,7 +1829,8 @@ class VoyageView(discord.ui.View):
             db.update_balance(uid, gid, hold)
         vp["fuel_tank"] = v.get("fuel", 0)
         vp["voyage"] = None
-        vp["cur_hp"] = max_hp(vp)
+        # 帰港時にHPを全回復しない。航海で削れたHPを港へ持ち帰る。
+        vp["cur_hp"] = max(1, min(max_hp(vp), vp.get("cur_hp", max_hp(vp))))
         vp["last_voyage_end"] = time.time()
         db.save_voyage(uid, vp)
         if hold >= 100000:
@@ -1841,7 +1895,7 @@ class ChoiceButton(discord.ui.Button):
             v = vp.get("voyage") or {}; area = area_of(v); sea = v["sea"]
             spec = V.make_enemy_spec(combat, area) or dict(random.choice(V.PIRATE_RANKS))
             scale = V.SEAS[sea]["danger"] * V.AREA_MULT[area]
-            vm = V.SEAS[sea]["val_mult"] * V.AREA_MULT[area]
+            vm = view.vm  # 羅針盤などで補正済みの報酬倍率を引き継ぐ
             await interaction.response.edit_message(
                 embed=build_ambush_embed(vp, spec),
                 view=ProceedCombatView(uid, gid, spec, scale, vm, spec.get("is_boss", False)))
@@ -3926,7 +3980,7 @@ class TradeView(discord.ui.View):
         self.add_item(TradeFuelSelect(self.uid))
         self.add_item(TradeFoodSelect(self.uid))
         self.add_item(TradeLandItemSelect(self.uid, self.gid))
-        done = discord.ui.Button(label="✅ 取引を終える", style=discord.ButtonStyle.secondary, row=2)
+        done = discord.ui.Button(label="✅ 取引を終える", style=discord.ButtonStyle.secondary, row=3)
         async def _done(it):
             if str(it.user.id) != self.uid:
                 await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
@@ -4305,6 +4359,16 @@ class NavalEncounter:
                 embed=_result_embed(state, tag, body),
                 view=PortView(self.uid, self.gid))
 
+def _naval_combat_coin_factor(spec, area=None):
+    """海戦コイン報酬の微調整。E1だけ稼ぎ過多を抑え、E2以降は現状維持。"""
+    try:
+        a = int(area if area is not None else spec.get("area", 1))
+    except Exception:
+        a = int(spec.get("area", 1) or 1)
+    if a == 1:
+        return 0.75
+    return 1.0
+
 def apply_encounter_outcome(vp, spec, vm_eff, is_boss, board_win):
     """白兵戦の結果から船倉・XP・カケラを精算（discord非依存・純ロジック）。
     勝ち＝敵を討って報酬／負け＝全損。戻り値: (tag, body, cont)。vp は in-place 更新。"""
@@ -4312,9 +4376,11 @@ def apply_encounter_outcome(vp, spec, vm_eff, is_boss, board_win):
     shard_key = "boss" if is_boss else "pirate_win"
     if board_win:
         base = random.uniform(V.PIRATE_BASE_REWARD["base_min"], V.PIRATE_BASE_REWARD["base_max"])
-        rew = int(base * spec["reward_mult"] * vm_eff * NAVAL_COMBAT_REWARD_MULT)
+        area = int(spec.get("area") or area_of(v) or 1)
+        rew = int(base * spec["reward_mult"] * vm_eff * NAVAL_COMBAT_REWARD_MULT * _naval_combat_coin_factor(spec, area))
         v["hold"] += rew
         xp = V.voyage_combat_xp(spec, win=True) if hasattr(V, "voyage_combat_xp") else V.XP_PER_PIRATE_WIN
+        xp = max(1, int(xp))
         leveled = add_xp(vp, xp)
         tag = "🏆 撃破"
         body = f"**{spec['name']}** を討ち取った！ 船倉に **+{rew:,}**\n✨ 経験値 **+{xp}**" + (f"\n## 🎉 レベルアップ！ → Lv{vp['level']}" if leveled else "")
@@ -4325,6 +4391,7 @@ def apply_encounter_outcome(vp, spec, vm_eff, is_boss, board_win):
         lost = int(v["hold"] * V.WRECK_HOLD_LOSS)
         v["hold"] -= lost
         xp = V.voyage_combat_xp(spec, win=False) if hasattr(V, "voyage_combat_xp") else V.XP_PER_PIRATE_LOSE
+        xp = max(1, int(xp))
         leveled = add_xp(vp, xp)
         tag = "💀 敗北"
         body = f"斬り合いに敗れた…船倉の **{lost:,}** を失った。\n✨ 敗北経験値 **+{xp}**" + (f"\n## 🎉 レベルアップ！ → Lv{vp['level']}" if leveled else "")

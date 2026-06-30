@@ -316,9 +316,29 @@ def voyage_fish_names(area):
     """そのエリアの非ごみ魚の名前集合（コンプ判定用）。"""
     return {f["name"] for f in VOYAGE_FISH_BY_AREA.get(area, []) if f["rarity"] != "trash"}
 
-# ── 上陸（無人島）：宝 or ハズレ ──
-ISLAND_TREASURE_RATE = 0.62      # 上陸して宝が見つかる確率
-ISLAND_TREASURE = {"base_min":5500, "base_max":19000}
+# ── 上陸（無人島）：宝・ハズレ・伏兵・ペナルティ ──
+# ※無人島そのものの出現率は VOYAGE_ENCOUNTER_WEIGHTS 側で管理。
+#   ここは「上陸する」を押した後の内訳だけ。
+ISLAND_TREASURE_RATE = 0.45      # 宝：おいしいが確定ではない
+ISLAND_EMPTY_RATE    = 0.25      # 何もなし
+ISLAND_AMBUSH_RATE   = 0.20      # 伏兵戦闘
+ISLAND_PENALTY_RATE  = 0.10      # 罠・補給ロス
+ISLAND_TREASURE = {"base_min":2800, "base_max":8500}
+ISLAND_PENALTY_HP_PCT = 0.15     # 罠で現在HPの15%前後を失う
+ISLAND_PENALTY_FUEL_PCT = 0.06   # 迂回/座礁対応で燃料6%前後を失う
+
+def roll_island_landing():
+    """無人島で上陸した後の結果を返す。treasure/empty/ambush/penalty。"""
+    r = random.random()
+    if r < ISLAND_TREASURE_RATE:
+        return "treasure"
+    r -= ISLAND_TREASURE_RATE
+    if r < ISLAND_EMPTY_RATE:
+        return "empty"
+    r -= ISLAND_EMPTY_RATE
+    if r < ISLAND_AMBUSH_RATE:
+        return "ambush"
+    return "penalty"
 
 # ━━━ 🎒 アイテム（食料・燃料樽・素材）━━━
 # 🍖 食料：HPを割合回復。ドロップ＋ドックで購入。
