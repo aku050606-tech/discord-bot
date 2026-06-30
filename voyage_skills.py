@@ -33,7 +33,7 @@ SKILLS = {
     "konshin": {
         "name": "渾身斬り", "emoji": "💢", "phase": "board", "slot": "weapon",
         "wtypes": ["staff", "greatsword"], "rank": 2,
-        "type": "attack", "power": 2.4, "hits": 1, "cost": 0, "cooldown": 0,
+        "type": "attack", "power": 2.8, "hits": 1, "cost": 0, "cooldown": 0,
         "acc": 1.0, "charge": 1, "price": 50000,
         "desc": "1ターン溜めて大ダメージ。2ターンに1回の必殺。",
     },
@@ -97,7 +97,7 @@ SKILLS = {
     "konshin3": {
         "name": "渾身斬り・改", "emoji": "💢", "phase": "board", "slot": "weapon",
         "wtypes": ["staff", "greatsword"], "rank": 3,
-        "type": "attack", "power": 3.36, "hits": 1, "cost": 0, "cooldown": 0,
+        "type": "attack", "power": 3.92, "hits": 1, "cost": 0, "cooldown": 0,
         "acc": 1.0, "charge": 1, "price": 250000,
         "desc": "☆3。溜めて放つ極大の一撃。",
     },
