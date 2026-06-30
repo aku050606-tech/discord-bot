@@ -426,46 +426,54 @@ PIRATE_BASE_REWARD = {"base_min":3250, "base_max":8000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 50, 2: 105, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用に弱く、E2は一段強く）
+AREA_ENEMY_BASE = {1: 62, 2: 105, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
-    "pirate_old":    {"name":"老いぼれ海賊",     "emoji":"🚣", "ratio":0.55,"hp_mult":0.85,"atk_mult":0.85,"reward":0.7, "tier_add":-1, "stars":1},
-    "pirate_drifter":{"name":"流れ者の海賊",     "emoji":"🏴‍☠️","ratio":0.75,"hp_mult":0.9, "atk_mult":0.95,"reward":0.85,"tier_add":0,  "stars":1},
-    "pirate_washout":{"name":"海賊くずれ",       "emoji":"🏴‍☠️","ratio":0.9, "hp_mult":1.0, "atk_mult":1.0, "reward":0.95,"tier_add":0,  "stars":2},
-    "pirate_rogue":  {"name":"ならず者の海賊",   "emoji":"🏴‍☠️","ratio":1.0, "hp_mult":1.0, "atk_mult":1.0, "reward":1.0, "tier_add":0,  "stars":2},
-    "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3},
-    "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True},
+    "pirate_old":    {"name":"老いぼれ海賊",     "emoji":"🚣", "ratio":0.62,"hp_mult":0.95,"atk_mult":0.95,"reward":0.75,"tier_add":-1, "stars":1, "note":"弱いが連撃で削る入口敵"},
+    "reef_bandit":   {"name":"岩礁の追いはぎ",   "emoji":"🪨", "ratio":0.68,"hp_mult":1.15,"atk_mult":0.80,"reward":0.80,"tier_add":-1, "stars":1, "note":"硬め・低火力。防御で長引かせる"},
+    "hook_raider":   {"name":"鉤爪の襲撃者",     "emoji":"🪝", "ratio":0.72,"hp_mult":0.90,"atk_mult":1.15,"reward":0.90,"tier_add":0,  "stars":1, "note":"攻撃寄り。強撃で事故を作る"},
+    "pirate_drifter":{"name":"流れ者の海賊",     "emoji":"🏴‍☠️","ratio":0.75,"hp_mult":0.9, "atk_mult":0.95,"reward":0.85,"tier_add":0,  "stars":1, "note":"標準的な海賊。強撃で圧をかける"},
+    "pirate_washout":{"name":"海賊くずれ",       "emoji":"🏴‍☠️","ratio":0.9, "hp_mult":1.0, "atk_mult":1.0, "reward":0.95,"tier_add":0,  "stars":2, "note":"バランス型の荒くれ"},
+    "pirate_rogue":  {"name":"ならず者の海賊",   "emoji":"🏴‍☠️","ratio":1.0, "hp_mult":1.0, "atk_mult":1.0, "reward":1.0, "tier_add":0,  "stars":2, "note":"中堅の標準敵。正面勝負"},
+    "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3, "note":"報酬高め。出血も使う危険敵"},
+    "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True, "note":"伝説級。高火力と出血の大型ボス"},
     # ── 🪖 軍 ──
-    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True},
+    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True, "note":"硬い軍人。防御と反撃で粘る"},
     # ── 🧟 アンデッド系 ──
-    "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True},
-    "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True},
-    "hands":         {"name":"無数の手",         "emoji":"🖐️","ratio":0.6, "hp_mult":2.2, "atk_mult":0.7, "reward":0.4, "tier_add":0,  "stars":2, "undead":True},
-    "ghost":         {"name":"幽霊船の亡霊船員", "emoji":"👻", "ratio":1.1, "hp_mult":1.3, "atk_mult":0.9, "reward":1.4, "tier_add":1,  "stars":3, "undead":True, "shard_hint":True},
-    "admiral":       {"name":"呑まれた提督",     "emoji":"☠️", "ratio":2.6, "hp_mult":1.8, "atk_mult":1.3, "reward":2.8, "tier_add":2,  "stars":5, "undead":True, "legendary":True},
+    "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True, "note":"亡者。低火力だが出血で削る"},
+    "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True, "note":"水死人の群れ。高HPでじわじわ削る"},
+    "hands":         {"name":"無数の手",         "emoji":"🖐️","ratio":0.6, "hp_mult":2.2, "atk_mult":0.7, "reward":0.4, "tier_add":0,  "stars":2, "undead":True, "note":"無数の手。異常に硬い拘束型"},
+    "ghost":         {"name":"幽霊船の亡霊船員", "emoji":"👻", "ratio":1.1, "hp_mult":1.3, "atk_mult":0.9, "reward":1.4, "tier_add":1,  "stars":3, "undead":True, "shard_hint":True, "note":"亡霊船員。出血と強撃の混合"},
+    "admiral":       {"name":"呑まれた提督",     "emoji":"☠️", "ratio":2.6, "hp_mult":1.8, "atk_mult":1.3, "reward":2.8, "tier_add":2,  "stars":5, "undead":True, "legendary":True, "note":"亡霊系伝説ボス。大技と出血"},
     # ── 🦈 海獣系 ──
-    "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.45,"hp_mult":0.65,"atk_mult":1.35,"reward":0.6, "tier_add":-1, "stars":1},  # 群れ・紙・速攻
-    "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.55,"hp_mult":0.7, "atk_mult":1.4, "reward":0.8, "tier_add":-1, "stars":1},
-    "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3},  # 出血特化
-    "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3},
+    "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.52,"hp_mult":0.75,"atk_mult":1.45,"reward":0.65,"tier_add":-1, "stars":1},  # 群れ・紙・速攻
+    "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.62,"hp_mult":0.82,"atk_mult":1.5, "reward":0.85,"tier_add":-1, "stars":1, "note":"紙装甲・高火力の短期決戦"},
+    "shellback":     {"name":"甲羅背負いの海亀", "emoji":"🐢", "ratio":0.78,"hp_mult":1.65,"atk_mult":0.62,"reward":0.95,"tier_add":0,  "stars":2, "note":"高HP・低火力。鉄壁で粘る"},
+    "razor_ray":     {"name":"刃尾エイ",         "emoji":"🪽", "ratio":0.82,"hp_mult":0.90,"atk_mult":1.18,"reward":1.05,"tier_add":0,  "stars":2, "note":"出血で削る中型海獣"},
+    "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3, "note":"毒・出血特化"},
+    "coral_golem":   {"name":"珊瑚の巨兵",       "emoji":"🪸", "ratio":1.25,"hp_mult":1.75,"atk_mult":0.75,"reward":1.35,"tier_add":1,  "stars":3, "note":"硬い壁役。防御と反撃"},
+    "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":1.55,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
+    "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3, "note":"連撃と出血の中型海獣"},
     # ── 🐙🐲 ボス級 ──
-    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True},
-    "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True},
+    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
+    "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True, "note":"最深部ボス。圧倒的HPと大技"},
     # ── 🪦 難破者 ──
-    "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.5, "hp_mult":0.9, "atk_mult":0.85,"reward":0.6, "tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
+    "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.58,"hp_mult":0.98,"atk_mult":0.95,"reward":0.65,"tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
     # ── ⚔️ イベント専用 ──
-    "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True},
+    "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True, "note":"先制攻撃で緊張感を作る伏兵"},
     "merchant_raid": {"name":"商船の護衛",       "emoji":"⛵", "ratio":1.4, "hp_mult":1.4, "atk_mult":1.25,"reward":1.8, "tier_add":1,  "stars":3},   # 護衛が固い・襲撃は基本失敗(<10%)
-    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4},
+    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4, "note":"大型商船護衛団。高報酬だが危険"},
     # 🖤 クラーケンの影（特殊戦闘・手順④で専用実装）
-    "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":1.6, "hp_mult":2.0, "atk_mult":1.0, "reward":0.0, "tier_add":1,  "stars":5, "special":"kraken_shadow"},
+    "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":2.2, "hp_mult":3.4, "atk_mult":1.25,"reward":0.0, "tier_add":2,  "stars":5, "special":"kraken_shadow", "note":"クラーケン基準の格上影ボス。倒す対象ではなく削って撤退させる"},
 }
 
 # ── 敵タイプ別スキル（白兵戦・AIに個性を持たせる）──
 #   rengeki=連撃(手数) kyougeki=強撃(一撃) konshin=渾身(溜め大) shukketsu=出血(dot) teppeki=鉄壁(守り)
 ENEMY_SKILLS_BY_TYPE = {
     "pirate_old":    ["rengeki"],
+    "reef_bandit":   ["teppeki"],
+    "hook_raider":   ["kyougeki"],
     "pirate_drifter":["kyougeki"],
     "pirate_washout":["kyougeki"],
     "pirate_rogue":  ["kyougeki"],
@@ -479,7 +487,11 @@ ENEMY_SKILLS_BY_TYPE = {
     "admiral":       ["kyougeki", "konshin", "shukketsu"],
     "piranha":       ["rengeki"],                      # 群れ・連撃
     "shark":         ["rengeki"],                      # 連撃・手数
+    "shellback":     ["teppeki"],                      # 固い・守る
+    "razor_ray":     ["shukketsu"],                    # 刃尾で出血
     "venom_serpent": ["shukketsu"],                    # 毒・出血特化
+    "coral_golem":   ["teppeki", "kyougeki"],          # 固い・重い
+    "siren_hunter":  ["rengeki", "shukketsu"],         # 手数と出血
     "serpent":       ["rengeki", "shukketsu"],
     "kraken":        ["kyougeki", "konshin"],
     "yormun":        ["kyougeki", "konshin", "shukketsu"],
@@ -487,7 +499,7 @@ ENEMY_SKILLS_BY_TYPE = {
     "ambush":        ["rengeki"],                      # 先制・手数
     "merchant_raid": ["teppeki", "kyougeki"],          # 護衛が守って反撃
     "merchant_big":  ["teppeki", "kyougeki", "shukketsu"],
-    "kraken_shadow": ["konshin"],                      # 影＝溜めの一撃（専用戦闘で上書き）
+    "kraken_shadow": ["konshin", "kyougeki"],          # 影＝クラーケン基準の格上存在
 }
 
 def make_enemy_spec(combat_key, area):
@@ -520,10 +532,10 @@ def make_enemy_spec(combat_key, area):
 # ── エリア別の敵プール（出現率テーブルの "pirate" 枠がこれを引く）──
 #   激レア(leviathan/admiral)は重み1-5で本当に薄く。E3/E4は★3実装後に重み再調整。
 ENEMY_POOL_BY_AREA = {
-    1: [("pirate_old",30),("shark",25),("piranha",25),("castaway_foe",20)],   # E1=☆1雑魚のみ（全部倒せる）
-    2: [("pirate_old",15),("pirate_drifter",15),("pirate_washout",13),("pirate_rogue",15),("shark",11),("piranha",7),("drowned",10),("wight",9)],
-    3: [("pirate_washout",10),("pirate_rogue",16),("pirate_bounty",18),("drowned",11),("wight",7),("ghost",12),("serpent",9),("venom_serpent",10),("navy",7),("merchant_big",9),("leviathan",1)],
-    4: [("pirate_bounty",24),("ghost",20),("hands",15),("navy",15),("merchant_big",10),("venom_serpent",7),("leviathan",6),("admiral",3)],
+    1: [("pirate_old",20),("reef_bandit",15),("hook_raider",14),("shark",18),("piranha",18),("castaway_foe",15)],   # E1=入口だが敵ごとに個性あり
+    2: [("pirate_old",9),("reef_bandit",10),("hook_raider",10),("pirate_drifter",13),("pirate_washout",12),("pirate_rogue",13),("shark",9),("piranha",6),("shellback",7),("razor_ray",7),("drowned",9),("wight",7)],
+    3: [("pirate_washout",9),("pirate_rogue",13),("pirate_bounty",15),("drowned",9),("wight",6),("ghost",10),("serpent",8),("venom_serpent",9),("coral_golem",8),("siren_hunter",6),("navy",6),("merchant_big",7),("leviathan",1)],
+    4: [("pirate_bounty",20),("ghost",17),("hands",13),("navy",13),("merchant_big",9),("venom_serpent",6),("coral_golem",8),("siren_hunter",7),("leviathan",5),("admiral",3)],
 }
 # ── エリアボス（"boss" 枠）──
 ENEMY_BOSS_BY_AREA = {
@@ -706,6 +718,16 @@ XP_PER_FISH = 3
 XP_PER_ISLAND = 5
 XP_PER_PIRATE_WIN = 25
 XP_PER_PIRATE_LOSE = 8        # 負けても少し経験は得る
+
+# ⚔️ 海戦EXP：固定値ではなく敵の強さに応じて付与する。
+# crew_power・reward_mult・☆・ボス補正を使い、E1雑魚でも意味のある経験値にする。
+def voyage_combat_xp(spec, win=True):
+    crew = int(spec.get("crew_power") or spec.get("sea_power") or 50)
+    stars = int(spec.get("stars", 1) or 1)
+    reward = float(spec.get("reward_mult", 1.0) or 1.0)
+    boss_mult = 2.2 if spec.get("is_boss") or spec.get("legendary") else 1.0
+    base = max(4, round(crew * 0.55 * reward * (1.0 + stars * 0.10) * boss_mult))
+    return max(1, round(base if win else base * 0.30))
 # 必要XP（Lv→次Lvまで）。
 # Lv5以降から必要XPを強めに上げ、Lv10以降はさらに重くする。
 # 平原など低エリアで「XPが急に下がった」と見えないよう、報酬側ではなく必要XP側で詰まらせる。
@@ -1012,46 +1034,54 @@ PIRATE_BASE_REWARD = {"base_min":3250, "base_max":8000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 50, 2: 105, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用に弱く、E2は一段強く）
+AREA_ENEMY_BASE = {1: 62, 2: 105, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
-    "pirate_old":    {"name":"老いぼれ海賊",     "emoji":"🚣", "ratio":0.55,"hp_mult":0.85,"atk_mult":0.85,"reward":0.7, "tier_add":-1, "stars":1},
-    "pirate_drifter":{"name":"流れ者の海賊",     "emoji":"🏴‍☠️","ratio":0.75,"hp_mult":0.9, "atk_mult":0.95,"reward":0.85,"tier_add":0,  "stars":1},
-    "pirate_washout":{"name":"海賊くずれ",       "emoji":"🏴‍☠️","ratio":0.9, "hp_mult":1.0, "atk_mult":1.0, "reward":0.95,"tier_add":0,  "stars":2},
-    "pirate_rogue":  {"name":"ならず者の海賊",   "emoji":"🏴‍☠️","ratio":1.0, "hp_mult":1.0, "atk_mult":1.0, "reward":1.0, "tier_add":0,  "stars":2},
-    "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3},
-    "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True},
+    "pirate_old":    {"name":"老いぼれ海賊",     "emoji":"🚣", "ratio":0.62,"hp_mult":0.95,"atk_mult":0.95,"reward":0.75,"tier_add":-1, "stars":1, "note":"弱いが連撃で削る入口敵"},
+    "reef_bandit":   {"name":"岩礁の追いはぎ",   "emoji":"🪨", "ratio":0.68,"hp_mult":1.15,"atk_mult":0.80,"reward":0.80,"tier_add":-1, "stars":1, "note":"硬め・低火力。防御で長引かせる"},
+    "hook_raider":   {"name":"鉤爪の襲撃者",     "emoji":"🪝", "ratio":0.72,"hp_mult":0.90,"atk_mult":1.15,"reward":0.90,"tier_add":0,  "stars":1, "note":"攻撃寄り。強撃で事故を作る"},
+    "pirate_drifter":{"name":"流れ者の海賊",     "emoji":"🏴‍☠️","ratio":0.75,"hp_mult":0.9, "atk_mult":0.95,"reward":0.85,"tier_add":0,  "stars":1, "note":"標準的な海賊。強撃で圧をかける"},
+    "pirate_washout":{"name":"海賊くずれ",       "emoji":"🏴‍☠️","ratio":0.9, "hp_mult":1.0, "atk_mult":1.0, "reward":0.95,"tier_add":0,  "stars":2, "note":"バランス型の荒くれ"},
+    "pirate_rogue":  {"name":"ならず者の海賊",   "emoji":"🏴‍☠️","ratio":1.0, "hp_mult":1.0, "atk_mult":1.0, "reward":1.0, "tier_add":0,  "stars":2, "note":"中堅の標準敵。正面勝負"},
+    "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3, "note":"報酬高め。出血も使う危険敵"},
+    "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True, "note":"伝説級。高火力と出血の大型ボス"},
     # ── 🪖 軍 ──
-    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True},
+    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True, "note":"硬い軍人。防御と反撃で粘る"},
     # ── 🧟 アンデッド系 ──
-    "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True},
-    "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True},
-    "hands":         {"name":"無数の手",         "emoji":"🖐️","ratio":0.6, "hp_mult":2.2, "atk_mult":0.7, "reward":0.4, "tier_add":0,  "stars":2, "undead":True},
-    "ghost":         {"name":"幽霊船の亡霊船員", "emoji":"👻", "ratio":1.1, "hp_mult":1.3, "atk_mult":0.9, "reward":1.4, "tier_add":1,  "stars":3, "undead":True, "shard_hint":True},
-    "admiral":       {"name":"呑まれた提督",     "emoji":"☠️", "ratio":2.6, "hp_mult":1.8, "atk_mult":1.3, "reward":2.8, "tier_add":2,  "stars":5, "undead":True, "legendary":True},
+    "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True, "note":"亡者。低火力だが出血で削る"},
+    "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True, "note":"水死人の群れ。高HPでじわじわ削る"},
+    "hands":         {"name":"無数の手",         "emoji":"🖐️","ratio":0.6, "hp_mult":2.2, "atk_mult":0.7, "reward":0.4, "tier_add":0,  "stars":2, "undead":True, "note":"無数の手。異常に硬い拘束型"},
+    "ghost":         {"name":"幽霊船の亡霊船員", "emoji":"👻", "ratio":1.1, "hp_mult":1.3, "atk_mult":0.9, "reward":1.4, "tier_add":1,  "stars":3, "undead":True, "shard_hint":True, "note":"亡霊船員。出血と強撃の混合"},
+    "admiral":       {"name":"呑まれた提督",     "emoji":"☠️", "ratio":2.6, "hp_mult":1.8, "atk_mult":1.3, "reward":2.8, "tier_add":2,  "stars":5, "undead":True, "legendary":True, "note":"亡霊系伝説ボス。大技と出血"},
     # ── 🦈 海獣系 ──
-    "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.45,"hp_mult":0.65,"atk_mult":1.35,"reward":0.6, "tier_add":-1, "stars":1},  # 群れ・紙・速攻
-    "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.55,"hp_mult":0.7, "atk_mult":1.4, "reward":0.8, "tier_add":-1, "stars":1},
-    "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3},  # 出血特化
-    "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3},
+    "piranha":       {"name":"人食い魚の群れ",   "emoji":"🐟", "ratio":0.52,"hp_mult":0.75,"atk_mult":1.45,"reward":0.65,"tier_add":-1, "stars":1},  # 群れ・紙・速攻
+    "shark":         {"name":"群れ喰らいのサメ", "emoji":"🦈", "ratio":0.62,"hp_mult":0.82,"atk_mult":1.5, "reward":0.85,"tier_add":-1, "stars":1, "note":"紙装甲・高火力の短期決戦"},
+    "shellback":     {"name":"甲羅背負いの海亀", "emoji":"🐢", "ratio":0.78,"hp_mult":1.65,"atk_mult":0.62,"reward":0.95,"tier_add":0,  "stars":2, "note":"高HP・低火力。鉄壁で粘る"},
+    "razor_ray":     {"name":"刃尾エイ",         "emoji":"🪽", "ratio":0.82,"hp_mult":0.90,"atk_mult":1.18,"reward":1.05,"tier_add":0,  "stars":2, "note":"出血で削る中型海獣"},
+    "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3, "note":"毒・出血特化"},
+    "coral_golem":   {"name":"珊瑚の巨兵",       "emoji":"🪸", "ratio":1.25,"hp_mult":1.75,"atk_mult":0.75,"reward":1.35,"tier_add":1,  "stars":3, "note":"硬い壁役。防御と反撃"},
+    "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":1.55,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
+    "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3, "note":"連撃と出血の中型海獣"},
     # ── 🐙🐲 ボス級 ──
-    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True},
-    "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True},
+    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
+    "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True, "note":"最深部ボス。圧倒的HPと大技"},
     # ── 🪦 難破者 ──
-    "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.5, "hp_mult":0.9, "atk_mult":0.85,"reward":0.6, "tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
+    "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.58,"hp_mult":0.98,"atk_mult":0.95,"reward":0.65,"tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
     # ── ⚔️ イベント専用 ──
-    "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True},
+    "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True, "note":"先制攻撃で緊張感を作る伏兵"},
     "merchant_raid": {"name":"商船の護衛",       "emoji":"⛵", "ratio":1.4, "hp_mult":1.4, "atk_mult":1.25,"reward":1.8, "tier_add":1,  "stars":3},   # 護衛が固い・襲撃は基本失敗(<10%)
-    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4},
+    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4, "note":"大型商船護衛団。高報酬だが危険"},
     # 🖤 クラーケンの影（特殊戦闘・手順④で専用実装）
-    "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":1.6, "hp_mult":2.0, "atk_mult":1.0, "reward":0.0, "tier_add":1,  "stars":5, "special":"kraken_shadow"},
+    "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":2.2, "hp_mult":3.4, "atk_mult":1.25,"reward":0.0, "tier_add":2,  "stars":5, "special":"kraken_shadow", "note":"クラーケン基準の格上影ボス。倒す対象ではなく削って撤退させる"},
 }
 
 # ── 敵タイプ別スキル（白兵戦・AIに個性を持たせる）──
 #   rengeki=連撃(手数) kyougeki=強撃(一撃) konshin=渾身(溜め大) shukketsu=出血(dot) teppeki=鉄壁(守り)
 ENEMY_SKILLS_BY_TYPE = {
     "pirate_old":    ["rengeki"],
+    "reef_bandit":   ["teppeki"],
+    "hook_raider":   ["kyougeki"],
     "pirate_drifter":["kyougeki"],
     "pirate_washout":["kyougeki"],
     "pirate_rogue":  ["kyougeki"],
@@ -1065,7 +1095,11 @@ ENEMY_SKILLS_BY_TYPE = {
     "admiral":       ["kyougeki", "konshin", "shukketsu"],
     "piranha":       ["rengeki"],                      # 群れ・連撃
     "shark":         ["rengeki"],                      # 連撃・手数
+    "shellback":     ["teppeki"],                      # 固い・守る
+    "razor_ray":     ["shukketsu"],                    # 刃尾で出血
     "venom_serpent": ["shukketsu"],                    # 毒・出血特化
+    "coral_golem":   ["teppeki", "kyougeki"],          # 固い・重い
+    "siren_hunter":  ["rengeki", "shukketsu"],         # 手数と出血
     "serpent":       ["rengeki", "shukketsu"],
     "kraken":        ["kyougeki", "konshin"],
     "yormun":        ["kyougeki", "konshin", "shukketsu"],
@@ -1073,7 +1107,7 @@ ENEMY_SKILLS_BY_TYPE = {
     "ambush":        ["rengeki"],                      # 先制・手数
     "merchant_raid": ["teppeki", "kyougeki"],          # 護衛が守って反撃
     "merchant_big":  ["teppeki", "kyougeki", "shukketsu"],
-    "kraken_shadow": ["konshin"],                      # 影＝溜めの一撃（専用戦闘で上書き）
+    "kraken_shadow": ["konshin", "kyougeki"],          # 影＝クラーケン基準の格上存在
 }
 
 def make_enemy_spec(combat_key, area):
@@ -1106,10 +1140,10 @@ def make_enemy_spec(combat_key, area):
 # ── エリア別の敵プール（出現率テーブルの "pirate" 枠がこれを引く）──
 #   激レア(leviathan/admiral)は重み1-5で本当に薄く。E3/E4は★3実装後に重み再調整。
 ENEMY_POOL_BY_AREA = {
-    1: [("pirate_old",30),("shark",25),("piranha",25),("castaway_foe",20)],   # E1=☆1雑魚のみ（全部倒せる）
-    2: [("pirate_old",15),("pirate_drifter",15),("pirate_washout",13),("pirate_rogue",15),("shark",11),("piranha",7),("drowned",10),("wight",9)],
-    3: [("pirate_washout",10),("pirate_rogue",16),("pirate_bounty",18),("drowned",11),("wight",7),("ghost",12),("serpent",9),("venom_serpent",10),("navy",7),("merchant_big",9),("leviathan",1)],
-    4: [("pirate_bounty",24),("ghost",20),("hands",15),("navy",15),("merchant_big",10),("venom_serpent",7),("leviathan",6),("admiral",3)],
+    1: [("pirate_old",20),("reef_bandit",15),("hook_raider",14),("shark",18),("piranha",18),("castaway_foe",15)],   # E1=入口だが敵ごとに個性あり
+    2: [("pirate_old",9),("reef_bandit",10),("hook_raider",10),("pirate_drifter",13),("pirate_washout",12),("pirate_rogue",13),("shark",9),("piranha",6),("shellback",7),("razor_ray",7),("drowned",9),("wight",7)],
+    3: [("pirate_washout",9),("pirate_rogue",13),("pirate_bounty",15),("drowned",9),("wight",6),("ghost",10),("serpent",8),("venom_serpent",9),("coral_golem",8),("siren_hunter",6),("navy",6),("merchant_big",7),("leviathan",1)],
+    4: [("pirate_bounty",20),("ghost",17),("hands",13),("navy",13),("merchant_big",9),("venom_serpent",6),("coral_golem",8),("siren_hunter",7),("leviathan",5),("admiral",3)],
 }
 # ── エリアボス（"boss" 枠）──
 ENEMY_BOSS_BY_AREA = {
@@ -1292,6 +1326,16 @@ XP_PER_FISH = 3
 XP_PER_ISLAND = 5
 XP_PER_PIRATE_WIN = 25
 XP_PER_PIRATE_LOSE = 8        # 負けても少し経験は得る
+
+# ⚔️ 海戦EXP：固定値ではなく敵の強さに応じて付与する。
+# crew_power・reward_mult・☆・ボス補正を使い、E1雑魚でも意味のある経験値にする。
+def voyage_combat_xp(spec, win=True):
+    crew = int(spec.get("crew_power") or spec.get("sea_power") or 50)
+    stars = int(spec.get("stars", 1) or 1)
+    reward = float(spec.get("reward_mult", 1.0) or 1.0)
+    boss_mult = 2.2 if spec.get("is_boss") or spec.get("legendary") else 1.0
+    base = max(4, round(crew * 0.55 * reward * (1.0 + stars * 0.10) * boss_mult))
+    return max(1, round(base if win else base * 0.30))
 # 必要XP（Lv→次Lvまで）。
 # Lv5以降から必要XPを強めに上げ、Lv10以降はさらに重くする。
 # 平原など低エリアで「XPが急に下がった」と見えないよう、報酬側ではなく必要XP側で詰まらせる。

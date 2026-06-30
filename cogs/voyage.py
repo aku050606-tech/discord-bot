@@ -19,8 +19,8 @@ db = Database()
 
 # 🍖 まとめ買いの個数ステップ（ドック食料店／商船取引で共用）
 FOOD_QTY_STEPS = [1, 10, 50]
-# ⛽ 商船での給油ステップ（1000刻み・最大5000/回）
-TRADE_FUEL_STEPS = [1000, 2000, 3000]
+# ⛽ 商船での給油ステップ（航海中の緊急補給。港より割高）
+TRADE_FUEL_STEPS = [1000, 3000, 5000, 10000, 20000]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 計算ヘルパ
@@ -166,10 +166,16 @@ def any_part_broken(vp):
             return True
     return False
 
-VOYAGE_COIN_REWARD_MULT = 1.0 / 3.0  # 航海報酬のナトコインだけ控えめにする（基本抽選率・XP等は不変）
+# ⛵ 航海報酬のナトコイン倍率。
+# 以前は 1/3 でかなり渋く、初期船の満タン給油（約19,800）に対して
+# E1周回の期待値が低すぎたため、入口海域でも燃料代を回収しやすい水準へ補正。
+VOYAGE_COIN_REWARD_MULT = 0.70
 
 def _scaled(rng, vm):
     return int(random.uniform(rng["base_min"], rng["base_max"]) * vm * VOYAGE_COIN_REWARD_MULT)
+
+# ⚔️ 海戦・白兵戦の撃破報酬倍率。E1の燃料代負けを緩和しつつ、E2〜E4も同じ比率で底上げ。
+NAVAL_COMBAT_REWARD_MULT = 1.25
 
 # ━━━ 🎣 海の釣り（航海専用の竿のみ／演出＝魚影の時だけ／回数制限）━━━
 #   レア度＝エリア依存（VOYAGE_FISH_RARITY）。リール/ラインは無効だが金冠（基礎確率）は健在。竿は永久。
@@ -310,8 +316,12 @@ def apply_event_effects(vp, effects, vm=1.0):
         mh = max_hp(vp); vp["cur_hp"] = max(0, min(mh, vp.get("cur_hp", mh) + effects["ship_hp"]))
         extra.append(f"🚢 船体 {'+' if effects['ship_hp'] > 0 else ''}{effects['ship_hp']}")
     if effects.get("fuel"):
-        v["fuel"] = max(0, v.get("fuel", 0) + effects["fuel"])
-        extra.append(f"⛽ {'+' if effects['fuel'] > 0 else ''}{effects['fuel']:,}")
+        before_fuel = v.get("fuel", 0)
+        maxf = ship_max_fuel(vp)
+        v["fuel"] = max(0, min(maxf, before_fuel + effects["fuel"]))
+        delta_fuel = v["fuel"] - before_fuel
+        if delta_fuel:
+            extra.append(f"⛽ {'+' if delta_fuel > 0 else ''}{delta_fuel:,}")
     if effects.get("flag"):
         v.setdefault("flags", []).append(effects["flag"])
     if effects.get("shard"):
@@ -1747,6 +1757,13 @@ class ChoiceButton(discord.ui.Button):
             if area <= 2 and random.random() < 0.20:
                 await maybe_kraken_shadow(interaction, uid, gid, area)
                 return
+        # 商船イベントの「交易する」は、結果テキストだけで終わらせず、
+        # 航海中の商船ショップ（燃料・食料・探索アイテム購入）を開く。
+        if view.event_id == "merchant_verma" and ("交易" in ch.get("label", "") or "取引" in ch.get("label", "")):
+            await interaction.response.edit_message(
+                embed=build_trade_embed(vp, "⛵ ヴェルマ商会が補給品を並べた。必要なものを選べる。"),
+                view=TradeView(uid, gid))
+            return
         text, combat, fish = apply_event_effects(vp, ch["effects"], view.vm)
         db.save_voyage(uid, vp)
         if combat:
@@ -3801,13 +3818,13 @@ class ShipApproachView(discord.ui.View):
 
 
 # ━━━ 💰 商船との取引（食料まとめ買い＋燃料1000刻み）━━━
-TRADE_UNIT = lambda: V.FUEL_PRICE_PER * 1.3   # 商船は港よりやや割高
+TRADE_UNIT = lambda: V.FUEL_PRICE_PER * 1.6   # 商船は港より割高（航海中の緊急補給価格）
 
 def build_trade_embed(vp, note=None):
     v = vp.get("voyage") or {}
     maxf = ship_max_fuel(vp); cur = v.get("fuel", 0)
     desc = ("商人が積荷を広げた。\n"
-            "**船倉のコイン**で、燃料と食料を買える。\n"
+            "**船倉のコイン**で、燃料・食料・探索アイテムを買える。\n"
             "（港より少し割高だ）")
     if note:
         desc += f"\n\n{note}"
@@ -3818,6 +3835,10 @@ def build_trade_embed(vp, note=None):
     if any(foods.get(fid, 0) for fid in V.FOODS):
         fl = "・".join(f"{V.FOODS[fid]['emoji']}{n}" for fid, n in foods.items() if n)
         e.add_field(name="🍖 所持食料", value=fl, inline=False)
+    land_items = vp.get("land_items", {}) or {}
+    if any(land_items.get(iid, 0) for iid in getattr(L, "LAND_ITEMS", {})):
+        il = "・".join(f"{L.LAND_ITEMS[iid]['emoji']}{n}" for iid, n in land_items.items() if n and iid in L.LAND_ITEMS)
+        e.add_field(name="🧭 所持探索アイテム", value=il or "なし", inline=False)
     return e
 
 class TradeView(discord.ui.View):
@@ -3826,6 +3847,7 @@ class TradeView(discord.ui.View):
         self.uid = str(uid); self.gid = str(gid)
         self.add_item(TradeFuelSelect(self.uid))
         self.add_item(TradeFoodSelect(self.uid))
+        self.add_item(TradeLandItemSelect(self.uid, self.gid))
         done = discord.ui.Button(label="✅ 取引を終える", style=discord.ButtonStyle.secondary, row=2)
         async def _done(it):
             if str(it.user.id) != self.uid:
@@ -3843,7 +3865,7 @@ class TradeFuelSelect(discord.ui.Select):
         opts = [discord.SelectOption(label=f"⛽ 燃料 +{step:,}", value=str(step),
                                      description=f"{int(step*unit):,}コイン")
                 for step in TRADE_FUEL_STEPS]
-        super().__init__(placeholder="⛽ 給油する（1000刻み・最大3000）", options=opts, row=0)
+        super().__init__(placeholder="⛽ 給油する（数字を選ぶ・商船価格）", options=opts, row=0)
     async def callback(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
@@ -3869,6 +3891,53 @@ class TradeFuelSelect(discord.ui.Select):
         await it.response.edit_message(
             embed=build_trade_embed(vp, f"⛽ 燃料を **{add:,}** 補給した（-{cost:,}）。"),
             view=TradeView(self.uid, str(self.view.gid)))
+
+
+class TradeLandItemSelect(discord.ui.Select):
+    """商船で探索アイテムを買う。船倉コイン払い・港/街より少し割高。"""
+    def __init__(self, uid, gid):
+        self.uid = str(uid); self.gid = str(gid)
+        vp = db.get_voyage(uid)
+        ids = [iid for iid, it in getattr(L, "LAND_ITEMS", {}).items() if it.get("shop") == "always"] + _daily_random_shop_items(gid)
+        opts = []
+        for iid in ids:
+            it = L.LAND_ITEMS[iid]
+            base_price = int(it.get("price", 0))
+            if base_price <= 0:
+                continue
+            price = int(base_price * 1.25)
+            have = vp.get("land_items", {}).get(iid, 0)
+            opts.append(discord.SelectOption(
+                label=f"{it['name']} / {price:,}コイン", emoji=it["emoji"], value=iid,
+                description=f"所持{have}・{it.get('desc','')[:65]}"))
+        if not opts:
+            opts = [discord.SelectOption(label="探索アイテムの在庫なし", value="__none__")]
+        super().__init__(placeholder="🧭 探索アイテムを買う（商船価格）", options=opts[:25], row=2)
+
+    async def callback(self, it):
+        if str(it.user.id) != self.uid:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        iid = self.values[0]
+        if iid == "__none__" or iid not in getattr(L, "LAND_ITEMS", {}):
+            await it.response.send_message("商人は肩をすくめた。今は在庫がないらしい。", ephemeral=True); return
+        meta = L.LAND_ITEMS[iid]
+        base_price = int(meta.get("price", 0))
+        if base_price <= 0:
+            await it.response.send_message("これは売り物ではないらしい。", ephemeral=True); return
+        price = int(base_price * 1.25)
+        vp = db.get_voyage(self.uid); v = vp["voyage"]
+        hold = int(v.get("hold", 0))
+        if hold < price:
+            await it.response.edit_message(
+                embed=build_trade_embed(vp, f"💰 船倉が足りない（必要 {price:,} / 船倉 {hold:,}）。"),
+                view=TradeView(self.uid, self.gid)); return
+        v["hold"] = hold - price
+        vp.setdefault("land_items", {})[iid] = vp.setdefault("land_items", {}).get(iid, 0) + 1
+        db.add_zukan(self.uid, "item_seen", iid)
+        db.save_voyage(self.uid, vp)
+        await it.response.edit_message(
+            embed=build_trade_embed(vp, f"{meta['emoji']} **{meta['name']} ×1** を買った（-{price:,}）。"),
+            view=TradeView(self.uid, self.gid))
 
 class TradeFoodSelect(discord.ui.Select):
     def __init__(self, uid):
@@ -3906,7 +3975,7 @@ def _voyage_minor_reward(uid, vp, vm, label="痕跡"):
     v = vp.get("voyage") or {}
     roll = random.random()
     if roll < 0.34:
-        val = max(100, int(_scaled((180, 520), vm) * 0.35))
+        val = max(100, int(_scaled({"base_min": 180, "base_max": 520}, vm) * 0.35))
         v["hold"] = v.get("hold", 0) + val
         return f"💰 {label}から、流された小箱を回収した。船倉に **+{val:,}**"
     if roll < 0.58:
@@ -4165,19 +4234,22 @@ def apply_encounter_outcome(vp, spec, vm_eff, is_boss, board_win):
     shard_key = "boss" if is_boss else "pirate_win"
     if board_win:
         base = random.uniform(V.PIRATE_BASE_REWARD["base_min"], V.PIRATE_BASE_REWARD["base_max"])
-        rew = int(base * spec["reward_mult"] * vm_eff)
-        v["hold"] += rew; add_xp(vp, V.XP_PER_PIRATE_WIN)
+        rew = int(base * spec["reward_mult"] * vm_eff * NAVAL_COMBAT_REWARD_MULT)
+        v["hold"] += rew
+        xp = V.voyage_combat_xp(spec, win=True) if hasattr(V, "voyage_combat_xp") else V.XP_PER_PIRATE_WIN
+        leveled = add_xp(vp, xp)
         tag = "🏆 撃破"
-        body = f"**{spec['name']}** を討ち取った！ 船倉に **+{rew:,}**"
+        body = f"**{spec['name']}** を討ち取った！ 船倉に **+{rew:,}**\n✨ 経験値 **+{xp}**" + (f"\n## 🎉 レベルアップ！ → Lv{vp['level']}" if leveled else "")
         sh = _try_shard(vp, shard_key)
         if sh: body += sh
         cont = "⛵ 戦果を抱えて航海を続ける。"
     else:
         lost = int(v["hold"] * V.WRECK_HOLD_LOSS)
         v["hold"] -= lost
-        add_xp(vp, V.XP_PER_PIRATE_LOSE)
+        xp = V.voyage_combat_xp(spec, win=False) if hasattr(V, "voyage_combat_xp") else V.XP_PER_PIRATE_LOSE
+        leveled = add_xp(vp, xp)
         tag = "💀 敗北"
-        body = f"斬り合いに敗れた…船倉の **{lost:,}** を失った。"
+        body = f"斬り合いに敗れた…船倉の **{lost:,}** を失った。\n✨ 敗北経験値 **+{xp}**" + (f"\n## 🎉 レベルアップ！ → Lv{vp['level']}" if leveled else "")
         specials = vp.get("special_items", [])
         if specials:
             body += f"\n🎒 特殊アイテム **{len(specials)}個** は辛うじて持ち帰った。"
@@ -4481,10 +4553,10 @@ class VoyageFishZukanView(discord.ui.View):
 # ━━━ 🌑 クラーケンの影（専用イベント戦闘）━━━
 #   仕様：最初の数ターンは無視→突然の一撃／HP半分で🖤黒い欠片(毎回)／
 #         HP閾値で「興味を失い撤退」＝削りきれない／逃走100%・全損なし。
-SHADOW_MAX_HP        = 720      # 巨大な影のHP（削りきれない＝下の撤退閾値で去る）
-SHADOW_RETREAT_RATIO = 0.30     # これ以下まで削ると興味を失い撤退（倒せない）
+SHADOW_MAX_HP        = 1800     # 巨大な影のHP（クラーケン基準。削りきれない＝下の撤退閾値で去る）
+SHADOW_RETREAT_RATIO = 0.35     # これ以下まで削ると興味を失い撤退（倒せない）
 SHADOW_SHARD_RATIO   = 0.50     # これ以下で🖤黒い欠片ドロップ
-SHADOW_IGNORE_TURNS  = 3        # 最初の数ターンは攻撃してこない
+SHADOW_IGNORE_TURNS  = 2        # 最初の数ターンは攻撃してこない
 SHADOW_DARK_SHARD    = "🖤 黒い禍々しい欠片"
 
 def build_wait_embed(text, color=None):
@@ -4649,7 +4721,7 @@ class KrakenShadowFightView(discord.ui.View):
                 "🌑 影は気まぐれに身を揺らすだけだ…", "🌑 影はあくびをするように漂う。",
                 "🌑 影はお前など眼中にない。"]))
         else:
-            ehit = C.dmg_calc(int(SHADOW_MAX_HP * 0.06), defense_power(vp), 1.0)
+            ehit = C.dmg_calc(int(SHADOW_MAX_HP * 0.045), defense_power(vp), 1.0)
             st["php"] = max(0, st["php"] - ehit)
             st["log"].append(f"💥 **突然、影が身をよじった！** あなたに {ehit} の衝撃！")
             if st["php"] <= 0:
