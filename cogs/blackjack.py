@@ -560,11 +560,7 @@ def _bj_again_view(bet, uid, guild_id):
 
 
 def _bj_post_view(uid, guild_id, bet, net):
-    """net>0ならダブルアップ入口、それ以外は通常のもう一回View。"""
-    if net > 0:
-        from cogs.doubleup import build_entry_view
-        return build_entry_view(uid, guild_id, net, "ブラックジャック",
-                                lambda: _bj_again_view(bet, uid, guild_id))
+    """ブラックジャック勝利後はダブルアップを出さない（連鎖で経済が壊れるため）。"""
     return _bj_again_view(bet, uid, guild_id)
 
 

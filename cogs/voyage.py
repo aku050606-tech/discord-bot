@@ -1839,6 +1839,7 @@ def ship_part_allowed_rank(vp):
 
 # 船本体に刻める技種（slot=="ship_body"）／部位に刻める技種
 SHIP_PART_SKILL_SLOT = {"cannon": "ship_cannon", "armor": "ship_armor", "rigging": "ship_rigging"}
+SHIP_EQUIPMENT_SHOP_ENABLED = False  # 船装備は未実装扱い。購入・装着・船技刻印は一旦停止。
 
 def ship_skill_fits(target, sid):
     """target: 'body' or 部位名。slotが一致すれば刻める。"""
@@ -1850,10 +1851,17 @@ def ship_skill_fits(target, sid):
 
 def build_shop_embed(vp):
     sd = ship_def_of(vp)
-    e = discord.Embed(title="🏪 港の造船ショップ", color=discord.Color.gold(),
-                      description=(f"🚢 {V.rarity_stars(sd['rank'])} {sd['name']} ── "
-                                   f"☆{sd['rank']+V.RARITY_ENGRAVE_GAP}までの装備を積める。\n"
-                                   "部位に船装備を挿し、船技を刻もう。"))
+    if not SHIP_EQUIPMENT_SHOP_ENABLED:
+        e = discord.Embed(
+            title="🏪 港の造船ショップ ── 準備中",
+            color=discord.Color.gold(),
+            description="船装備（砲・装甲・艤装）と船技はまだ未実装のため、現在は購入・装着できません。"
+        )
+    else:
+        e = discord.Embed(title="🏪 港の造船ショップ", color=discord.Color.gold(),
+                          description=(f"🚢 {V.rarity_stars(sd['rank'])} {sd['name']} ── "
+                                       f"☆{sd['rank']+V.RARITY_ENGRAVE_GAP}までの装備を積める。\n"
+                                       "部位に船装備を挿し、船技を刻もう。"))
     for part in V.SHIP_PART_ORDER:
         meta = V.SHIP_PART_META[part]; pdef = ship_part_def(vp, part)
         if pdef:
@@ -1872,8 +1880,11 @@ class ShopView(discord.ui.View):
     def __init__(self, user_id, gid):
         super().__init__(timeout=900)
         self.user_id = str(user_id); self.gid = str(gid)
-        self.add_item(ShipPartSelect(user_id, gid))
-        self.add_item(ShipEngraveButton())
+        if SHIP_EQUIPMENT_SHOP_ENABLED:
+            self.add_item(ShipPartSelect(user_id, gid))
+            self.add_item(ShipEngraveButton())
+        else:
+            self.add_item(ShipShopDisabledButton())
         back = discord.ui.Button(label="◀ 港へ戻る", style=discord.ButtonStyle.secondary, row=2)
         async def _back(interaction):
             if str(interaction.user.id) != self.user_id:
@@ -1882,6 +1893,10 @@ class ShopView(discord.ui.View):
                 embed=build_port_embed(db.get_voyage(self.user_id)), view=PortView(self.user_id, self.gid))
         back.callback = _back
         self.add_item(back)
+
+class ShipShopDisabledButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="🚧 船装備は準備中", style=discord.ButtonStyle.secondary, disabled=True, row=0)
 
 class ShipPartSelect(discord.ui.Select):
     def __init__(self, user_id, gid):
@@ -1894,6 +1909,8 @@ class ShipPartSelect(discord.ui.Select):
     async def callback(self, interaction):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        if not SHIP_EQUIPMENT_SHOP_ENABLED:
+            await interaction.response.send_message("🚧 船装備はまだ未実装なので購入・装着できません。", ephemeral=True); return
         part = self.values[0]
         await interaction.response.edit_message(
             embed=build_shop_embed(db.get_voyage(self.user_id)),
@@ -1928,6 +1945,8 @@ class ShipPartBuySelect(discord.ui.Select):
     async def callback(self, interaction):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        if not SHIP_EQUIPMENT_SHOP_ENABLED:
+            await interaction.response.send_message("🚧 船装備はまだ未実装なので購入できません。", ephemeral=True); return
         iid = self.values[0]
         if iid == "none":
             await interaction.response.send_message("まだ在庫が無い部位だ（艤装は今後）", ephemeral=True); return
@@ -1961,6 +1980,8 @@ class ShipEngraveButton(discord.ui.Button):
         view = self.view
         if str(interaction.user.id) != view.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        if not SHIP_EQUIPMENT_SHOP_ENABLED:
+            await interaction.response.send_message("🚧 船技はまだ未実装なので刻めません。", ephemeral=True); return
         await interaction.response.edit_message(
             embed=build_shop_embed(db.get_voyage(view.user_id)),
             view=ShipEngraveView(view.user_id, view.gid))

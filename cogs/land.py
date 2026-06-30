@@ -520,8 +520,23 @@ def _consume_buff_once(vp, key):
         return True
     return False
 
-def _apply_coin_buff(vp, coin):
-    if _consume_buff_once(vp, "gold_compass"):
+def _consume_explore_buffs_once(vp):
+    """探索1回につき、探索回数制のバフを必ず1消費する。
+    その探索で有効だったバフ状態を返すので、残り1回の効果もきちんと乗る。
+    ※ 煙玉は「次の雑魚戦を回避」なので、戦闘発生時だけ消費のまま。
+    """
+    buffs = _land_buffs(vp)
+    active = {k: int(v) for k, v in buffs.items() if int(v) > 0}
+    for key in ("lucky_charm", "old_map", "lantern", "gold_compass"):
+        if buffs.get(key, 0) > 0:
+            buffs[key] -= 1
+            if buffs[key] <= 0:
+                del buffs[key]
+    return active
+
+def _apply_coin_buff(vp, coin, active_buffs=None):
+    active_buffs = active_buffs if active_buffs is not None else (vp.get("land_buffs", {}) or {})
+    if active_buffs.get("gold_compass", 0) > 0:
         return int(coin * 1.6), True
     return coin, False
 
@@ -643,6 +658,11 @@ class LandAreaView(discord.ui.View):
 
     async def _resolve_prepared(self, interaction, kind, spec=None, ev=None):
         vp = db.get_voyage(self.uid)
+        active_buffs = _consume_explore_buffs_once(vp)
+        coin_boost_active = active_buffs.get("gold_compass", 0) > 0
+        if spec is not None:
+            spec = dict(spec)
+            spec["_coin_boost_active"] = coin_boost_active
         if kind == "combat":
             if spec and (not spec.get("is_rare")) and (not spec.get("is_midrare")) and _consume_buff_once(vp, "smoke_bomb"):
                 db.save_voyage(self.uid, vp)
@@ -650,16 +670,21 @@ class LandAreaView(discord.ui.View):
                     embed=build_area_embed(vp, self.area, "## 💨 煙玉\n敵の気配が近づいた瞬間、煙を放って身を隠した。\n雑魚との戦闘を回避した。", LAND_COL_CALM),
                     view=LandResultView(self.uid, self.gid, self.area))
                 return
-            _consume_buff_once(vp, "lucky_charm"); db.save_voyage(self.uid, vp)
+            db.save_voyage(self.uid, vp)
             await self._start_combat(interaction, vp, spec=spec)
         elif kind == "story":
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
-            await self._show_narrative(interaction, vp, ev or L.pick_story(self.area))
+            db.save_voyage(self.uid, vp)
+            ev2 = ev or L.pick_story(self.area)
+            if isinstance(ev2, dict):
+                ev2 = dict(ev2); ev2["_active_buffs"] = active_buffs
+            await self._show_narrative(interaction, vp, ev2)
         elif kind == "event":
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
-            await self._show_narrative(interaction, vp, ev or L.pick_random_event(self.area))
+            db.save_voyage(self.uid, vp)
+            ev2 = ev or L.pick_random_event(self.area)
+            if isinstance(ev2, dict):
+                ev2 = dict(ev2); ev2["_active_buffs"] = active_buffs
+            await self._show_narrative(interaction, vp, ev2)
         elif kind == "item":
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
             iid = L.pick_land_item(self.area); got = _add_land_item(self.uid, vp, iid, 1)
             mat_got = _roll_land_craft_material(self.uid, vp, self.area, bonus=1.2)
             db.save_voyage(self.uid, vp)
@@ -669,8 +694,7 @@ class LandAreaView(discord.ui.View):
                 view=LandResultView(self.uid, self.gid, self.area))
         elif kind == "coin":
             coin = random.randint(*L.LAND_COIN_EVENT.get(self.area, [300, 1000]))
-            coin, boosted = _apply_coin_buff(vp, coin)
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
+            coin, boosted = _apply_coin_buff(vp, coin, active_buffs)
             _run_add_coin(vp, coin); db.save_voyage(self.uid, vp)
             plus = "\n🧭 羅針盤が反応した。" if boosted else ""
             await interaction.edit_original_response(
@@ -678,8 +702,7 @@ class LandAreaView(discord.ui.View):
                 view=LandResultView(self.uid, self.gid, self.area))
         elif kind == "gather":
             coin = random.randint(*L.LAND_GATHER_COIN[self.area])
-            coin, boosted = _apply_coin_buff(vp, coin)
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern")
+            coin, boosted = _apply_coin_buff(vp, coin, active_buffs)
             mat_got = _roll_land_craft_material(self.uid, vp, self.area, bonus=1.35)
             # まれに大量採取。1000周想定でも「進んでる感」を作る。
             bonus_line = ""
@@ -698,7 +721,7 @@ class LandAreaView(discord.ui.View):
                 embed=build_area_embed(vp, self.area, f"## 🌿 採取\n{flav}{plus}{mat_line}{bonus_line}\n**💰 +{coin:,}**", LAND_COL_GATHER),
                 view=LandResultView(self.uid, self.gid, self.area))
         else:  # calm
-            _consume_buff_once(vp, "old_map"); _consume_buff_once(vp, "lantern"); db.save_voyage(self.uid, vp)
+            db.save_voyage(self.uid, vp)
             await interaction.edit_original_response(
                 embed=build_area_embed(vp, self.area, _pad_note(random.choice(L.LAND_CALM), 5), LAND_COL_CALM),
                 view=LandResultView(self.uid, self.gid, self.area))
@@ -1052,7 +1075,7 @@ def _apply_event_outcome(uid, gid, vp, area, outcome, event=None, choice=None):
         lines.append("何も見つからなかった。けれど、空気だけは少し重い。")
     elif outcome == "coin":
         coin = random.randint(*L.LAND_COIN_EVENT.get(area, [300,1000])) * reward_mult
-        coin, boosted = _apply_coin_buff(vp, coin)
+        coin, boosted = _apply_coin_buff(vp, coin, (event or {}).get("_active_buffs", {}))
         _run_add_coin(vp, coin)
         lines.append(f"## 💰 +{coin:,}" + ("\n🧭 羅針盤が反応した。" if boosted else ""))
     elif outcome == "item":
@@ -1228,6 +1251,7 @@ def land_on_end(uid, gid, area, spec):
             if not spec.get("is_xp_runner"):
                 xp = int(xp * float(spec.get("reward_ratio", 1.0)))
             xp = _land_xp_amount(vp, area, xp)
+            coin, coin_boosted = _apply_coin_buff(vp, coin, {"gold_compass": 1} if spec.get("_coin_boost_active") else {})
             leveled = add_xp(vp, xp)
             _run_add_coin(vp, coin)                 # 💰 収穫に貯める（タウン帰還で確定／死ぬと半分失う）
             drop = None if spec.get("no_item_drop") else _run_add_drop(uid, vp, area, spec)   # 🎁 装備ドロップ（中レアは高確率）
@@ -1243,7 +1267,7 @@ def land_on_end(uid, gid, area, spec):
                 head = f"## 🔸🏆 {spec['emoji']} {spec['name']} を討ち取った！"
             else:
                 head = f"## 🏆 {spec['emoji']} {spec['name']} を倒した！"
-            lines = [head, f"**✨ XP +{xp}　💰 +{coin:,}**"]
+            lines = [head, f"**✨ XP +{xp}　💰 +{coin:,}**" + ("\n🧭 羅針盤が反応した。" if coin_boosted else "")]
             if leveled:
                 lines.append(f"## 🎉 レベルアップ！ → Lv{vp['level']}")
             if drop:

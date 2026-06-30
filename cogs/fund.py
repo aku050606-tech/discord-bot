@@ -13,8 +13,15 @@ DEFAULT_GOAL = "danger_zone"
 
 
 def _apply_port_daily_growth(guild_id: str, goal_key: str = DEFAULT_GOAL):
-    """さびれた港の自然復興。表示時/定期実行時の両方から呼べる冪等処理。"""
-    return db.apply_fund_daily_growth(str(guild_id), goal_key, PORT_DAILY_FUND_AMOUNT)
+    """さびれた港の自然復興。2026-06-30 00:00(JST)以降は強制解放。"""
+    from config import jst_today_str
+    gid = str(guild_id)
+    already = db.is_fund_unlocked(gid, goal_key)
+    if (not already) and jst_today_str() >= "2026-06-30":
+        db.set_fund_unlocked(gid, goal_key)
+        goal = int(FUND_GOALS.get(goal_key, {}).get("goal", 0))
+        return (True, goal, True)
+    return db.apply_fund_daily_growth(gid, goal_key, PORT_DAILY_FUND_AMOUNT)
 
 
 def _has_port_access(guild, user, goal_key):
@@ -27,9 +34,8 @@ def _has_port_access(guild, user, goal_key):
 LEGEND_FISHER_LINES = (
     "……おう、よく来たな、若いの。\n"
     "だが見ての通り、この港はすっかり寂れちまった。\n\n"
-    "昔はここから、人の住まう海の遥か先――\n"
-    "**凍てつく地獄** と **燃え盛る地獄**へ、遠洋に出られたもんだ。\n"
-    "そりゃあ恐ろしい海よ……名を口にするのも憚られる。\n\n"
+    "昔はここから、外洋へ船を出していたもんだ。\n"
+    "海は広い。魚も宝も、危険も、ぜんぶ波の向こうに眠ってる。\n\n"
     "……すまん。今はその **資金も、道具も**、何もかも失っちまった。\n"
     "このままじゃ、お前さんを送り出してやることもできん。\n\n"
     "だが――みんなで力を合わせて資金を集めてくれるなら。\n"
@@ -147,21 +153,34 @@ def _grant_port_pet(user_id: str, pet_id: str):
     vp = db.get_voyage(user_id)
     if vp.get("port_revival_pet_claimed"):
         return False, vp
-    vp.setdefault("special_items", []).append(pet_id)
+    specials = vp.setdefault("special_items", [])
+    if pet_id not in specials:
+        specials.append(pet_id)
     vp["port_revival_pet_claimed"] = True
     db.add_zukan(user_id, "item_seen", pet_id)
     db.save_voyage(user_id, vp)
     return True, vp
 
 
+def _ensure_port_revival_top_pet(gid: str, goal_key: str = DEFAULT_GOAL):
+    """既に港が開いているサーバーでも、最大支援者にハムスターを救済付与する。"""
+    if not db.is_fund_unlocked(str(gid), goal_key):
+        return None, False
+    top = db.get_fund_contributors(str(gid), goal_key, limit=1)
+    if not top:
+        return None, False
+    top_uid, _top_amt = top[0]
+    ok, _ = _grant_port_pet(top_uid, "pet_hamster")
+    return top_uid, ok
+
+
 class PortRevivalPetSelect(discord.ui.Select):
     def __init__(self, uid, gid):
         self.uid = str(uid); self.gid = str(gid)
         opts = [
-            discord.SelectOption(label=V.PETS["pet_dog"]["name"], value="pet_dog", emoji=V.PETS["pet_dog"]["emoji"], description="港復興記念・オーグからの贈り物"),
-            discord.SelectOption(label=V.PETS["pet_cat"]["name"], value="pet_cat", emoji=V.PETS["pet_cat"]["emoji"], description="港復興記念・オーグからの贈り物"),
+            discord.SelectOption(label=V.PETS["pet_hamster"]["name"], value="pet_hamster", emoji=V.PETS["pet_hamster"]["emoji"], description="港復興記念・オーグからの贈り物"),
         ]
-        super().__init__(placeholder="🐾 オーグからの贈り物を選ぶ", min_values=1, max_values=1, options=opts)
+        super().__init__(placeholder="🐹 ハムスターを受け取る", min_values=1, max_values=1, options=opts)
 
     async def callback(self, interaction: discord.Interaction):
         if str(interaction.user.id) != self.uid:
@@ -192,6 +211,32 @@ class PortRevivalPetGiftView(discord.ui.View):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid)
         self.add_item(PortRevivalPetSelect(uid, gid))
+
+
+async def _send_port_revival_gift(interaction: discord.Interaction, gid: str, goal_key: str):
+    """港復興トップ支援者にハムスターを贈る。受け取り済みなら二重付与しない。"""
+    top = db.get_fund_contributors(gid, goal_key, limit=1)
+    if not top:
+        return
+    top_uid, top_amt = top[0]
+    ok, _ = _grant_port_pet(top_uid, "pet_hamster")
+    m = interaction.guild.get_member(int(top_uid)) if interaction.guild else None
+    top_name = m.mention if m else f"<@{top_uid}>"
+    pet = V.PETS["pet_hamster"]
+    gift = discord.Embed(
+        title="🐹 港復興記念 ── オーグからの贈り物",
+        description=(
+            "波止場に、久しぶりの灯りがともった。\n\n"
+            "オーグが、少しだけ笑う。\n\n"
+            "「一番この港に金を入れてくれたやつに、俺から礼がある。\n"
+            f"**{pet['emoji']} {pet['name']}** だ。大事にしてやってくれ。」\n\n"
+            f"最大支援者：{top_name}\n"
+            f"支援額：**{top_amt:,}** ナトコイン\n"
+            f"付与：**{pet['emoji']} {pet['name']}**" + ("" if ok else "（受け取り済み）")
+        ),
+        color=discord.Color.gold()
+    )
+    await interaction.channel.send(embed=gift)
 
 
 class ContributeModal(discord.ui.Modal):
@@ -259,7 +304,7 @@ class ContributeModal(discord.ui.Modal):
                             "波止場に、久しぶりの灯りがともった。\n\n"
                             "オーグが、少しだけ笑う。\n\n"
                             "「一番この港に金を入れてくれたやつに、俺から礼がある。\n"
-                            "犬か猫、好きな方を選べ。こいつらも港の復興を見届けた仲間だ。」\n\n"
+                            "小さなハムスターだ。こいつも港の復興を見届けた仲間だ。」\n\n"
                             f"最大支援者：{top_name}\n"
                             f"支援額：**{top_amt:,}** ナトコイン"
                         ),
@@ -275,7 +320,8 @@ async def open_port(interaction: discord.Interaction, user_id: str = None, goal_
     解放済みは母港（航海中なら航海画面）へ直行。未解放は支援ページ。"""
     uid = user_id or str(interaction.user.id)
     gid = str(interaction.guild.id)
-    _apply_port_daily_growth(gid, goal_key)
+    _applied, _total, _just_unlocked = _apply_port_daily_growth(gid, goal_key)
+    _gift_uid, _gift_new = _ensure_port_revival_top_pet(gid, goal_key)
     if _has_port_access(interaction.guild, interaction.user, goal_key):
         from cogs.voyage import build_port_embed, build_voyage_embed, PortView, VoyageView
         vp = db.get_voyage(uid)
@@ -286,6 +332,18 @@ async def open_port(interaction: discord.Interaction, user_id: str = None, goal_
     else:
         embed = build_locked_port_embed(interaction.guild, interaction.user, goal_key)
         view = LockedPortView(uid, goal_key)
+    if _just_unlocked:
+        try:
+            g = FUND_GOALS[goal_key]
+            ann = discord.Embed(
+                title=g.get("unlock_title", "🎉 解放！"),
+                description=g.get("unlock_msg", ""), color=discord.Color.gold())
+            ann.add_field(name="達成額", value=f"**{_total:,}** ナトコイン", inline=True)
+            ann.set_footer(text="支援してくれた全員に感謝を！")
+            await interaction.channel.send(embed=ann)
+            await _send_port_revival_gift(interaction, gid, goal_key)
+        except Exception:
+            pass
     if interaction.response.is_done():
         await interaction.followup.send(embed=embed, view=view)
     else:
@@ -305,6 +363,7 @@ class Fund(commands.Cog):
         # サーバーごとに1日1回だけ、さびれた港の復興資金を自然増加させる。
         for guild in self.bot.guilds:
             _apply_port_daily_growth(str(guild.id), DEFAULT_GOAL)
+            _ensure_port_revival_top_pet(str(guild.id), DEFAULT_GOAL)
 
     @port_daily_growth_loop.before_loop
     async def before_port_daily_growth_loop(self):
