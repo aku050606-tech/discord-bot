@@ -3502,10 +3502,14 @@ def make_naval_enemy(spec, scale):
                             skills=V.NAVAL_ENEMY_SKILLS.get(tier, []), ai_tier=tier)
 
 def make_board_ally(vp):
-    """白兵コンバタント。個人HPは毎戦全快。武器の手数(hits)で通常攻撃が多段になる。
+    """白兵コンバタント。個人HPは航海中の現在HPを持ち越す。
+    武器の手数(hits)で通常攻撃が多段になる。
     技ダメージは武器powerに依存せず、レベル+武器☆の基礎値で決まる（A案＝武器種で技は横並び）。"""
-    c = C.make_combatant("あなた", "🧑", max_hp(vp),
+    mh = max_hp(vp)
+    cur = max(1, min(mh, int(vp.get("cur_hp", mh))))
+    c = C.make_combatant("あなた", "🧑", mh,
                          attack_power(vp), defense_power(vp), board_skills(vp))
+    c["hp"] = cur
     lv_atk = _level_stat_bonus(vp.get("level", 1))
     w = equipped_inst(vp, "weapon")
     if w and w["item"] in V.WEAPONS:
@@ -3540,6 +3544,22 @@ def make_board_enemy(spec, scale, defense=False):
         c["escape_chance"] = float(spec.get("escape_chance", 0))
         c["escape_name"] = spec.get("name", c.get("name", "敵"))
     return c
+
+def _persist_board_hp(uid, state, vp=None):
+    """海の白兵戦HPを voyage.cur_hp に保存する。
+
+    戦闘開始・勝利・撤退のたびに全回復してしまう事故を防ぐため、
+    戦闘エンジン上の現在HPをプレイヤーデータへ戻す。
+    """
+    try:
+        vp = vp or db.get_voyage(str(uid))
+        a = (state or {}).get("ally", {})
+        mh = max_hp(vp)
+        cur = int(a.get("hp", vp.get("cur_hp", mh)))
+        vp["cur_hp"] = max(1, min(mh, cur))
+        return vp
+    except Exception:
+        return vp
 
 def build_combat_embed(state):
     a = state["ally"]; e = state["enemy"]
@@ -3616,6 +3636,7 @@ class CombatItemSelect(discord.ui.Select):
                 await it.response.send_message("❤️ HPは満タンだ。", ephemeral=True); return
             heal = max(1, int(a["max_hp"] * 0.25)); before = a["hp"]
             a["hp"] = min(a["max_hp"], a["hp"] + heal)
+            _persist_board_hp(view.user_id, view.state, vp)
             item_log = f"🩹 包帯を使った。HP {before}→{a['hp']}"
         elif iid == "smoke_bomb":
             if view.flee_cb is None:
@@ -4332,6 +4353,7 @@ class NavalEncounter:
 
     async def on_flee(self, interaction, state):
         vp = db.get_voyage(self.uid)
+        _persist_board_hp(self.uid, state, vp)
         force_success = bool(state.pop("_force_flee_success_once", False))
         chance = 1.0 if force_success else self._flee_pct(vp)
         if force_success or random.random() < chance:
@@ -4358,6 +4380,7 @@ class NavalEncounter:
     async def on_board_end(self, interaction, state):
         board_win = (state["result"] == "win")
         vp = db.get_voyage(self.uid)
+        _persist_board_hp(self.uid, state, vp)
         # 📖 敵対図鑑：倒したら「討伐の証」記録
         if board_win:
             ekey = self.spec.get("key")

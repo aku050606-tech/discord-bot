@@ -88,20 +88,16 @@ def _announce_threshold(game: str):
 async def announce_big_win(interaction, member, game: str, amount: int,
                            balance=None, detail: str | None = None,
                            force: bool = False):
-    """勝ち額が閾値以上、または force=True のとき告知チャンネルにBOT告知を出す。
+    """大勝利アナウンスは一旦廃止。
 
-    interaction : discord.Interaction（チャンネル/Bot取得に使う）
-    member      : 勝ったユーザー（interaction.user を渡せばよい）
-    game        : ゲーム名（例 "スロット" "釣り" "チンチロ"）
-    amount      : 今回の勝ち額（ナトコイン）
-    balance     : 任意。現在残高を併記する場合に渡す
-    detail      : 任意。補足の一行（※ネタバレになる魚名などは入れない）
-    force       : Trueなら閾値未満でも必ず告知（例: レジェンドの魚）
+    各ゲーム側からこの関数が呼ばれても何もしない。
+    呼び出し元を大量に触らず、告知だけ安全に止めるための no-op。
     """
+    return
     try:
         if amount is None:
             return
-        # 📣 告知対象は3種のみ：スロット(3万+)・釣り(5万+)・航海(10万+)。それ以外は告知しない。
+        # 📣 告知対象は高額勝利だけ。通常の勝ちでは静かにする。
         thr = _announce_threshold(game)
         if thr is None:
             return
