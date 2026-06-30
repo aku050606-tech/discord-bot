@@ -240,6 +240,34 @@ VOYAGE_COIN_REWARD_MULT = 0.70
 def _scaled(rng, vm):
     return int(random.uniform(rng["base_min"], rng["base_max"]) * vm * VOYAGE_COIN_REWARD_MULT)
 
+def _coin_bonus_from_vm(vp, vm):
+    """報酬用vmから、海域/エリア倍率を除いた探索アイテム等のコイン倍率だけを取り出す。
+    例: 黄金の羅針盤中なら 1.6。魚の売値など、エリア別に値付け済みの報酬へ使う。
+    """
+    try:
+        v = vp.get("voyage") or {}
+        sea = v.get("sea")
+        area = area_of(v)
+        base_vm = float(V.SEAS[sea]["val_mult"] * V.AREA_MULT[area])
+        if base_vm <= 0:
+            return 1.0
+        return max(0.0, float(vm) / base_vm)
+    except Exception:
+        return 1.0
+
+def _apply_voyage_coin_bonus_to_roll(roll, coin_bonus):
+    """航海釣りなどの個別売値に、羅針盤などのコイン倍率を反映する。
+    roll は表示にも使うため value をここで更新しておく。
+    """
+    try:
+        bonus = float(coin_bonus)
+    except Exception:
+        bonus = 1.0
+    if bonus and abs(bonus - 1.0) > 0.001 and int(roll.get("value", 0)) > 0:
+        roll["value"] = max(1, int(int(roll.get("value", 0)) * bonus))
+        roll["coin_bonus"] = bonus
+    return roll
+
 # ⚔️ 海戦・白兵戦の撃破報酬倍率。E1の燃料代負けを緩和しつつ、E2〜E4も同じ比率で底上げ。
 NAVAL_COMBAT_REWARD_MULT = 1.25
 
@@ -782,11 +810,15 @@ def build_fish_monster_embed(vp, spec):
 
 class FishingSchoolView(discord.ui.View):
     """魚影演出のミニ釣りループ。回数ぶん釣る／いつでも切り上げ可。mode='rumor'で伝説出やすい。"""
-    def __init__(self, uid, gid, area, remaining, total, mode="normal", legend_hit=False):
+    def __init__(self, uid, gid, area, remaining, total, mode="normal", legend_hit=False, coin_bonus=1.0):
         super().__init__(timeout=900)
         self.uid = str(uid); self.gid = str(gid)
         self.area = area; self.remaining = remaining; self.total = total; self.mode = mode
         self.legend_hit = bool(legend_hit)
+        try:
+            self.coin_bonus = float(coin_bonus)
+        except Exception:
+            self.coin_bonus = 1.0
     async def _guard(self, it):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return False
@@ -797,7 +829,7 @@ class FishingSchoolView(discord.ui.View):
         if not await self._guard(it): return
         from config import SUSPENSE_COLOR, FISHING_WAIT_NORMAL, FISHING_WAIT_SUPER
         from cogs import fish_assets as FA
-        roll = roll_voyage_fish(self.uid, self.area, self.mode)
+        roll = _apply_voyage_coin_bonus_to_roll(roll_voyage_fish(self.uid, self.area, self.mode), self.coin_bonus)
         # 当たり待ち：通常の釣り演出（情景画像＋中立色）を航海釣りにも流用
         wait = FISHING_WAIT_SUPER if roll["rarity"] in ("super_rare", "legend") else FISHING_WAIT_NORMAL
         wait_embed = discord.Embed(color=SUSPENSE_COLOR)
@@ -838,7 +870,7 @@ class FishingSchoolView(discord.ui.View):
         e = build_fish_school_embed(vp, remaining, self.total, body)
         e.color = roll["color"]
         await it.edit_original_response(
-            embed=e, view=FishingSchoolView(self.uid, self.gid, self.area, remaining, self.total, self.mode, self.legend_hit or (roll.get("rarity") == "legend")))
+            embed=e, view=FishingSchoolView(self.uid, self.gid, self.area, remaining, self.total, self.mode, self.legend_hit or (roll.get("rarity") == "legend"), self.coin_bonus))
 
     @discord.ui.button(label="🚶 切り上げる", style=discord.ButtonStyle.secondary)
     async def leave(self, it, button):
@@ -848,7 +880,7 @@ class FishingSchoolView(discord.ui.View):
                                      "🌊 群れを見送り、静かに先へ進んだ。"),
             view=ContinueVoyageView(self.uid, self.gid, ""))
 
-async def start_event_fishing(interaction, uid, gid, vp, fish_spec, intro):
+async def start_event_fishing(interaction, uid, gid, vp, fish_spec, intro, coin_bonus=1.0):
     """イベント結果から釣りを開始（ゴーシュ/伝説の噂など）。
     fish_spec例: {"casts":5, "mode":"rumor"}。竿が無ければ案内だけ。"""
     area = area_of(vp.get("voyage") or {})
@@ -863,7 +895,7 @@ async def start_event_fishing(interaction, uid, gid, vp, fish_spec, intro):
         return
     e = build_fish_school_embed(vp, casts, casts, intro)
     await interaction.edit_original_response(
-        embed=e, view=FishingSchoolView(uid, gid, area, casts, casts, mode))
+        embed=e, view=FishingSchoolView(uid, gid, area, casts, casts, mode, coin_bonus=coin_bonus))
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def build_port_embed(vp):
     if not vp["has_ship"]:
@@ -1682,7 +1714,7 @@ class VoyageView(discord.ui.View):
                     head = f"{d['emoji']} **{d['name']}**"
                     flav = d.get("flavor", "")
                     intro = (flav + "\n\n" if flav else "") + text
-                    await start_event_fishing(interaction, uid, gid, vp, fish, intro)
+                    await start_event_fishing(interaction, uid, gid, vp, fish, intro, _coin_bonus_from_vm(vp, vm))
                     return
                 head = f"{d['emoji']} **{d['name']}**"
                 flav = d.get("flavor", "")
@@ -1698,7 +1730,9 @@ class VoyageView(discord.ui.View):
             return
         if res[0] == "fish_cue":
             # 🎣 魚を釣れる演出（魚影）。航海専用の釣り竿が無いと掛けられない
+            _, _eid, vm = res
             vp = db.get_voyage(uid)
+            coin_bonus = _coin_bonus_from_vm(vp, vm)
             if not vp.get("has_voyage_rod"):
                 await interaction.edit_original_response(
                     embed=build_result_embed(
@@ -1713,7 +1747,7 @@ class VoyageView(discord.ui.View):
                 spec = V.pick_fish_cue_beast(area) or V.pick_enemy(area)
                 sea = vp["voyage"]["sea"]
                 scale = V.SEAS[sea]["danger"] * V.AREA_MULT[area]
-                cvm = V.SEAS[sea]["val_mult"] * V.AREA_MULT[area]
+                cvm = vm  # 羅針盤などで補正済みの報酬倍率を引き継ぐ
                 cat = enemy_category(spec)
                 if spec.get("key"):
                     db.add_zukan(uid, "enemy_seen", spec["key"])
@@ -1724,7 +1758,7 @@ class VoyageView(discord.ui.View):
             total = V.fish_school_casts(area)
             await interaction.edit_original_response(
                 embed=build_fish_school_embed(vp, total, total),
-                view=FishingSchoolView(uid, gid, area, total, total))
+                view=FishingSchoolView(uid, gid, area, total, total, coin_bonus=coin_bonus))
             return
         msg = res[1]
         if res[0] == "discover":
@@ -1904,7 +1938,8 @@ class ChoiceButton(discord.ui.Button):
             # 🎣 イベント由来の釣り（ゴーシュ/伝説の噂など）
             await interaction.response.defer()
             await start_event_fishing(interaction, uid, gid, vp, fish,
-                                      f"{d['emoji']} **{d['name']}**\n\n{text}")
+                                      f"{d['emoji']} **{d['name']}**\n\n{text}",
+                                      _coin_bonus_from_vm(vp, view.vm))
             return
         await interaction.response.edit_message(
             embed=build_result_embed(vp, text, title=f"{d['emoji']} {d['name']}"),
