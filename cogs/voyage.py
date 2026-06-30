@@ -2000,14 +2000,74 @@ def build_stopover_embed(vp, note=""):
                       "船を停めて、ひと息つく。だが停泊にも燃料は要る――長居しすぎれば、奥へは進めない。")
     e.add_field(name="❤️ 個人HP", value=f"{cur}/{mh}\n{hp_bar(cur, mh, 10)}", inline=True)
     e.add_field(name="⛽ 燃料", value=f"{fuel:,}/{mxf:,}", inline=True)
-    e.add_field(name="🍖 食事", value=f"HP半分回復（-{V.STOPOVER_FEAST_FUEL:,}燃料）", inline=True)
+    foods = vp.get("foods", {}) or {}
+    food_lines = []
+    for fid, n in foods.items():
+        if n > 0 and fid in V.FOODS:
+            f = V.FOODS[fid]
+            food_lines.append(f"{f['emoji']}{f['name']}×{n}")
+    food_text = " / ".join(food_lines[:6]) if food_lines else "所持食料なし"
+    e.add_field(name="🍖 所持食料", value=f"{food_text}\n食べると -{V.STOPOVER_FEAST_FUEL:,}燃料", inline=True)
     e.add_field(name="😴 休息", value=f"HP全回復（-{V.STOPOVER_REST_FUEL:,}燃料）", inline=True)
     return e
+
+class StopoverFoodSelect(discord.ui.Select):
+    """停泊中、所持している食料を食べてHP回復。燃料も少し消費する。"""
+    def __init__(self, user_id, gid):
+        self.user_id = str(user_id); self.gid = str(gid)
+        vp = db.get_voyage(user_id)
+        opts = []
+        for fid, n in (vp.get("foods", {}) or {}).items():
+            if n > 0 and fid in V.FOODS:
+                f = V.FOODS[fid]
+                opts.append(discord.SelectOption(
+                    label=f"{f['name']} ×{n}",
+                    emoji=f.get("emoji"),
+                    value=fid,
+                    description=f"HP+{int(f['heal_pct']*100)}% / 燃料-{V.STOPOVER_FEAST_FUEL:,}"
+                ))
+        if not opts:
+            opts = [discord.SelectOption(label="食べられる食料がない", value="__none__")]
+        super().__init__(placeholder="🍖 所持中のご飯を食べる（燃料消費）", options=opts[:25], row=0)
+
+    async def callback(self, it):
+        if str(it.user.id) != self.user_id:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        fid = self.values[0]
+        if fid == "__none__":
+            await it.response.send_message("🍖 食べられる食料がない。", ephemeral=True); return
+        vp = db.get_voyage(self.user_id)
+        v = vp.get("voyage") or {}
+        if "fuel" not in v:
+            v["fuel"] = ship_max_fuel(vp)
+        if v.get("fuel", 0) < V.STOPOVER_FEAST_FUEL:
+            await it.response.send_message(f"⛽ 燃料が足りない（食事に {V.STOPOVER_FEAST_FUEL:,}）", ephemeral=True); return
+        if vp.get("foods", {}).get(fid, 0) <= 0 or fid not in V.FOODS:
+            await it.response.send_message("🍖 その食料はもうない。", ephemeral=True); return
+        f = V.FOODS[fid]
+        mh = max_hp(vp); cur = vp.get("cur_hp", mh)
+        if cur >= mh:
+            await it.response.send_message("❤️ HPは満タンだ。今は食べなくていい。", ephemeral=True); return
+        heal = max(1, int(mh * f["heal_pct"]))
+        before = cur
+        v["fuel"] -= V.STOPOVER_FEAST_FUEL
+        vp["cur_hp"] = min(mh, cur + heal)
+        vp.setdefault("foods", {})[fid] -= 1
+        if vp["foods"][fid] <= 0:
+            del vp["foods"][fid]
+        db.save_voyage(self.user_id, vp)
+        await it.response.edit_message(
+            embed=build_stopover_embed(vp, f"{f['emoji']} **{f['name']}** を食べた。HP {before}→{vp['cur_hp']} / 燃料 -{V.STOPOVER_FEAST_FUEL:,}"),
+            view=StopoverView(self.user_id, self.gid)
+        )
 
 class StopoverView(discord.ui.View):
     def __init__(self, user_id, gid):
         super().__init__(timeout=900)
         self.user_id = str(user_id); self.gid = str(gid)
+        vp = db.get_voyage(self.user_id)
+        if any(n > 0 and fid in V.FOODS for fid, n in (vp.get("foods", {}) or {}).items()):
+            self.add_item(StopoverFoodSelect(self.user_id, self.gid))
     async def guard(self, interaction):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
@@ -2018,21 +2078,6 @@ class StopoverView(discord.ui.View):
         v = vp.get("voyage") or {}
         if "fuel" not in v: v["fuel"] = ship_max_fuel(vp)
         return v["fuel"] >= cost
-
-    @discord.ui.button(label="🍖 食事（HP半分回復）", style=discord.ButtonStyle.success)
-    async def feast(self, interaction, button):
-        if not await self.guard(interaction): return
-        vp = db.get_voyage(self.user_id); v = vp.get("voyage") or {}
-        mh = max_hp(vp); before = vp.get("cur_hp", mh)
-        if before >= mh:
-            await interaction.response.send_message("❤️ HPは満タンだ。今は食べなくていい。", ephemeral=True); return
-        if not self._fuel_ok(vp, V.STOPOVER_FEAST_FUEL):
-            await interaction.response.send_message(f"⛽ 燃料が足りない（食事に {V.STOPOVER_FEAST_FUEL:,}）", ephemeral=True); return
-        v["fuel"] -= V.STOPOVER_FEAST_FUEL
-        vp["cur_hp"] = min(mh, before + (mh + 1) // 2)   # 食事＝半分回復（安い）
-        db.save_voyage(self.user_id, vp)
-        await interaction.response.edit_message(
-            embed=build_stopover_embed(vp, f"🍖 食事をとった。HPが回復（{before}→{vp['cur_hp']}）。"), view=self)
 
     @discord.ui.button(label="😴 休息（HP全回復）", style=discord.ButtonStyle.success)
     async def rest(self, interaction, button):
