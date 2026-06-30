@@ -121,7 +121,7 @@ LAND_RARES = {
     ],
     2: [
         {"name": "森番のフードの男",  "emoji": "🧥", "ratio": 2.2, "hp_mult": 1.8, "atk_mult": 0.50, "tier": 3, "stars": 4,
-         "xp": [1500, 2300], "coin": [9000, 16000],
+         "xp": [900, 1400], "coin": [9000, 16000],
          "rare_intro": ("森のざわめきが、ふっと止んだ。\n"
                         "フードを目深にかぶった男が、音もなく行く手を塞ぐ。\n"
                         "……こいつは、これまでの獣とは“格”が違う。"),
@@ -129,7 +129,7 @@ LAND_RARES = {
     ],
     3: [
         {"name": "塔の伝令騎士",      "emoji": "🛡️", "ratio": 1.7, "hp_mult": 1.7, "atk_mult": 0.60, "tier": 4, "stars": 4,
-         "xp": [4000, 6000], "coin": [18000, 35000],
+         "xp": [2200, 3400], "coin": [18000, 35000],
          "rare_intro": ("空気が、軋んだ。\n"
                         "塔の紋章を掲げた騎士が、ゆっくりと剣を抜く。\n"
                         "ひと目でわかる――まともにやり合えば、ただでは済まない。"),
@@ -138,11 +138,16 @@ LAND_RARES = {
 }
 RARE_SPAWN_RATE = 0.01   # 戦闘のうちレア（激レア）に化ける確率（1%）
 
-# ── レアは全エリア共通で“☆3ボス級”の強さ（基本倒せない・逃げる前提）──
-#   make_land_enemy がレアの戦闘力をこの固定値で上書きする（エリアのbase/scaleに依存しない）。
-#   実測：Lv30・☆3フル装備でようやく勝率≈25%（ワンチャン）／それ未満はほぼ0%。
-RARE_BOSS = {"crew_power": 60, "scale": 2.2, "hp_mult": 1.6, "atk_mult": 0.58, "tier": 4, "stars": 4,
-             "drop": [("dist", 0.20, [(2, 0.95), (3, 0.05)])]}   # 激レア撃破＝20%で装備。内訳：☆2 95% / ☆3 5%
+# ── 激レア☆4の強さ（平原の白鹿を基準に、森・山は段階的に格上げ）──
+#   旧仕様は全エリア共通 crew_power=60 だったため、白鹿・森番・塔騎士がほぼ同じ強さになっていた。
+#   今回は白鹿だけ旧値を維持し、森=1.5倍、山=2.0倍を目安に危険度と報酬を釣り合わせる。
+RARE_BOSS_BY_AREA = {
+    1: {"crew_power": 60,  "scale": 2.20, "hp_mult": 1.60, "atk_mult": 0.58, "tier": 4, "stars": 4},  # 迷い込んだ白鹿：旧強さ維持
+    2: {"crew_power": 90,  "scale": 2.35, "hp_mult": 1.75, "atk_mult": 0.62, "tier": 4, "stars": 4},  # 森番：白鹿より明確に強い
+    3: {"crew_power": 120, "scale": 2.50, "hp_mult": 1.90, "atk_mult": 0.68, "tier": 5, "stars": 4},  # 塔騎士：山の危険枠
+}
+RARE_BOSS = {**RARE_BOSS_BY_AREA[1],
+             "drop": [("dist", 0.20, [(2, 0.95), (3, 0.05)])]}   # 互換用。白鹿の旧値と同じ。
 
 # ── 🔸 中レア（各エリア3種・遭遇5%）──
 #   雑魚と激レアの中間。倒せるが歯ごたえあり＝固有名・XP/コイン多め・装備ドロップ高め。
@@ -612,15 +617,16 @@ def make_land_enemy(area, force=None, buffs=None):
             "xp_mult": e.get("xp_mult", 20), "coin_mult": e.get("coin_mult", 0.25),
         }
     roll = random.random()
-    # ✨ 激レア（全エリア共通ボス）
+    # ✨ 激レア（白鹿を基準に、森・山はエリア別に格上げ）
     if (force == "rare" or (force is None and roll < rare_rate)) and LAND_RARES.get(area):
         e = random.choice(LAND_RARES[area])
+        boss = RARE_BOSS_BY_AREA.get(area, RARE_BOSS_BY_AREA[1])
         return {
             "name": e["name"], "emoji": e["emoji"], "key": f"land{area}_{e['name']}",
-            "crew_power": RARE_BOSS["crew_power"],
-            "hp_mult": RARE_BOSS["hp_mult"], "atk_mult": RARE_BOSS["atk_mult"],
-            "tier": RARE_BOSS["tier"], "stars": RARE_BOSS["stars"],
-            "scale_override": RARE_BOSS["scale"],
+            "crew_power": boss["crew_power"],
+            "hp_mult": boss["hp_mult"], "atk_mult": boss["atk_mult"],
+            "tier": boss["tier"], "stars": boss["stars"],
+            "scale_override": boss["scale"],
             "is_boss": False, "is_rare": True,
             "drop_table": RARE_BOSS["drop"],
             "rare_xp": e.get("xp"), "rare_coin": e.get("coin"),

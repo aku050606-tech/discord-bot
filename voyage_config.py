@@ -450,7 +450,7 @@ PIRATE_BASE_REWARD = {"base_min":3250, "base_max":8000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 62, 2: 105, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
+AREA_ENEMY_BASE = {1: 60, 2: 90, 3: 120, 4: 160}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
@@ -463,7 +463,7 @@ ENEMY_TYPES = {
     "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3, "note":"報酬高め。出血も使う危険敵"},
     "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True, "note":"伝説級。高火力と出血の大型ボス"},
     # ── 🪖 軍 ──
-    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True, "note":"硬い軍人。防御と反撃で粘る"},
+    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":2.0, "tier_add":1,  "stars":4, "karma_react":True, "note":"硬い軍人。防御と反撃で粘る"},
     # ── 🧟 アンデッド系 ──
     "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True, "note":"亡者。低火力だが出血で削る"},
     "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True, "note":"水死人の群れ。高HPでじわじわ削る"},
@@ -479,23 +479,23 @@ ENEMY_TYPES = {
     "razor_ray":     {"name":"刃尾エイ",         "emoji":"🪽", "ratio":0.82,"hp_mult":0.90,"atk_mult":1.18,"reward":1.05,"tier_add":0,  "stars":2, "note":"出血で削る中型海獣"},
     "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3, "note":"毒・出血特化"},
     "coral_golem":   {"name":"珊瑚の巨兵",       "emoji":"🪸", "ratio":1.25,"hp_mult":1.75,"atk_mult":0.75,"reward":1.35,"tier_add":1,  "stars":3, "note":"硬い壁役。防御と反撃"},
-    "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":1.55,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
+    "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":2.4,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
     "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3, "note":"連撃と出血の中型海獣"},
     "harpooner":     {"name":"銛投げの略奪者",   "emoji":"🪝", "ratio":0.98,"hp_mult":0.95,"atk_mult":1.25,"reward":1.15,"tier_add":0,  "stars":2, "note":"攻撃寄り。強撃で削る中堅海賊"},
     "reef_manta":    {"name":"岩礁マンタ",       "emoji":"🪽", "ratio":0.88,"hp_mult":1.35,"atk_mult":0.82,"reward":1.05,"tier_add":0,  "stars":2, "note":"やや硬い海獣。防御で粘る"},
     "abyss_lamprey": {"name":"深淵ヤツメ",       "emoji":"🪱", "ratio":1.18,"hp_mult":0.95,"atk_mult":1.28,"reward":1.45,"tier_add":1,  "stars":3, "note":"出血特化の深海魚"},
     "drowned_knight":{"name":"沈んだ甲冑騎士",   "emoji":"🛡️", "ratio":1.22,"hp_mult":1.55,"atk_mult":0.86,"reward":1.50,"tier_add":1,  "stars":3, "undead":True, "note":"硬い亡者。鉄壁で長期戦にする"},
-    "void_squid":    {"name":"虚海の黒イカ",     "emoji":"🦑", "ratio":1.45,"hp_mult":1.05,"atk_mult":1.35,"reward":1.75,"tier_add":1,  "stars":4, "note":"高火力の虚海生物。連撃で事故を作る"},
-    "observer_drifter":{"name":"観測される漂流者", "emoji":"👁️", "ratio":1.55,"hp_mult":1.20,"atk_mult":1.15,"reward":1.85,"tier_add":1,  "stars":4, "shard_hint":True, "note":"観測者伏線。強撃と出血を混ぜる"},
+    "void_squid":    {"name":"虚海の黒イカ",     "emoji":"🦑", "ratio":1.45,"hp_mult":1.05,"atk_mult":1.35,"reward":3.5,"tier_add":1,  "stars":4, "note":"高火力の虚海生物。連撃で事故を作る"},
+    "observer_drifter":{"name":"観測される漂流者", "emoji":"👁️", "ratio":1.55,"hp_mult":1.20,"atk_mult":1.15,"reward":3.8,"tier_add":1,  "stars":4, "shard_hint":True, "note":"観測者伏線。強撃と出血を混ぜる"},
     # ── 🐙🐲 ボス級 ──
-    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
+    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":4.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
     "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True, "note":"最深部ボス。圧倒的HPと大技"},
     # ── 🪦 難破者 ──
     "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.58,"hp_mult":0.98,"atk_mult":0.95,"reward":0.65,"tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
     # ── ⚔️ イベント専用 ──
     "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True, "note":"先制攻撃で緊張感を作る伏兵"},
     "merchant_raid": {"name":"商船の護衛",       "emoji":"⛵", "ratio":1.4, "hp_mult":1.4, "atk_mult":1.25,"reward":1.8, "tier_add":1,  "stars":3},   # 護衛が固い・襲撃は基本失敗(<10%)
-    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4, "note":"大型商船護衛団。高報酬だが危険"},
+    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":3.0, "tier_add":1,  "stars":4, "note":"大型商船護衛団。高報酬だが危険"},
     # 🖤 クラーケンの影（特殊戦闘・手順④で専用実装）
     "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":2.2, "hp_mult":3.4, "atk_mult":1.25,"reward":0.0, "tier_add":2,  "stars":5, "special":"kraken_shadow", "note":"クラーケン基準の格上影ボス。倒す対象ではなく削って撤退させる"},
 }
@@ -1074,7 +1074,7 @@ PIRATE_BASE_REWARD = {"base_min":3250, "base_max":8000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 62, 2: 105, 3: 32, 4: 130}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
+AREA_ENEMY_BASE = {1: 60, 2: 90, 3: 120, 4: 160}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
@@ -1087,7 +1087,7 @@ ENEMY_TYPES = {
     "pirate_bounty": {"name":"賞金首の海賊",     "emoji":"🏴", "ratio":1.25,"hp_mult":1.15,"atk_mult":1.0, "reward":1.7, "tier_add":1,  "stars":3, "note":"報酬高め。出血も使う危険敵"},
     "leviathan":     {"name":"血錨のレヴィアタン","emoji":"🩸","ratio":2.8, "hp_mult":1.8, "atk_mult":1.3, "reward":3.2, "tier_add":2,  "stars":5, "legendary":True, "note":"伝説級。高火力と出血の大型ボス"},
     # ── 🪖 軍 ──
-    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":0.8, "tier_add":1,  "stars":4, "karma_react":True, "note":"硬い軍人。防御と反撃で粘る"},
+    "navy":          {"name":"大洋艦隊の軍人",   "emoji":"🪖", "ratio":1.2, "hp_mult":1.3, "atk_mult":0.85,"reward":2.0, "tier_add":1,  "stars":4, "karma_react":True, "note":"硬い軍人。防御と反撃で粘る"},
     # ── 🧟 アンデッド系 ──
     "wight":         {"name":"彷徨う亡者",       "emoji":"🧟", "ratio":0.7, "hp_mult":1.3, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":1, "undead":True, "note":"亡者。低火力だが出血で削る"},
     "drowned":       {"name":"水死人の群れ",     "emoji":"🧟", "ratio":0.9, "hp_mult":1.5, "atk_mult":0.8, "reward":0.5, "tier_add":0,  "stars":2, "undead":True, "note":"水死人の群れ。高HPでじわじわ削る"},
@@ -1103,23 +1103,23 @@ ENEMY_TYPES = {
     "razor_ray":     {"name":"刃尾エイ",         "emoji":"🪽", "ratio":0.82,"hp_mult":0.90,"atk_mult":1.18,"reward":1.05,"tier_add":0,  "stars":2, "note":"出血で削る中型海獣"},
     "venom_serpent": {"name":"毒の海蛇",         "emoji":"🐍", "ratio":1.1, "hp_mult":1.1, "atk_mult":0.9, "reward":1.2, "tier_add":0,  "stars":3, "note":"毒・出血特化"},
     "coral_golem":   {"name":"珊瑚の巨兵",       "emoji":"🪸", "ratio":1.25,"hp_mult":1.75,"atk_mult":0.75,"reward":1.35,"tier_add":1,  "stars":3, "note":"硬い壁役。防御と反撃"},
-    "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":1.55,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
+    "siren_hunter":  {"name":"セイレーン狩り",   "emoji":"🧜", "ratio":1.3, "hp_mult":1.05,"atk_mult":1.15,"reward":2.4,"tier_add":1,  "stars":4, "note":"技を多用する上位人型"},  # 出血特化
     "serpent":       {"name":"大海蛇",           "emoji":"🐍", "ratio":1.15,"hp_mult":1.15,"atk_mult":1.0, "reward":1.3, "tier_add":0,  "stars":3, "note":"連撃と出血の中型海獣"},
     "harpooner":     {"name":"銛投げの略奪者",   "emoji":"🪝", "ratio":0.98,"hp_mult":0.95,"atk_mult":1.25,"reward":1.15,"tier_add":0,  "stars":2, "note":"攻撃寄り。強撃で削る中堅海賊"},
     "reef_manta":    {"name":"岩礁マンタ",       "emoji":"🪽", "ratio":0.88,"hp_mult":1.35,"atk_mult":0.82,"reward":1.05,"tier_add":0,  "stars":2, "note":"やや硬い海獣。防御で粘る"},
     "abyss_lamprey": {"name":"深淵ヤツメ",       "emoji":"🪱", "ratio":1.18,"hp_mult":0.95,"atk_mult":1.28,"reward":1.45,"tier_add":1,  "stars":3, "note":"出血特化の深海魚"},
     "drowned_knight":{"name":"沈んだ甲冑騎士",   "emoji":"🛡️", "ratio":1.22,"hp_mult":1.55,"atk_mult":0.86,"reward":1.50,"tier_add":1,  "stars":3, "undead":True, "note":"硬い亡者。鉄壁で長期戦にする"},
-    "void_squid":    {"name":"虚海の黒イカ",     "emoji":"🦑", "ratio":1.45,"hp_mult":1.05,"atk_mult":1.35,"reward":1.75,"tier_add":1,  "stars":4, "note":"高火力の虚海生物。連撃で事故を作る"},
-    "observer_drifter":{"name":"観測される漂流者", "emoji":"👁️", "ratio":1.55,"hp_mult":1.20,"atk_mult":1.15,"reward":1.85,"tier_add":1,  "stars":4, "shard_hint":True, "note":"観測者伏線。強撃と出血を混ぜる"},
+    "void_squid":    {"name":"虚海の黒イカ",     "emoji":"🦑", "ratio":1.45,"hp_mult":1.05,"atk_mult":1.35,"reward":3.5,"tier_add":1,  "stars":4, "note":"高火力の虚海生物。連撃で事故を作る"},
+    "observer_drifter":{"name":"観測される漂流者", "emoji":"👁️", "ratio":1.55,"hp_mult":1.20,"atk_mult":1.15,"reward":3.8,"tier_add":1,  "stars":4, "shard_hint":True, "note":"観測者伏線。強撃と出血を混ぜる"},
     # ── 🐙🐲 ボス級 ──
-    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":2.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
+    "kraken":        {"name":"深淵のクラーケン", "emoji":"🐙", "ratio":1.6, "hp_mult":1.7, "atk_mult":1.0, "reward":4.2, "tier_add":1,  "stars":4, "boss":True, "note":"E3基準ボス。高HPと溜め大技"},
     "yormun":        {"name":"古き海龍ヨルムン", "emoji":"🐲", "ratio":3.4, "hp_mult":2.2, "atk_mult":1.3, "reward":3.6, "tier_add":2,  "stars":5, "boss":True, "legendary":True, "note":"最深部ボス。圧倒的HPと大技"},
     # ── 🪦 難破者 ──
     "castaway_foe":  {"name":"難破船の生存者",   "emoji":"🪦", "ratio":0.58,"hp_mult":0.98,"atk_mult":0.95,"reward":0.65,"tier_add":-1, "stars":1},  # 哀れ・弱い・襲うとカルマ↓
     # ── ⚔️ イベント専用 ──
     "ambush":        {"name":"伏兵の海賊",       "emoji":"⚔️", "ratio":1.0, "hp_mult":0.95,"atk_mult":1.05,"reward":1.0, "tier_add":0,  "stars":2, "first_strike":True, "note":"先制攻撃で緊張感を作る伏兵"},
     "merchant_raid": {"name":"商船の護衛",       "emoji":"⛵", "ratio":1.4, "hp_mult":1.4, "atk_mult":1.25,"reward":1.8, "tier_add":1,  "stars":3},   # 護衛が固い・襲撃は基本失敗(<10%)
-    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":2.6, "tier_add":1,  "stars":4, "note":"大型商船護衛団。高報酬だが危険"},
+    "merchant_big":  {"name":"大型商船の護衛団", "emoji":"🛡️","ratio":1.25,"hp_mult":1.35,"atk_mult":0.85,"reward":3.0, "tier_add":1,  "stars":4, "note":"大型商船護衛団。高報酬だが危険"},
     # 🖤 クラーケンの影（特殊戦闘・手順④で専用実装）
     "kraken_shadow": {"name":"巨大な影",         "emoji":"🌑", "ratio":2.2, "hp_mult":3.4, "atk_mult":1.25,"reward":0.0, "tier_add":2,  "stars":5, "special":"kraken_shadow", "note":"クラーケン基準の格上影ボス。倒す対象ではなく削って撤退させる"},
 }
