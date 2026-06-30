@@ -1018,6 +1018,30 @@ def _voyage_return_home_cost(area: int) -> int:
     """現在エリアから港まで戻る総燃料。"""
     return sum(_voyage_return_step_cost(a) for a in range(1, max(1, int(area)) + 1))
 
+
+def _voyage_emergency_return_penalty(vp, step_cost: int):
+    """燃料切れで詰まらないための非常帰還ペナルティ。
+    通常の帰還燃料が払えない時だけ、残燃料を全消費して船倉とHPにリスクを付ける。
+    """
+    v = (vp or {}).get("voyage") or {}
+    fuel = max(0, int(v.get("fuel", 0)))
+    hold = max(0, int(v.get("hold", 0)))
+    shortage = max(0, int(step_cost) - fuel)
+    # 船倉ロストは「最低10%＋不足率に応じて最大45%」
+    ratio = 0.10
+    if step_cost > 0:
+        ratio += 0.35 * min(1.0, shortage / step_cost)
+    loss = min(hold, int(hold * ratio))
+    if hold > 0 and loss <= 0:
+        loss = min(hold, 1)
+    v["hold"] = max(0, hold - loss)
+    v["fuel"] = 0
+    mh = max_hp(vp)
+    before_hp = int(vp.get("cur_hp", mh))
+    hp_loss = max(1, int(mh * 0.12))
+    vp["cur_hp"] = max(1, before_hp - hp_loss)
+    return loss, before_hp - vp["cur_hp"]
+
 def _reset_retreat_chain(vp):
     v = (vp or {}).get("voyage") or {}
     if v.get("retreat_chain"):
@@ -1844,25 +1868,35 @@ class VoyageView(discord.ui.View):
         v["retreat_chain"] = chain
         db.save_voyage(uid, vp)
         if chain < 3:
+            extra = ""
+            if v.get("fuel", 0) < step_cost:
+                extra = "\n⚠️ 燃料不足。このまま3回押すと **非常帰還** になり、船倉とHPにペナルティが入る。"
             await interaction.response.edit_message(
-                embed=build_voyage_embed(vp, f"⚓ 引き返す準備中…… **{chain}/3**。あと **{3-chain}回** 続けて押すと1エリア戻る。\n※探索・進む・停泊など別行動をすると中断される。"),
+                embed=build_voyage_embed(vp, f"⚓ 引き返す準備中…… **{chain}/3**。あと **{3-chain}回** 続けて押すと1エリア戻る。{extra}\n※探索・進む・停泊など別行動をすると中断される。"),
                 view=VoyageView(uid, gid))
             return
         v["retreat_chain"] = 0
-        if v["fuel"] < step_cost:
-            db.save_voyage(uid, vp)
-            await interaction.response.send_message(f"⛽ 引き返す燃料が足りない（必要 {step_cost:,}・残 {v['fuel']:,}）。", ephemeral=True); return
-        v["fuel"] -= step_cost
+        emergency = v["fuel"] < step_cost
+        lost_hold = lost_hp = 0
+        if emergency:
+            lost_hold, lost_hp = _voyage_emergency_return_penalty(vp, step_cost)
+        else:
+            v["fuel"] -= step_cost
         if area > 1:
             v["area"] -= 1
             v["explores"] = V.EXPLORE_TO_ADVANCE
             db.save_voyage(uid, vp)
             nm = f"{V.AREA_EMOJI[v['area']]} {V.AREA_NAMES[v['area']]}"
+            if emergency:
+                msg = (f"🆘 燃料切れのまま潮に流され、なんとか **{nm}** まで戻った。\n"
+                       f"⛽ 残燃料を全消費 ／ 📦 船倉 **-{lost_hold:,}** ／ ❤️ HP **-{lost_hp}**")
+            else:
+                msg = f"⚓ 進路を切り直し、燃料 **-{step_cost:,}**。**{nm}** に戻った。"
             await interaction.response.edit_message(
-                embed=build_voyage_embed(vp, f"⚓ 進路を切り直し、燃料 **-{step_cost:,}**。**{nm}** に戻った。"),
+                embed=build_voyage_embed(vp, msg),
                 view=VoyageView(uid, gid))
             return
-        # エリア1で3回引き返す＝帰港・入金
+        # エリア1で3回引き返す＝帰港・入金。燃料不足でも非常帰港で詰み防止。
         hold = v["hold"]
         if hold > 0:
             db.update_balance(uid, gid, hold)
@@ -1878,9 +1912,13 @@ class VoyageView(discord.ui.View):
                 await announce_big_win(interaction, interaction.user, "航海", hold)
             except Exception:
                 pass
-        e = discord.Embed(title="⚓ 帰港",
-            description=f"航海を終えた。\n帰港燃料 **-{step_cost:,}**。\n船倉の **{hold:,}** ナトコインを銀行に入金した！",
-            color=discord.Color.gold())
+        if emergency:
+            desc = (f"🆘 燃料切れのまま、最後は漂流するように港へ戻った。\n"
+                    f"📦 船倉 **-{lost_hold:,}** ／ ❤️ HP **-{lost_hp}**\n"
+                    f"船倉の **{hold:,}** ナトコインを銀行に入金した！")
+        else:
+            desc = f"航海を終えた。\n帰港燃料 **-{step_cost:,}**。\n船倉の **{hold:,}** ナトコインを銀行に入金した！"
+        e = discord.Embed(title="⚓ 帰港", description=desc, color=discord.Color.gold())
         rc = repair_cost(vp)
         if rc > 0:
             e.add_field(name="🔧 整備", value=f"装備が傷んでいる（修理 **{rc:,}**）", inline=False)
