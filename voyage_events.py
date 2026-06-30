@@ -19,8 +19,7 @@
   "karma": カルマ増減（int・KARMA_DELTA基準。+5/+15/+30, -5/-15/-30 など）
   "coins": [min,max]  船倉(hold)に入るナトコイン（vm倍率がかかる）
   "hp":    個人HP増減（+回復/-ダメージ）
-  "ship_hp": 船体HP増減
-  "fuel":  燃料タンク増減
+  "fuel":  燃料タンク増減（船体HP概念は廃止。船への負担は燃料減少で表現）
   "flag":  海域フラグ名（後で参照する伏線/状態。voyage["flags"]に記録）
   "combat": 戦闘スペックキー（"pirate"/"boss"等。後で器が戦闘に接続）
   "karma_branch": {"good":effects,"neutral":effects,"evil":effects}  # カルマ帯で結果分岐
@@ -581,7 +580,7 @@ EVENT_DEFS = {
                  "neutral": {"text": "歌に、しばし聞き惚れた。我に返ると、少し時間を失っていた。",
                              "flag": "mermaid_heard"},
                  "evil": {"text": "歌が、甘く誘う。気づけば船を寄せていた。岩に擦れ、船体が傷ついた。",
-                          "ship_hp": -40, "flag": "mermaid_lured"},
+                          "fuel": -3800, "flag": "mermaid_lured"},
              }}},
             {"label": "🚫 耳を塞ぐ", "desc": "何も起きない",
              "effects": {"text": "耳を塞ぎ、歌をやり過ごした。何も得なかったが、何も失わなかった。"}},
@@ -637,7 +636,7 @@ EVENT_DEFS = {
         "choices": [
             {"label": "⛵ 突っ切る", "desc": "船体ダメージ／カケラ＋財宝",
              "effects": {"text": "嵐に船を突っ込ませる。灯の元に、かけらと財宝があった。\nかつて灯を継いだ者にだけ、灯は道を示すという。",
-                         "ship_hp": -50, "shard": True, "coins": [2000, 5000]}},
+                         "fuel": -4800, "shard": True, "coins": [2000, 5000]}},
             {"label": "⚓ 諦める", "desc": "安全",
              "effects": {"text": "無理はしない。嵐を迂回した。"}},
         ],
@@ -859,7 +858,7 @@ VOYAGE_ROADLIKE_CHOICE_EVENTS = {
         "name":"白珊瑚の門", "emoji":"🤍", "areas":[2], "weight":{2:2.6},
         "flavor":"海中に、門のような白珊瑚が立っている。くぐれば近道になりそうだが、船底を擦る危険もある。",
         "choices":[
-            {"label":"⛵ くぐる", "desc":"素材＋燃料節約／船体小ダメージ", "effects":{"text":"船は白珊瑚の門を抜けた。船底を軽く擦ったが、門の縁から硬い欠片が剥がれ落ちた。", "ship_hp":-12, "fuel":250, "craft":{"chance":0.64,"bonus":1.2}}},
+            {"label":"⛵ くぐる", "desc":"素材＋燃料大消費", "effects":{"text":"船は白珊瑚の門を抜けた。船底を擦らないよう大きく舵を切り、硬い欠片を回収した。", "fuel":-1200, "craft":{"chance":0.64,"bonus":1.2}}},
             {"label":"🤿 潜って欠片を拾う", "desc":"素材が出やすい／HP小消耗", "effects":{"text":"海に入り、落ちた珊瑚片を拾い集める。水の中で、誰かの鐘の音が聞こえた気がした。", "hp":-6, "craft":{"chance":0.76,"bonus":1.3}}},
             {"label":"⚓ 迂回する", "desc":"安全", "effects":{"text":"美しいものほど、近づくと牙がある。遠巻きに眺めながら迂回した。"}},
         ],
@@ -1074,6 +1073,109 @@ def _voyage_auto_to_choice():
         d["choices"] = choices
 
 _voyage_auto_to_choice()
+
+
+def _rebalance_event_risks():
+    """海イベントのリスク/報酬を後処理で統一する。
+
+    方針:
+    - 船体HP(ship_hp)は廃止。船への負担は燃料減少に置き換える。
+    - 報酬がある選択肢には、原則として燃料/HP/戦闘などのリスクを付ける。
+    - カルマが下がる悪行は、善行より報酬を高める代わりに燃料/HPの負担を強くする。
+    - 「見送る/離れる/何もしない」系は安全枠として残す。
+    """
+    import copy
+
+    risk_fuel_by_area = {1: 650, 2: 1200, 3: 1900, 4: 3000}
+    risk_hp_by_area = {1: 4, 2: 7, 3: 10, 4: 14}
+
+    safe_words = ("見送", "去る", "離れ", "やり過ご", "何も", "断る", "迂回", "放って", "安全", "戻す", "閉じる")
+
+    def primary_area(d):
+        areas = d.get("areas") or [1]
+        try:
+            return max(1, min(4, int(min(areas))))
+        except Exception:
+            return 1
+
+    def scale_coin_range(rng, mult):
+        if not isinstance(rng, (list, tuple)) or len(rng) != 2:
+            return rng
+        lo, hi = rng
+        # 支払い/損失はそのまま。報酬だけ増やす。
+        if lo >= 0 and hi >= 0:
+            return [int(lo * mult), int(hi * mult)]
+        return [lo, hi]
+
+    def has_positive_reward(eff):
+        coins = eff.get("coins")
+        if isinstance(coins, (list, tuple)) and len(coins) == 2 and coins[1] > 0:
+            return True
+        return bool(eff.get("craft") or eff.get("shard") or eff.get("fish_school"))
+
+    def has_existing_risk(eff):
+        return bool(eff.get("combat") or (eff.get("hp") or 0) < 0 or (eff.get("fuel") or 0) < 0)
+
+    def add_text(eff, line):
+        txt = eff.get("text")
+        if txt and line not in txt:
+            eff["text"] = f"{txt}\n{line}"
+
+    def normalize_effect(eff, area, label=""):
+        if not isinstance(eff, dict):
+            return eff
+
+        eff = copy.deepcopy(eff)
+
+        # karma_branch は各分岐も同じ方針で調整。
+        if isinstance(eff.get("karma_branch"), dict):
+            eff["karma_branch"] = {
+                k: normalize_effect(v, area, label) for k, v in eff["karma_branch"].items()
+            }
+
+        # 船体HPは廃止。船への負担は多めの燃料消費へ。
+        if "ship_hp" in eff:
+            ship_delta = eff.pop("ship_hp") or 0
+            if ship_delta < 0:
+                eff["fuel"] = int(eff.get("fuel", 0) - max(risk_fuel_by_area[area], abs(ship_delta) * 95))
+                add_text(eff, "船底への負担を避けるため、大きく迂回して燃料を消費した。")
+            elif ship_delta > 0:
+                # 船体回復は存在させず、航路改善=燃料節約として扱う。
+                eff["fuel"] = int(eff.get("fuel", 0) + max(100, ship_delta * 40))
+
+        is_safe_choice = any(w in label for w in safe_words)
+        karma_delta = int(eff.get("karma") or 0)
+
+        # 悪行は「得だが、重い」。報酬を増やし、燃料/HPリスクも付ける。
+        if karma_delta < 0:
+            if "coins" in eff:
+                eff["coins"] = scale_coin_range(eff["coins"], 1.35)
+            if not eff.get("combat"):
+                eff["fuel"] = int(eff.get("fuel", 0) - risk_fuel_by_area[area])
+                eff["hp"] = int(eff.get("hp", 0) - max(3, risk_hp_by_area[area] // 2))
+                add_text(eff, "強引な手口で切り抜けた反動で、船にも乗員にも負担が残った。")
+            return eff
+
+        # 報酬・素材・釣り・かけらは、完全ノーリスクにならないよう最低限の燃料消費を付ける。
+        if (not is_safe_choice) and has_positive_reward(eff) and not has_existing_risk(eff):
+            eff["fuel"] = int(eff.get("fuel", 0) - max(300, risk_fuel_by_area[area] // 2))
+            add_text(eff, "回収作業で時間を使い、燃料を余分に消費した。")
+
+        # 高価値の特殊報酬はさらに少し痛くする。
+        if (eff.get("shard") or eff.get("fish_school")) and not eff.get("combat"):
+            if (eff.get("fuel") or 0) >= 0:
+                eff["fuel"] = int(eff.get("fuel", 0) - max(350, risk_fuel_by_area[area] // 2))
+            if eff.get("shard") and (eff.get("hp") or 0) >= 0:
+                eff["hp"] = int(eff.get("hp", 0) - max(4, risk_hp_by_area[area] // 2))
+
+        return eff
+
+    for eid, d in EVENT_DEFS.items():
+        area = primary_area(d)
+        for ch in d.get("choices", []):
+            ch["effects"] = normalize_effect(ch.get("effects", {}), area, ch.get("label", ""))
+
+_rebalance_event_risks()
 
 def events_for_area(area):
     """そのエリアに出る選択肢イベントの (id, 重み) リスト。"""

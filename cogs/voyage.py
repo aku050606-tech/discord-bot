@@ -406,9 +406,14 @@ def apply_event_effects(vp, effects, vm=1.0):
         mh = max_hp(vp); floor = effects.get("hp_min", 0)
         vp["cur_hp"] = max(floor, min(mh, vp.get("cur_hp", mh) + effects["hp"]))
         extra.append(f"❤️ HP {'+' if effects['hp'] > 0 else ''}{effects['hp']}")
+    # 船体HPイベントは廃止。古いデータに ship_hp が残っていても燃料変動として扱う。
     if effects.get("ship_hp"):
-        mh = max_hp(vp); vp["cur_hp"] = max(0, min(mh, vp.get("cur_hp", mh) + effects["ship_hp"]))
-        extra.append(f"🚢 船体 {'+' if effects['ship_hp'] > 0 else ''}{effects['ship_hp']}")
+        effects = dict(effects)
+        sp = int(effects.pop("ship_hp") or 0)
+        if sp < 0:
+            effects["fuel"] = int(effects.get("fuel", 0) - max(500, abs(sp) * 95))
+        elif sp > 0:
+            effects["fuel"] = int(effects.get("fuel", 0) + max(100, sp * 40))
     if effects.get("fuel"):
         before_fuel = v.get("fuel", 0)
         maxf = ship_max_fuel(vp)
@@ -2415,6 +2420,14 @@ class EquipShopView(discord.ui.View):
         if not await self.guard(it): return
         await it.response.edit_message(embed=build_equipshop_embed(db.get_voyage(self.user_id), self.user_id, self.gid),
                                        view=SkillBuyView(self.user_id, self.gid))
+    @discord.ui.button(label="📜 技を売る", style=discord.ButtonStyle.danger, row=0)
+    async def ss(self, it, b):
+        if not await self.guard(it): return
+        view = SkillSellView(self.user_id, self.gid)
+        if not view.has_skills:
+            await it.response.send_message("売れる未刻印の技がないよ。刻印済みの技は、先に「技を外す」で外してね。", ephemeral=True); return
+        await it.response.edit_message(embed=build_equipshop_embed(db.get_voyage(self.user_id), self.user_id, self.gid),
+                                       view=view)
     @discord.ui.button(label="🗡️ 装備する", style=discord.ButtonStyle.primary, row=1)
     async def eq(self, it, b):
         if not await self.guard(it): return
@@ -2652,6 +2665,61 @@ class SkillBuySelect(discord.ui.Select):
         await it.response.edit_message(embed=build_equipshop_embed(vp, uid, gid), view=SkillBuyView(uid, gid))
         await it.followup.send(f"📜 **{s['name']}** 購入！「技を刻む」で装備にセット（-{s['price']:,}）", ephemeral=True)
 
+
+def skill_sell_value(sid):
+    """未刻印の技単体の売値。購入価格の1/10、最低1コイン。"""
+    return max(1, int(VS.SKILLS.get(sid, {}).get("price", 0)) // 10)
+
+# ── 技売却（未刻印の所持技のみ。刻印済みは先に外す）──
+class SkillSellView(discord.ui.View):
+    def __init__(self, user_id, gid):
+        super().__init__(timeout=900)
+        self.user_id = str(user_id); self.gid = str(gid)
+        vp = db.get_voyage(user_id)
+        self.has_skills = any(n > 0 and sid in VS.SKILLS for sid, n in vp.get("learned_skills", {}).items())
+        if self.has_skills:
+            self.add_item(SkillSellSelect(user_id, gid, back="equipshop"))
+        self.add_item(_eqshop_back(user_id, gid))
+
+class SkillSellSelect(discord.ui.Select):
+    def __init__(self, user_id, gid, back="equipshop"):
+        self.user_id = str(user_id); self.gid = str(gid); self.back = back
+        vp = db.get_voyage(user_id); opts = []
+        for sid, n in vp.get("learned_skills", {}).items():
+            if n > 0 and sid in VS.SKILLS:
+                sk = VS.SKILLS[sid]
+                opts.append(discord.SelectOption(
+                    label=f"{sk['name']} ×{n}",
+                    value=sid,
+                    emoji=sk.get("emoji"),
+                    description=f"売値 {skill_sell_value(sid):,} コイン/個（未刻印のみ）"[:100]
+                ))
+        super().__init__(placeholder="売る技を選ぶ（売値は価格の1/10）", options=opts[:25], row=2 if back == "inventory" else 1)
+
+    async def callback(self, it):
+        if str(it.user.id) != self.user_id:
+            await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
+        uid, gid = self.user_id, self.gid
+        sid = self.values[0]
+        vp = db.get_voyage(uid)
+        if vp.get("learned_skills", {}).get(sid, 0) <= 0 or sid not in VS.SKILLS:
+            await it.response.send_message("その技はもう見つからない。画面を開き直してね。", ephemeral=True); return
+        sell = skill_sell_value(sid)
+        sk = VS.SKILLS[sid]
+        vp["learned_skills"][sid] -= 1
+        if vp["learned_skills"][sid] <= 0:
+            del vp["learned_skills"][sid]
+        db.update_balance(uid, gid, sell)
+        db.save_voyage(uid, vp)
+        if self.back == "inventory":
+            await it.response.edit_message(embed=build_inv_embed(vp, "skill"),
+                                           view=InventoryView(uid, gid, "skill", "town"))
+        else:
+            await it.response.edit_message(embed=build_equipshop_embed(vp, uid, gid),
+                                           view=SkillSellView(uid, gid))
+        await it.followup.send(f"💰 {sk.get('emoji','📜')} **{sk['name']}** を売却した。+{sell:,} ナトコイン。", ephemeral=True)
+
+
 # ── 技を刻む（装備中の武器/防具インスタンスに）──
 class EngravePartView(discord.ui.View):
     def __init__(self, user_id, gid):
@@ -2782,7 +2850,7 @@ def build_inv_embed(vp, tab):
         lines = [f"{VS.SKILLS[s]['emoji']} {VS.SKILLS[s]['name']} ×{n}"
                  for s, n in inv.items() if n > 0]
         e.description = "\n".join(lines) if lines else "未刻印の技はなし"
-        e.set_footer(text=f"所持 {sum(inv.values())}/{SKILL_CAP}　※技を選ぶと詳細／売却は装備屋で")
+        e.set_footer(text=f"所持 {sum(inv.values())}/{SKILL_CAP}　※技を選ぶと詳細／未刻印の技はここで売却可能")
     elif tab == "item":
         e = discord.Embed(title="📦 インベントリ ── 🧪 消耗品", color=0x2E86C1)
         e.add_field(name="📊 ステータス",
@@ -2862,6 +2930,7 @@ class InventoryView(discord.ui.View):
         elif tab == "skill":
             if any(n > 0 for n in vp.get("learned_skills", {}).values()):
                 self.add_item(SkillDetailSelect(user_id, gid, back))
+                self.add_item(SkillSellSelect(user_id, gid, back="inventory"))
         elif tab == "item":
             if any(n > 0 for n in vp.get("foods", {}).values()):
                 self.add_item(FoodEatSelect(user_id, gid, back))
@@ -2975,7 +3044,7 @@ class UnequipPartSelect(discord.ui.Select):
                                        view=InventoryView(self.user_id, self.gid, "equip", self.back))
 
 class SkillDetailSelect(discord.ui.Select):
-    """技を選ぶと詳細を表示（売却はしない。売却は装備屋のみ）。"""
+    """技を選ぶと詳細を表示。売却はインベントリ/装備屋から可能。"""
     def __init__(self, user_id, gid, back):
         self.user_id = str(user_id); self.gid = str(gid); self.back = back
         vp = db.get_voyage(user_id)
@@ -3000,7 +3069,7 @@ class SkillDetailSelect(discord.ui.Select):
         if sk.get("charge"): lines.append(f"溜め：{sk['charge']}ターン")
         lines.append(f"対応武器：{wt}")
         e.add_field(name="性能", value="\n".join(lines), inline=False)
-        e.set_footer(text="※売却・刻印は装備屋でできる")
+        e.set_footer(text="※未刻印の技はインベントリ/装備屋で売却可能。刻印は装備屋でできる")
         await it.response.send_message(embed=e, ephemeral=True)
 
 class InvBackButton(discord.ui.Button):
