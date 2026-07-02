@@ -3631,21 +3631,25 @@ def hp_bar(cur, mx, width=12):
     return "🟩" * f + "⬛" * (width - f) if ratio > 0.3 else "🟥" * f + "⬛" * (width - f)
 
 def board_skills(vp):
-    """装備中の武器/胴/脚に刻まれた『白兵』技を集める。"""
+    """装備中の武器/胴/脚に刻まれた『白兵』技を集める。
+    古いDBに残った削除済み/未定義スキルが混ざっても、戦闘開始を落とさない。
+    """
     out = []
     for part in ("weapon", "torso", "legs"):
         inst = equipped_inst(vp, part)
         if inst:
-            out += [s for s in inst.get("skills", []) if VS.SKILLS[s]["phase"] == "board"]
+            out += [s for s in inst.get("skills", []) if VS.SKILLS.get(s, {}).get("phase") == "board"]
     return out
 
 def naval_skills(vp):
-    """船本体＋部位に刻まれた『海戦』技を集める。"""
-    out = [s for s in vp.get("ship_skills", []) if VS.SKILLS[s]["phase"] == "naval"]
+    """船本体＋部位に刻まれた『海戦』技を集める。
+    古いDBに残った削除済み/未定義スキルが混ざっても、戦闘開始を落とさない。
+    """
+    out = [s for s in vp.get("ship_skills", []) if VS.SKILLS.get(s, {}).get("phase") == "naval"]
     for part in ("cannon", "armor", "rigging"):
-        inst = vp["ship_parts"].get(part)
+        inst = vp.get("ship_parts", {}).get(part)
         if inst:
-            out += [s for s in inst.get("skills", []) if VS.SKILLS[s]["phase"] == "naval"]
+            out += [s for s in inst.get("skills", []) if VS.SKILLS.get(s, {}).get("phase") == "naval"]
     return out
 
 _ENEMY_SKILLS = {1: [], 2: [], 3: ["kyougeki"], 4: ["kyougeki", "shukketsu"], 5: ["kyougeki", "konshin"]}
@@ -4398,7 +4402,17 @@ class EncounterChoiceView(discord.ui.View):
     async def _fight(self, it):
         if not self._chk(it):
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        await self._enc().start(it)
+        try:
+            await it.response.defer()
+            await self._enc().start(it)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            msg = f"⚠️ 戦闘開始でエラーが出た：`{type(e).__name__}: {e}`"
+            try:
+                await it.edit_original_response(content=msg, embed=None, view=None)
+            except Exception:
+                pass
 
     async def _flee(self, it):
         if not self._chk(it):
@@ -4482,7 +4496,17 @@ class ProceedCombatView(discord.ui.View):
     async def go(self, it, b):
         if str(it.user.id) != self.uid:
             await it.response.send_message("これはあなたの画面ではありません", ephemeral=True); return
-        await NavalEncounter(self.uid, self.gid, self.spec, self.scale, self.vm, self.is_boss).start(it)
+        try:
+            await it.response.defer()
+            await NavalEncounter(self.uid, self.gid, self.spec, self.scale, self.vm, self.is_boss).start(it)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            msg = f"⚠️ 戦闘開始でエラーが出た：`{type(e).__name__}: {e}`"
+            try:
+                await it.edit_original_response(content=msg, embed=None, view=None)
+            except Exception:
+                pass
 
 class NavalEncounter:
     def __init__(self, uid, gid, spec, scale, vm_eff, is_boss=False):
@@ -4518,7 +4542,10 @@ class NavalEncounter:
         head = f"{self.spec['emoji']} **{self.spec['name']}** {stars}"
         head += "（この海域の主）！" if self.is_boss else " が現れた！"
         emb.description = f"{head}（白兵力 {int(self.crew_eff)}）\n斬り合いだ！"
-        await interaction.response.edit_message(embed=emb, view=view)
+        if interaction.response.is_done():
+            await interaction.edit_original_response(embed=emb, view=view)
+        else:
+            await interaction.response.edit_message(embed=emb, view=view)
 
     async def on_flee(self, interaction, state):
         vp = db.get_voyage(self.uid)
