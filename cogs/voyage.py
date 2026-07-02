@@ -3864,11 +3864,19 @@ class CmdButton(discord.ui.Button):
 class SkillCommandSelect(discord.ui.Select):
     def __init__(self, skill_ids):
         opts = []
-        for sid in skill_ids[:25]:
+        seen = set()
+        # DiscordのSelectは value が重複していると 400 Invalid Form Body で落ちる。
+        # 同じ技が装備・本体技などから二重に入っても、表示は1つだけにする。
+        for sid in skill_ids:
+            if sid in seen or sid not in VS.SKILLS:
+                continue
+            seen.add(sid)
             s = VS.SKILLS[sid]
             note = "溜め技" if s.get("charge", 0) > 0 else (f"CD{s['cooldown']}" if s.get("cooldown", 0) else "")
-            opts.append(discord.SelectOption(label=s["name"], emoji=s["emoji"], value=sid,
-                                             description=f"{note}　{s['desc'][:40]}".strip()))
+            opts.append(discord.SelectOption(label=s["name"], emoji=s.get("emoji", "✨"), value=sid,
+                                             description=f"{note}　{s.get('desc','')[:40]}".strip()))
+            if len(opts) >= 25:
+                break
         super().__init__(placeholder="✨ 特技を選ぶ", options=opts, row=1)
     async def callback(self, it):
         view: CombatView = self.view
