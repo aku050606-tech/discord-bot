@@ -290,7 +290,7 @@ VOYAGE_ROD_PRICE = 100000
 VOYAGE_FISH_COMPLETE_REWARD = {1: 100000, 2: 200000, 3: 300000, 4: 400000}
 
 # ⚔️ 魚影演出で「実は怪物だった」＝戦闘になる確率（エリア依存・奥ほど危険／E1は安全）
-FISH_CUE_COMBAT_RATE = {1: 0.00, 2: 0.10, 3: 0.18, 4: 0.28}
+FISH_CUE_COMBAT_RATE = {1: 0.00, 2: 0.07, 3: 0.18, 4: 0.28}  # E2だけ魚影事故を少し緩和
 # 魚影から襲ってくる海獣（エリア別。keyはENEMY_TYPES。エリア基準値で自動スケール）
 FISH_CUE_BEASTS = {
     1: ["shark", "piranha"],
@@ -414,7 +414,7 @@ PIRATE_TABLE = {
 PIRATE_TABLE_BY_AREA = {
     "ocean": {
         1: [100,  0,  0,  0,  0],   # エリア1は戦闘なし（未使用）
-        2: [ 20, 38, 32, 10,  0],   # 全損≈25%/航海（逃げ＆防衛で凌げる）
+        2: [ 30, 43, 24,  3,  0],   # E2再調整：弱すぎ回避。tier3を少し戻し、tier4事故は据え置き
         3: [  0, 12, 48, 35,  5],   # 初期装備ではほぼ死ぬ（全損≈83%/航海）
         4: [  0,  0, 30, 45, 25],   # 最深部・即死級
     },
@@ -450,7 +450,7 @@ PIRATE_BASE_REWARD = {"base_min":3250, "base_max":8000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 60, 2: 90, 3: 120, 4: 160}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
+AREA_ENEMY_BASE = {1: 60, 2: 83, 3: 120, 4: 160}   # E2再調整：78→83（旧90までは戻さない）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
@@ -573,7 +573,7 @@ def make_enemy_spec(combat_key, area):
 #   激レア(leviathan/admiral)は重み1-5で本当に薄く。E3/E4は★3実装後に重み再調整。
 ENEMY_POOL_BY_AREA = {
     1: [("pirate_old",16),("reef_bandit",13),("hook_raider",12),("shark",15),("piranha",15),("castaway_foe",12),("jelly_swarm",9),("salt_buccaneer",8)],   # E1=入口だが敵ごとに個性あり
-    2: [("pirate_old",8),("reef_bandit",8),("hook_raider",8),("pirate_drifter",11),("pirate_washout",10),("pirate_rogue",11),("shark",8),("piranha",5),("shellback",6),("razor_ray",6),("drowned",8),("wight",6),("harpooner",8),("reef_manta",7)],
+    2: [("pirate_old",9),("reef_bandit",9),("hook_raider",8),("pirate_drifter",11),("pirate_washout",10),("pirate_rogue",9),("shark",7),("piranha",5),("shellback",6),("razor_ray",6),("drowned",6),("wight",7),("harpooner",6),("reef_manta",7)],  # E2再調整：弱敵を少し減らし、中堅を微増
     3: [("pirate_washout",8),("pirate_rogue",11),("pirate_bounty",13),("drowned",8),("wight",5),("ghost",9),("serpent",7),("venom_serpent",8),("coral_golem",7),("siren_hunter",5),("navy",5),("merchant_big",6),("abyss_lamprey",5),("drowned_knight",4),("leviathan",1)],
     4: [("pirate_bounty",17),("ghost",14),("hands",11),("navy",11),("merchant_big",8),("venom_serpent",5),("coral_golem",7),("siren_hunter",6),("void_squid",8),("observer_drifter",5),("leviathan",5),("admiral",3)],
 }
@@ -759,14 +759,14 @@ XP_PER_ISLAND = 5
 XP_PER_PIRATE_WIN = 25
 XP_PER_PIRATE_LOSE = 8        # 負けても少し経験は得る
 
-# ⚔️ 海戦EXP：固定値ではなく敵の強さに応じて付与する。
+# ⚔️ 海戦EXP：固定値ではなく敵の強さに応じて付与する。v36再調整で強さに対して少し多めに。
 # crew_power・reward_mult・☆・ボス補正を使い、E1雑魚でも意味のある経験値にする。
 def voyage_combat_xp(spec, win=True):
     crew = int(spec.get("crew_power") or spec.get("sea_power") or 50)
     stars = int(spec.get("stars", 1) or 1)
     reward = float(spec.get("reward_mult", 1.0) or 1.0)
     boss_mult = 2.2 if spec.get("is_boss") or spec.get("legendary") else 1.0
-    base = max(4, round(crew * 0.55 * reward * (1.0 + stars * 0.10) * boss_mult))
+    base = max(4, round(crew * 0.68 * reward * (1.0 + stars * 0.12) * boss_mult))
     return max(1, round(base if win else base * 0.30))
 # 必要XP（Lv→次Lvまで）。
 # Lv5以降から必要XPを強めに上げ、Lv10以降はさらに重くする。
@@ -1038,7 +1038,7 @@ PIRATE_TABLE = {
 PIRATE_TABLE_BY_AREA = {
     "ocean": {
         1: [100,  0,  0,  0,  0],   # エリア1は戦闘なし（未使用）
-        2: [ 20, 38, 32, 10,  0],   # 全損≈25%/航海（逃げ＆防衛で凌げる）
+        2: [ 30, 43, 24,  3,  0],   # E2再調整：弱すぎ回避。tier3を少し戻し、tier4事故は据え置き
         3: [  0, 12, 48, 35,  5],   # 初期装備ではほぼ死ぬ（全損≈83%/航海）
         4: [  0,  0, 30, 45, 25],   # 最深部・即死級
     },
@@ -1074,7 +1074,7 @@ PIRATE_BASE_REWARD = {"base_min":3250, "base_max":8000}
 #   特性: boss / legendary（激レア・出現率側で薄く）/ first_strike（先制）/ undead / karma_react
 #   ※数値は仮。後でモンテカルロ調整。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-AREA_ENEMY_BASE = {1: 60, 2: 90, 3: 120, 4: 160}   # エリア別の標準crew_power（E1/E2の強さ逆転を修正：E1は入口用だが戦闘が軽すぎない程度に強化、E2は一段強く）
+AREA_ENEMY_BASE = {1: 60, 2: 83, 3: 120, 4: 160}   # E2再調整：78→83（旧90までは戻さない）
 
 ENEMY_TYPES = {
     # ── 🏴‍☠️ 海賊系 ──
@@ -1197,7 +1197,7 @@ def make_enemy_spec(combat_key, area):
 #   激レア(leviathan/admiral)は重み1-5で本当に薄く。E3/E4は★3実装後に重み再調整。
 ENEMY_POOL_BY_AREA = {
     1: [("pirate_old",16),("reef_bandit",13),("hook_raider",12),("shark",15),("piranha",15),("castaway_foe",12),("jelly_swarm",9),("salt_buccaneer",8)],   # E1=入口だが敵ごとに個性あり
-    2: [("pirate_old",8),("reef_bandit",8),("hook_raider",8),("pirate_drifter",11),("pirate_washout",10),("pirate_rogue",11),("shark",8),("piranha",5),("shellback",6),("razor_ray",6),("drowned",8),("wight",6),("harpooner",8),("reef_manta",7)],
+    2: [("pirate_old",9),("reef_bandit",9),("hook_raider",8),("pirate_drifter",11),("pirate_washout",10),("pirate_rogue",9),("shark",7),("piranha",5),("shellback",6),("razor_ray",6),("drowned",6),("wight",7),("harpooner",6),("reef_manta",7)],  # E2再調整：弱敵を少し減らし、中堅を微増
     3: [("pirate_washout",8),("pirate_rogue",11),("pirate_bounty",13),("drowned",8),("wight",5),("ghost",9),("serpent",7),("venom_serpent",8),("coral_golem",7),("siren_hunter",5),("navy",5),("merchant_big",6),("abyss_lamprey",5),("drowned_knight",4),("leviathan",1)],
     4: [("pirate_bounty",17),("ghost",14),("hands",11),("navy",11),("merchant_big",8),("venom_serpent",5),("coral_golem",7),("siren_hunter",6),("void_squid",8),("observer_drifter",5),("leviathan",5),("admiral",3)],
 }
@@ -1383,14 +1383,14 @@ XP_PER_ISLAND = 5
 XP_PER_PIRATE_WIN = 25
 XP_PER_PIRATE_LOSE = 8        # 負けても少し経験は得る
 
-# ⚔️ 海戦EXP：固定値ではなく敵の強さに応じて付与する。
+# ⚔️ 海戦EXP：固定値ではなく敵の強さに応じて付与する。v36再調整で強さに対して少し多めに。
 # crew_power・reward_mult・☆・ボス補正を使い、E1雑魚でも意味のある経験値にする。
 def voyage_combat_xp(spec, win=True):
     crew = int(spec.get("crew_power") or spec.get("sea_power") or 50)
     stars = int(spec.get("stars", 1) or 1)
     reward = float(spec.get("reward_mult", 1.0) or 1.0)
     boss_mult = 2.2 if spec.get("is_boss") or spec.get("legendary") else 1.0
-    base = max(4, round(crew * 0.55 * reward * (1.0 + stars * 0.10) * boss_mult))
+    base = max(4, round(crew * 0.68 * reward * (1.0 + stars * 0.12) * boss_mult))
     return max(1, round(base if win else base * 0.30))
 # 必要XP（Lv→次Lvまで）。
 # Lv5以降から必要XPを強めに上げ、Lv10以降はさらに重くする。
@@ -1715,79 +1715,79 @@ CRAFT_RECIPES = {'forge_tide_sword': {'kind': 'weapon',
  'forge_forest_sword': {'kind': 'weapon',
                         'item': 'forge_forest_sword',
                         'rank': 3,
-                        'cost': {'ancient_wood': 286,
-                                 'sap_crystal': 50,
-                                 'forest_fang': 36,
-                                 'ocean_steel': 77,
-                                 'blue_pearl': 30,
-                                 'seaweed_fiber': 88,
-                                 'small_magic_stone': 38}},
+                        'cost': {'ancient_wood': 200,
+                                 'sap_crystal': 35,
+                                 'forest_fang': 25,
+                                 'ocean_steel': 54,
+                                 'blue_pearl': 21,
+                                 'seaweed_fiber': 62,
+                                 'small_magic_stone': 27}},
  'forge_forest_twin': {'kind': 'weapon',
                        'item': 'forge_forest_twin',
                        'rank': 3,
-                       'cost': {'ancient_wood': 242,
-                                'sap_crystal': 58,
-                                'forest_fang': 50,
-                                'ocean_steel': 66,
-                                'blue_pearl': 36,
-                                'storm_shell': 23,
-                                'small_magic_stone': 38}},
+                       'cost': {'ancient_wood': 169,
+                                'sap_crystal': 41,
+                                'forest_fang': 35,
+                                'ocean_steel': 46,
+                                'blue_pearl': 25,
+                                'storm_shell': 16,
+                                'small_magic_stone': 27}},
  'forge_sap_staff': {'kind': 'weapon',
                      'item': 'forge_sap_staff',
                      'rank': 3,
-                     'cost': {'ancient_wood': 341,
-                              'sap_crystal': 80,
-                              'spirit_leaf': 32,
-                              'blue_pearl': 44,
-                              'white_coral': 50,
-                              'small_magic_stone': 46}},
+                     'cost': {'ancient_wood': 239,
+                              'sap_crystal': 56,
+                              'spirit_leaf': 22,
+                              'blue_pearl': 31,
+                              'white_coral': 35,
+                              'small_magic_stone': 32}},
  'forge_ocean_bow': {'kind': 'weapon',
                      'item': 'forge_ocean_bow',
                      'rank': 3,
-                     'cost': {'ancient_wood': 385,
-                              'moss_stone': 61,
-                              'spirit_leaf': 28,
-                              'ocean_steel': 66,
-                              'seaweed_fiber': 121,
-                              'storm_shell': 25,
-                              'small_magic_stone': 40}},
+                     'cost': {'ancient_wood': 270,
+                              'moss_stone': 43,
+                              'spirit_leaf': 20,
+                              'ocean_steel': 46,
+                              'seaweed_fiber': 85,
+                              'storm_shell': 18,
+                              'small_magic_stone': 28}},
  'forge_ocean_gun': {'kind': 'weapon',
                      'item': 'forge_ocean_gun',
                      'rank': 3,
-                     'cost': {'charcoal': 92,
-                              'sap_crystal': 52,
-                              'ocean_steel': 116,
-                              'blue_pearl': 51,
-                              'white_coral': 61,
-                              'small_magic_stone': 48}},
+                     'cost': {'charcoal': 64,
+                              'sap_crystal': 36,
+                              'ocean_steel': 81,
+                              'blue_pearl': 36,
+                              'white_coral': 43,
+                              'small_magic_stone': 34}},
  'forge_ocean_greatsword': {'kind': 'weapon',
                             'item': 'forge_ocean_greatsword',
                             'rank': 3,
-                            'cost': {'ancient_wood': 286,
-                                     'forest_fang': 41,
-                                     'ocean_steel': 143,
-                                     'blue_pearl': 41,
-                                     'white_coral': 66,
-                                     'small_magic_stone': 53}},
+                            'cost': {'ancient_wood': 200,
+                                     'forest_fang': 29,
+                                     'ocean_steel': 100,
+                                     'blue_pearl': 29,
+                                     'white_coral': 46,
+                                     'small_magic_stone': 37}},
  'forge_forest_mail': {'kind': 'armor',
                        'part': 'torso',
                        'item': 'forge_forest_mail',
                        'rank': 3,
-                       'cost': {'ancient_wood': 341,
-                                'moss_stone': 99,
-                                'sap_crystal': 66,
-                                'ocean_steel': 105,
-                                'white_coral': 82,
-                                'storm_shell': 38,
-                                'small_magic_stone': 50}},
+                       'cost': {'ancient_wood': 239,
+                                'moss_stone': 69,
+                                'sap_crystal': 46,
+                                'ocean_steel': 74,
+                                'white_coral': 57,
+                                'storm_shell': 27,
+                                'small_magic_stone': 35}},
  'forge_forest_greaves': {'kind': 'armor',
                           'part': 'legs',
                           'item': 'forge_forest_greaves',
                           'rank': 3,
-                          'cost': {'ancient_wood': 297,
-                                   'moss_stone': 82,
-                                   'spirit_leaf': 34,
-                                   'seaweed_fiber': 105,
-                                   'storm_shell': 43,
-                                   'white_coral': 72,
-                                   'small_magic_stone': 45}}}
+                          'cost': {'ancient_wood': 208,
+                                   'moss_stone': 57,
+                                   'spirit_leaf': 24,
+                                   'seaweed_fiber': 74,
+                                   'storm_shell': 30,
+                                   'white_coral': 50,
+                                   'small_magic_stone': 31}}}
