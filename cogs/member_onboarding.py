@@ -735,7 +735,8 @@ async def build_profile_card_file(member, p):
         'assets', 'profile', 'backgrounds', f'{theme_key}.png'
     )
     try:
-        background = Image.open(background_path).convert('RGB').resize((width, height), Image.Resampling.LANCZOS)
+        background_src = Image.open(background_path).convert('RGB')
+        background = ImageOps.fit(background_src, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.48))
         img.paste(background, (0, 0))
     except Exception:
         # アセット破損時もプロフィール生成自体は止めない
@@ -752,8 +753,8 @@ async def build_profile_card_file(member, p):
     content_box = (48, 370, width-48, 720)
     footer_box = (48, 735, width-48, 812)
     od.rounded_rectangle(header_box, radius=26, fill=(*panel_alt, 176), outline=(*line, 220), width=2)
-    od.rounded_rectangle(content_box, radius=24, fill=(*panel_fill, 226), outline=(*line, 235), width=2)
-    od.rounded_rectangle(footer_box, radius=20, fill=(*panel_fill, 228), outline=(*line, 235), width=2)
+    od.rounded_rectangle(content_box, radius=24, fill=(*panel_fill, 208), outline=(*line, 235), width=2)
+    od.rounded_rectangle(footer_box, radius=20, fill=(*panel_fill, 214), outline=(*line, 235), width=2)
     # ヘッダー左側だけ少し暗くし、右側の背景アートを強く残す
     od.rounded_rectangle((48, 48, 690, 352), radius=26, fill=(0, 4, 12, 78))
     img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
