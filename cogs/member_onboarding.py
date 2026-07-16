@@ -709,214 +709,147 @@ def _draw_centered_text(draw, box, text, font, fill):
 
 
 async def build_profile_card_file(member, p):
-    """BOTORI用の横長プロフィール画像カードを生成する。"""
-    import random
+    """DEVIの落ち着いた可愛い横長プロフィールカードを生成する。"""
     import re
     from datetime import datetime, timezone
 
     width, height = 1600, 860
-    img = Image.new('RGB', (width, height), '#050b16')
-    draw = ImageDraw.Draw(img)
-
-    # 配色・背景（テーマごとに完全に異なる専用アートを使用）
-    raw_theme_key = (p.get('profile_theme') or 'city').strip()
+    raw_theme_key = (p.get('profile_theme') or 'devi').strip()
     theme_key = THEME_ALIASES.get(raw_theme_key, raw_theme_key)
-    theme = PROFILE_THEMES.get(theme_key, PROFILE_THEMES['city'])
+    theme = PROFILE_THEMES.get(theme_key, PROFILE_THEMES['devi'])
     accent = theme['accent']
-    accent_soft = tuple(max(0, int(c * 0.58)) for c in accent)
-    text_main = (241, 246, 255)
-    text_sub = (159, 180, 216)
-    panel_fill = theme['panel']
-    panel_alt = theme['alt']
+    text_main = (244, 246, 255)
+    text_sub = (178, 187, 220)
     line = theme['line']
 
-    background_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        'assets', 'profile', 'backgrounds', f'{theme_key}.png'
-    )
+    background_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'profile', 'backgrounds', f'{theme_key}.png')
     try:
         background_src = Image.open(background_path).convert('RGB')
-        background = ImageOps.fit(background_src, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.48))
-        img.paste(background, (0, 0))
+        img = ImageOps.fit(background_src, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
     except Exception:
-        # アセット破損時もプロフィール生成自体は止めない
-        for y in range(height):
-            t = y / max(1, height - 1)
-            color = tuple(int(panel_alt[i] * (1 - t) + panel_fill[i] * t) for i in range(3))
-            draw.line((0, y, width, y), fill=color)
+        img = Image.new('RGB', (width, height), '#11132d')
+    draw = ImageDraw.Draw(img)
 
-    # 読みやすさを保つガラス風レイヤー。背景アートは右上・周辺に見える。
+    # ガラスUI。背景を見せるため、一枚の黒板ではなく各カードを独立させる。
     overlay = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     od = ImageDraw.Draw(overlay)
-    od.rounded_rectangle((28, 28, width-28, height-28), radius=34, fill=(2, 7, 18, 28), outline=(*accent, 235), width=3)
-    header_box = (48, 48, width-48, 352)
-    content_box = (48, 370, width-48, 720)
-    footer_box = (48, 735, width-48, 812)
-    od.rounded_rectangle(header_box, radius=26, fill=(*panel_alt, 176), outline=(*line, 220), width=2)
-    od.rounded_rectangle(content_box, radius=24, fill=(*panel_fill, 208), outline=(*line, 235), width=2)
-    od.rounded_rectangle(footer_box, radius=20, fill=(*panel_fill, 214), outline=(*line, 235), width=2)
-    # ヘッダー左側だけ少し暗くし、右側の背景アートを強く残す
-    od.rounded_rectangle((48, 48, 690, 352), radius=26, fill=(0, 4, 12, 78))
+    od.rounded_rectangle((24, 24, width-24, height-24), radius=34, fill=(7, 7, 24, 16), outline=(*accent, 210), width=2)
+    # ヘッダーは左情報部のみ少し濃く、ロゴ側はほぼ背景をそのまま見せる
+    od.rounded_rectangle((42, 45, width-42, 350), radius=28, fill=(9, 8, 29, 45), outline=(*line, 150), width=1)
+    od.rounded_rectangle((42, 45, 700, 350), radius=28, fill=(8, 8, 27, 122))
+    # 4枚の独立カード
+    panels=[(44,374,398,716),(416,374,770,716),(788,374,1142,716),(1160,374,1556,716)]
+    for box in panels:
+        od.rounded_rectangle(box, radius=22, fill=(10, 10, 30, 184), outline=(*line, 195), width=2)
+        # 上辺にほのかな反射
+        od.line((box[0]+24,box[1]+2,box[2]-24,box[1]+2),fill=(255,220,250,48),width=2)
+    od.rounded_rectangle((44,734,1556,816), radius=20, fill=(10, 10, 30, 192), outline=(*line, 190), width=2)
     img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
     draw = ImageDraw.Draw(img)
-    # フォント
-    tiny = _find_japanese_font(19)
-    small = _find_japanese_font(23)
-    small_b = _find_japanese_font(23, bold=True)
-    medium = _find_japanese_font(29)
-    medium_b = _find_japanese_font(29, bold=True)
+
+    tiny = _find_japanese_font(18)
+    small = _find_japanese_font(22)
+    small_b = _find_japanese_font(22, bold=True)
     section = _find_japanese_font(25, bold=True)
     name = (p.get('nickname') or member.display_name).strip()
-    name_font = _fit_text(draw, name, 610, 70, 40, bold=True)
+    name_font = _fit_text(draw, name, 520, 68, 40, bold=True)
 
     # アバター
-    avatar_box = (70, 72, 356, 358)
     try:
         avatar_bytes = await member.display_avatar.with_size(512).read()
         avatar = Image.open(io.BytesIO(avatar_bytes)).convert('RGB')
-        avatar = ImageOps.fit(avatar, (260, 260), method=Image.Resampling.LANCZOS)
-        mask = Image.new('L', (260, 260), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, 259, 259), fill=255)
-        ring_mask = Image.new('L', (286, 286), 0)
-        ImageDraw.Draw(ring_mask).ellipse((0, 0, 285, 285), fill=255)
-        ring = Image.new('RGB', (286, 286), accent)
-        img.paste(ring, (70, 72), ring_mask)
-        img.paste(avatar, (83, 85), mask)
-        draw.ellipse((315, 300, 352, 337), fill=(35, 210, 115), outline=panel_alt, width=5)
+        avatar = ImageOps.fit(avatar, (246, 246), method=Image.Resampling.LANCZOS)
+        mask = Image.new('L', (246, 246), 0); ImageDraw.Draw(mask).ellipse((0,0,245,245),fill=255)
+        ring_mask = Image.new('L',(270,270),0); ImageDraw.Draw(ring_mask).ellipse((0,0,269,269),fill=255)
+        ring = Image.new('RGB',(270,270),(177,142,230))
+        img.paste(ring,(70,70),ring_mask); img.paste(avatar,(82,82),mask)
+        draw.ellipse((307,294,344,331),fill=(66,204,128),outline=(21,17,48),width=5)
     except Exception:
-        draw.ellipse(avatar_box, fill=accent)
-        draw.ellipse((83, 85, 343, 345), fill=(27, 39, 61))
+        draw.ellipse((70,70,340,340),fill=(177,142,230)); draw.ellipse((82,82,328,328),fill=(32,34,71))
 
-    # ヘッダー文字（anchorで縦位置を統一）
-    draw.text((405, 92), 'MEMBER PROFILE', font=small_b, fill=(81, 148, 255), anchor='lm')
-    draw.text((405, 155), name, font=name_font, fill=text_main, anchor='lm')
-    draw.text((410, 208), f'@{member.name}', font=small, fill=(139, 158, 190), anchor='lm')
+    # 左上プロフィール情報。MEMBER PROFILEは控えめ、名前を主役にする。
+    draw.text((390,103),'MEMBER PROFILE',font=small_b,fill=(189,153,231),anchor='lm')
+    draw.text((390,167),name,font=name_font,fill=text_main,anchor='lm')
+    draw.text((393,218),f'@{member.name}',font=small,fill=(157,151,190),anchor='lm')
+    mbti=(p.get('mbti') or '').strip(); badge_text=mbti or '未設定'
+    badge_w=draw.textbbox((0,0),badge_text,font=small_b)[2]+34; badge_box=(393,238,393+badge_w,281)
+    draw.rounded_rectangle(badge_box,radius=12,fill=(55,38,105),outline=(139,104,214),width=2)
+    _draw_centered_text(draw,badge_box,badge_text,small_b,(237,229,255))
+    comment=(p.get('comment') or '').strip(); quote=(comment or '一言はまだ登録されていません').replace('☆','★').replace('✩','★')
+    quote_font=_fit_text(draw,quote,510,30,20)
+    draw.text((390,317),f'“ {quote} ”',font=quote_font,fill=(231,226,244),anchor='lm')
 
-    mbti = (p.get('mbti') or '').strip()
-    badge_text = mbti or '未設定'
-    badge_font = small_b
-    badge_w = draw.textbbox((0, 0), badge_text, font=badge_font)[2] + 34
-    badge_box = (410, 229, 410 + badge_w, 275)
-    draw.rounded_rectangle(badge_box, radius=12, fill=(43, 31, 100), outline=(104, 78, 220), width=2)
-    _draw_centered_text(draw, badge_box, badge_text, badge_font, (226, 220, 255))
+    # セクション見出し
+    panel_x=[70,442,814,1186]
+    titles=['ABOUT ME','ABOUT ME+','BADGES','RANKING']
+    for x,title in zip(panel_x,titles):
+        draw.text((x,414),title,font=section,fill=(196,150,232),anchor='lm')
+        draw.line((x,443,x+150,443),fill=(135,96,170),width=1)
 
-    comment = (p.get('comment') or '').strip()
-    quote = comment or '一言はまだ登録されていません'
-    quote_font = _fit_text(draw, quote, 790, 31, 21)
-    draw.text((405, 315), f'“ {quote} ”', font=quote_font, fill=(224, 232, 246), anchor='lm')
+    hobby=(p.get('hobby') or '').strip()
+    about_rows=[('名前',name),('MBTI',mbti or '—'),('趣味',hobby or '—'),('一言',comment or '—')]
+    for (label,value),cy in zip(about_rows,[487,547,607,667]):
+        draw.text((70,cy),label,font=small_b,fill=text_sub,anchor='lm')
+        value=value.replace('☆','★').replace('✩','★')
+        vf=_fit_text(draw,value,205,23,17)
+        while value and draw.textbbox((0,0),value,font=vf)[2]>205: value=value[:-1]
+        draw.text((200,cy),value or '—',font=vf,fill=text_main,anchor='lm')
 
-    # セクション座標
-    col1_x, col2_x, col3_x, col4_x = 78, 545, 905, 1260
-    top_y = 410
-    for x, title in ((col1_x, 'ABOUT ME'), (col2_x, 'ABOUT ME+'), (col3_x, 'BADGES'), (col4_x, 'RANKING')):
-        draw.text((x, top_y), title, font=section, fill=(78, 145, 255), anchor='lm')
-    for x in (515, 875, 1235):
-        draw.line((x, 392, x, 692), fill=line, width=2)
+    # ABOUT ME+
+    py=470
+    for i in (1,2,3):
+        q=(p.get(f'about_q{i}') or '').strip() or f'自由項目{i}'
+        a=(p.get(f'about_a{i}') or '').strip() or '—'
+        qf=_fit_text(draw,q,280,21,16,bold=True); af=_fit_text(draw,a,270,20,15)
+        draw.text((442,py),q,font=qf,fill=text_sub,anchor='la')
+        box=(442,py+29,744,py+72); draw.rounded_rectangle(box,radius=11,fill=(12,15,38),outline=(68,62,108),width=1)
+        while a and draw.textbbox((0,0),a,font=af)[2]>265: a=a[:-1]
+        draw.text((456,py+51),a or '—',font=af,fill=text_main,anchor='lm'); py+=86
 
-    # ABOUT ME：各行を同じ高さに揃える
-    hobby = (p.get('hobby') or '').strip()
-    about_rows = [('名前', name), ('MBTI', mbti or '—'), ('趣味', hobby or '—'), ('一言', comment or '—')]
-    row_centers = [468, 528, 588, 648]
-    for (label, value), cy in zip(about_rows, row_centers):
-        draw.text((col1_x, cy), label, font=small_b, fill=text_sub, anchor='lm')
-        value_font = _fit_text(draw, value, 285, 24, 18)
-        value_display = value
-        while value_display and draw.textbbox((0, 0), value_display, font=value_font)[2] > 285:
-            value_display = value_display[:-1]
-        if value_display != value:
-            value_display = value_display.rstrip() + '…'
-        draw.text((205, cy), value_display, font=value_font, fill=text_main, anchor='lm')
-
-    # ABOUT ME+：本人が自由に設定できる3つの質問と回答
-    plus_rows = []
-    for index in (1, 2, 3):
-        question = (p.get(f'about_q{index}') or '').strip()
-        answer = (p.get(f'about_a{index}') or '').strip()
-        plus_rows.append((question or f'自由項目{index}', answer or '—'))
-    py_plus = 450
-    for question, answer in plus_rows:
-        q_font = _fit_text(draw, question, 285, 22, 17, bold=True)
-        a_font = _fit_text(draw, answer, 285, 21, 16)
-        draw.text((col2_x, py_plus), question, font=q_font, fill=text_sub, anchor='la')
-        box = (col2_x, py_plus + 29, 835, py_plus + 73)
-        draw.rounded_rectangle(box, radius=11, fill=(11, 22, 38), outline=(35, 58, 88), width=2)
-        answer_display = answer
-        while answer_display and draw.textbbox((0,0), answer_display, font=a_font)[2] > 255:
-            answer_display = answer_display[:-1]
-        if answer_display != answer:
-            answer_display = answer_display.rstrip() + '…'
-        draw.text((col2_x + 14, py_plus + 51), answer_display, font=a_font, fill=text_main, anchor='lm')
-        py_plus += 86
-
-    # 週間アクティビティを取得
-    stats = _profile_weekly_stats(member.guild.id, member.id)
-    vc_total = stats['vc_total']
-    chat_total = stats['chat_total']
-    vc_rank = stats['vc_rank']
-    chat_rank = stats['chat_rank']
-
-    # BADGES：本人が選んだ4つを2列×2段で表示
-    selected_badges = []
+    stats=_profile_weekly_stats(member.guild.id,member.id)
+    selected=[]
     for key in _badge_keys(p):
-        info = BADGE_LOOKUP[key]
-        selected_badges.append((info['label'], info['color']))
-    custom_badge = (p.get('custom_badge') or '').strip()
-    if custom_badge:
-        selected_badges.append((custom_badge, (130, 145, 170)))
-    selected_badges = selected_badges[:4]
-    while len(selected_badges) < 4:
-        selected_badges.append(('未設定', (65, 78, 100)))
+        info=BADGE_LOOKUP[key]; selected.append((info['label'],info['color']))
+    custom=(p.get('custom_badge') or '').strip()
+    if custom: selected.append((custom,(130,145,170)))
+    selected=selected[:4]
+    while len(selected)<4: selected.append(('未設定',(72,76,104)))
+    boxes=[(814,478,957,554),(970,478,1113,554),(814,570,957,646),(970,570,1113,646)]
+    for (label,color),box in zip(selected,boxes):
+        fill=tuple(max(14,int(c*.22)) for c in color)
+        draw.rounded_rectangle(box,radius=16,fill=fill,outline=color,width=2)
+        # small icon-like diamond instead of loud sparkle
+        cx=box[0]+23; cy=(box[1]+box[3])//2
+        draw.ellipse((cx-7,cy-7,cx+7,cy+7),fill=color)
+        maxw=box[2]-box[0]-48; bf=_fit_text(draw,label,maxw,20,15,bold=True)
+        draw.text((box[0]+42,cy),label,font=bf,fill=text_main,anchor='lm')
 
-    badge_boxes = [
-        (col3_x, 452, 1044, 528), (1055, 452, 1195, 528),
-        (col3_x, 544, 1044, 620), (1055, 544, 1195, 620),
-    ]
-    for (label, color), box in zip(selected_badges, badge_boxes):
-        fill = tuple(max(10, int(c * 0.22)) for c in color)
-        draw.rounded_rectangle(box, radius=15, fill=fill, outline=color, width=2)
-        dot_x = box[0] + 18
-        dot_y = (box[1] + box[3]) // 2
-        draw.ellipse((dot_x - 7, dot_y - 7, dot_x + 7, dot_y + 7), fill=color)
-        max_w = box[2] - box[0] - 52
-        badge_label_font = _fit_text(draw, label, max_w, 22, 16, bold=True)
-        display = label
-        while display and draw.textbbox((0, 0), display, font=badge_label_font)[2] > max_w:
-            display = display[:-1]
-        if display != label:
-            display = display.rstrip() + '…'
-        draw.text((box[0] + 38, dot_y), display, font=badge_label_font, fill=text_main, anchor='lm')
+    joined_days=0
+    if getattr(member,'joined_at',None): joined_days=max(1,(datetime.now(timezone.utc)-member.joined_at).days+1)
+    ranks=[('VC時間（今週）',f"{stats['vc_rank']}位" if stats['vc_rank'] else '—',_format_profile_vc(stats['vc_total'])),('チャット数（今週）',f"{stats['chat_rank']}位" if stats['chat_rank'] else '—',f"{stats['chat_total']:,}件"),('サーバー参加日数',f'{joined_days}日' if joined_days else '—','')]
+    for (label,val,detail),cy in zip(ranks,[492,582,672]):
+        draw.text((1186,cy),label,font=small,fill=(230,229,243),anchor='lm')
+        color=(103,171,255) if 'VC' in label else ((247,105,156) if 'チャット' in label else (91,210,148))
+        draw.text((1518,cy),val,font=small_b,fill=color,anchor='rm')
+        if detail: draw.text((1518,cy+28),detail,font=tiny,fill=text_sub,anchor='rm')
 
-    # RANKING：既存activity_logから実数と順位を表示
-    joined_days = 0
-    if getattr(member, 'joined_at', None):
-        now = datetime.now(timezone.utc)
-        joined_days = max(1, (now - member.joined_at).days + 1)
-    rank_rows = [
-        ('VC時間（今週）', f'{vc_rank}位' if vc_rank else '—', _format_profile_vc(vc_total)),
-        ('チャット数（今週）', f'{chat_rank}位' if chat_rank else '—', f'{chat_total:,}件'),
-        ('サーバー参加日数', f'{joined_days}日' if joined_days else '—', ''),
-    ]
-    ry = 470
-    for label, rank_value, detail in rank_rows:
-        draw.text((col4_x, ry), label, font=small, fill=(219, 227, 242), anchor='lm')
-        color = (68, 160, 255) if 'VC' in label else ((255, 91, 121) if 'チャット' in label else (81, 215, 145))
-        draw.text((1510, ry), rank_value, font=small_b, fill=color, anchor='rm')
-        if detail:
-            draw.text((1510, ry + 30), detail, font=tiny, fill=text_sub, anchor='rm')
-        ry += 83
+    # フッター：好きなこと＋控えめなDEVIブランド
+    draw.text((70,775),'好きなこと',font=section,fill=(232,130,194),anchor='lm')
+    free=((p.get('free_text') or '').strip() or hobby or '—').replace('☆','★').replace('✩','★')
+    ff=_fit_text(draw,free,900,27,18); draw.text((250,775),free,font=ff,fill=text_main,anchor='lm')
+    # 小さな雑描き風デビちゃん（簡単な線画）
+    mx,my=1408,755
+    draw.ellipse((mx,my,mx+62,my+48),fill=(23,20,46),outline=(213,126,190),width=2)
+    draw.polygon([(mx+8,my+8),(mx+18,my-6),(mx+26,my+10)],fill=(23,20,46),outline=(213,126,190))
+    draw.polygon([(mx+36,my+10),(mx+46,my-6),(mx+55,my+9)],fill=(23,20,46),outline=(213,126,190))
+    draw.ellipse((mx+17,my+20,mx+21,my+24),fill=(245,210,235))
+    draw.ellipse((mx+41,my+20,mx+45,my+24),fill=(245,210,235))
+    draw.arc((mx+24,my+22,mx+38,my+34),0,180,fill=(231,137,198),width=2)
+    draw.text((1515,766),'DEVI',font=small_b,fill=(231,137,198),anchor='rm')
+    draw.text((1515,792),'MEMBER PROFILE',font=tiny,fill=(133,119,174),anchor='rm')
 
-    # 下部：好きなこと + BOTORIロゴ文字
-    draw.text((78, 773), '好きなこと', font=section, fill=(78, 145, 255), anchor='lm')
-    hobby_display = (p.get('free_text') or '').strip() or hobby or '—'
-    hobby_font = _fit_text(draw, hobby_display, 1020, 28, 19)
-    draw.text((260, 773), hobby_display, font=hobby_font, fill=text_main, anchor='lm')
-    draw.text((1485, 773), 'BOTORI', font=small_b, fill=(91, 137, 220), anchor='rm')
-    draw.text((1485, 797), 'MEMBER PROFILE', font=tiny, fill=(72, 101, 153), anchor='rm')
-
-    out = io.BytesIO()
-    img.save(out, format='PNG', optimize=True)
-    out.seek(0)
-    return discord.File(out, filename=f'profile_{member.id}.png')
+    out=io.BytesIO(); img.save(out,format='PNG',optimize=True); out.seek(0)
+    return discord.File(out,filename=f'profile_{member.id}.png')
 
 
 class ProfileCardView(discord.ui.View):
