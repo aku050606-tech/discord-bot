@@ -24,6 +24,19 @@ K_STICKY_CONTENT = 'sticky_content'
 MBTIS = ['INTJ','INTP','ENTJ','ENTP','INFJ','INFP','ENFJ','ENFP','ISTJ','ISFJ','ESTJ','ESFJ','ISTP','ISFP','ESTP','ESFP','未診断']
 GAMES = ['League of Legends','VALORANT','Apex Legends','Minecraft','Steamゲーム','雑談メイン']
 
+PROFILE_THEMES = {
+    'night': {'label': '夜空', 'accent': (57,122,255), 'top': (5,15,34), 'bottom': (1,7,15), 'panel': (5,15,29), 'alt': (8,21,39), 'line': (31,63,101)},
+    'devi': {'label': 'DEVI 悪魔', 'accent': (185,72,255), 'top': (20,4,32), 'bottom': (4,1,10), 'panel': (18,6,25), 'alt': (28,8,39), 'line': (94,35,125)},
+    'cyber': {'label': 'サイバー', 'accent': (0,220,255), 'top': (2,18,28), 'bottom': (1,5,12), 'panel': (3,18,29), 'alt': (4,27,42), 'line': (0,95,125)},
+    'purple': {'label': 'パープル', 'accent': (151,92,255), 'top': (18,8,38), 'bottom': (4,2,12), 'panel': (16,8,31), 'alt': (24,12,47), 'line': (75,45,120)},
+    'emerald': {'label': 'エメラルド', 'accent': (38,214,155), 'top': (3,27,25), 'bottom': (1,8,9), 'panel': (4,23,22), 'alt': (7,34,31), 'line': (20,91,75)},
+    'sunset': {'label': '夕焼け', 'accent': (255,132,89), 'top': (47,18,35), 'bottom': (10,4,14), 'panel': (32,13,25), 'alt': (46,18,31), 'line': (117,55,61)},
+    'sakura': {'label': '桜', 'accent': (255,132,184), 'top': (42,18,34), 'bottom': (10,4,11), 'panel': (31,13,25), 'alt': (45,18,33), 'line': (116,52,82)},
+    'ocean': {'label': '深海', 'accent': (45,161,255), 'top': (2,24,48), 'bottom': (0,7,17), 'panel': (2,20,38), 'alt': (4,31,55), 'line': (18,77,121)},
+    'mono': {'label': 'モノクロ', 'accent': (210,218,229), 'top': (20,22,27), 'bottom': (5,6,8), 'panel': (18,20,24), 'alt': (28,31,37), 'line': (73,78,89)},
+    'gold': {'label': 'ゴールド', 'accent': (238,188,73), 'top': (36,27,8), 'bottom': (8,6,2), 'panel': (27,21,7), 'alt': (42,31,10), 'line': (110,83,27)},
+}
+
 
 BADGE_CATEGORIES = {
     'personality': {
@@ -215,9 +228,9 @@ class AboutSlotModal(discord.ui.Modal):
         await publish_profile(interaction.user)
 
 
-class FreeTextModal(discord.ui.Modal, title='自由欄を編集'):
+class FreeTextModal(discord.ui.Modal, title='好きなことを編集'):
     free_text = discord.ui.TextInput(
-        label='自由欄',
+        label='好きなこと',
         placeholder='好きなこと、最近ハマっていること、誘ってほしいゲームなど自由にどうぞ',
         style=discord.TextStyle.paragraph,
         required=False,
@@ -230,7 +243,7 @@ class FreeTextModal(discord.ui.Modal, title='自由欄を編集'):
 
     async def on_submit(self, interaction):
         db.update_member_profile(str(interaction.guild.id), str(interaction.user.id), free_text=self.free_text.value.strip())
-        await interaction.response.send_message('✅ 自由欄を保存しました。', ephemeral=True)
+        await interaction.response.send_message('✅ 好きなことを保存しました。', ephemeral=True)
         await publish_profile(interaction.user)
 
 
@@ -366,6 +379,28 @@ class BadgeMenuView(discord.ui.View):
         await interaction.response.send_message('バッジをすべて解除しました。', ephemeral=True)
         await publish_profile(interaction.user)
 
+class ProfileThemeSelect(discord.ui.Select):
+    def __init__(self, owner_id, current='night'):
+        self.owner_id = int(owner_id)
+        options = [discord.SelectOption(label=data['label'], value=key, default=(key == current)) for key, data in PROFILE_THEMES.items()]
+        super().__init__(placeholder='背景テーマを選択…', min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message('本人だけ変更できます。', ephemeral=True)
+            return
+        value = self.values[0]
+        db.update_member_profile(str(interaction.guild.id), str(interaction.user.id), profile_theme=value)
+        await interaction.response.send_message(f"✅ 背景を **{PROFILE_THEMES[value]['label']}** に変更しました。", ephemeral=True)
+        await publish_profile(interaction.user)
+
+
+class ProfileThemeView(discord.ui.View):
+    def __init__(self, owner_id, current='night'):
+        super().__init__(timeout=180)
+        self.add_item(ProfileThemeSelect(owner_id, current))
+
+
 class ProfileEditMenu(discord.ui.View):
     def __init__(self, owner_id):
         super().__init__(timeout=180)
@@ -386,10 +421,6 @@ class ProfileEditMenu(discord.ui.View):
     async def mbti(self, interaction, button):
         await interaction.response.send_message('MBTIを選択してください。', view=MBTIView(), ephemeral=True)
 
-    @discord.ui.button(label='GAME', style=discord.ButtonStyle.primary, row=0)
-    async def games(self, interaction, button):
-        await interaction.response.send_message('遊ぶゲームを選択または自由入力してください。', view=GameView(), ephemeral=True)
-
     @discord.ui.button(label='ABOUT ME+', style=discord.ButtonStyle.secondary, row=1)
     async def about_plus(self, interaction, button):
         await interaction.response.send_message('編集する項目を選んでください。質問と回答を自由に設定できます。', view=AboutMePlusView(interaction.user.id), ephemeral=True)
@@ -404,7 +435,12 @@ class ProfileEditMenu(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label='自由欄', style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label='背景テーマ', style=discord.ButtonStyle.secondary, row=1)
+    async def theme(self, interaction, button):
+        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_message('プロフィールカードの背景を選んでください。', view=ProfileThemeView(interaction.user.id, current.get('profile_theme') or 'night'), ephemeral=True)
+
+    @discord.ui.button(label='好きなこと', style=discord.ButtonStyle.secondary, row=1)
     async def free(self, interaction, button):
         cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
         await interaction.response.send_modal(FreeTextModal(cur))
@@ -439,7 +475,7 @@ class RegistrationPanel(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label='📄 自由欄', style=discord.ButtonStyle.secondary, custom_id='member:free_text', row=2)
+    @discord.ui.button(label='💙 好きなこと', style=discord.ButtonStyle.secondary, custom_id='member:free_text', row=2)
     async def free_text(self, interaction, button):
         cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
         await interaction.response.send_modal(FreeTextModal(cur))
@@ -676,18 +712,20 @@ async def build_profile_card_file(member, p):
     img = Image.new('RGB', (width, height), '#050b16')
     draw = ImageDraw.Draw(img)
 
-    # 配色
-    accent = (57, 122, 255)
-    accent_soft = (27, 72, 145)
+    # 配色（本人が選んだ背景テーマ）
+    theme_key = (p.get('profile_theme') or 'night').strip()
+    theme = PROFILE_THEMES.get(theme_key, PROFILE_THEMES['night'])
+    accent = theme['accent']
+    accent_soft = tuple(max(0, int(c * 0.58)) for c in accent)
     text_main = (241, 246, 255)
     text_sub = (159, 180, 216)
-    panel_fill = (5, 15, 29)
-    panel_alt = (8, 21, 39)
-    line = (31, 63, 101)
+    panel_fill = theme['panel']
+    panel_alt = theme['alt']
+    line = theme['line']
 
     # 全体背景グラデーション
-    top = (5, 15, 34)
-    bottom = (1, 7, 15)
+    top = theme['top']
+    bottom = theme['bottom']
     for y in range(height):
         t = y / max(1, height - 1)
         color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
@@ -702,26 +740,70 @@ async def build_profile_card_file(member, p):
     draw.rounded_rectangle(content_box, radius=24, fill=panel_fill, outline=line, width=2)
     draw.rounded_rectangle(footer_box, radius=20, fill=panel_fill, outline=line, width=2)
 
-    # ヘッダー右側の夜景装飾（パネルの上に描く）
+    # ヘッダー右側のテーマ装飾
     rng = random.Random(int(member.id) % 999983)
-    for _ in range(95):
-        x = rng.randint(760, 1515)
-        y = rng.randint(66, 250)
-        r = rng.choice((1, 1, 1, 2))
-        color = rng.choice(((115, 158, 222), (181, 207, 241), (78, 121, 193)))
-        draw.ellipse((x-r, y-r, x+r, y+r), fill=color)
-    # 月と青い光
-    draw.ellipse((1270, 74, 1374, 178), fill=(188, 216, 247))
-    draw.ellipse((1297, 70, 1383, 157), fill=panel_alt)
-    for radius, alpha_color in ((150, (13, 38, 77)), (110, (19, 53, 102)), (70, (25, 70, 137))):
-        cx, cy = 1110, 212
-        draw.ellipse((cx-radius, cy-radius, cx+radius, cy+radius), outline=alpha_color, width=2)
-    # 城・山シルエット
-    draw.polygon([(650, 352), (790, 280), (910, 352), (1050, 255), (1170, 352), (1310, 292), (1480, 352)], fill=(3, 10, 21))
-    for bx, by, bw, bh in [(1060, 235, 35, 117), (1110, 270, 28, 82), (1150, 214, 40, 138), (1210, 265, 26, 87)]:
-        draw.rectangle((bx, by, bx+bw, by+bh), fill=(2, 8, 18))
-        draw.polygon([(bx-5, by), (bx+bw//2, by-30), (bx+bw+5, by)], fill=(2, 8, 18))
-    draw.line((700, 338, 1485, 338), fill=(18, 55, 104), width=2)
+    if theme_key == 'devi':
+        for _ in range(75):
+            x = rng.randint(760, 1515); y = rng.randint(66, 300); r = rng.choice((1,1,2))
+            draw.ellipse((x-r,y-r,x+r,y+r), fill=rng.choice(((180,75,255),(105,38,145),(235,125,255))))
+        draw.ellipse((1210, 74, 1370, 234), fill=(120,35,154))
+        draw.ellipse((1250, 62, 1402, 214), fill=panel_alt)
+        mascot_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'devi_mascot.png')
+        try:
+            mascot = Image.open(mascot_path).convert('RGBA')
+            alpha = mascot.getchannel('A').point(lambda a: int(a * 0.70))
+            mascot.putalpha(alpha)
+            img.alpha_composite(mascot, (1045, 62)) if img.mode == 'RGBA' else img.paste(mascot, (1045, 62), mascot)
+        except Exception:
+            draw.polygon([(1110,310),(1170,185),(1230,310)], fill=(22,4,31))
+            draw.polygon([(1180,310),(1245,150),(1310,310)], fill=(22,4,31))
+        draw.line((700,338,1485,338), fill=theme['line'], width=2)
+    elif theme_key in ('sakura','sunset'):
+        moon = (255,190,205) if theme_key == 'sakura' else (255,170,95)
+        draw.ellipse((1260,78,1375,193), fill=moon)
+        for _ in range(70):
+            x=rng.randint(760,1515); y=rng.randint(70,330); rr=rng.choice((2,3,4))
+            color=(255,150,195) if theme_key=='sakura' else (255,145,90)
+            draw.ellipse((x-rr,y-rr,x+rr,y+rr), fill=color)
+        draw.polygon([(650,352),(820,285),(980,352),(1160,270),(1340,352),(1480,310),(1530,352)], fill=(15,5,16))
+    elif theme_key == 'cyber':
+        for x in range(760,1515,55): draw.line((x,80,x,338), fill=(0,70,92), width=1)
+        for y in range(90,339,45): draw.line((760,y,1515,y), fill=(0,70,92), width=1)
+        for _ in range(25):
+            x=rng.randint(780,1480); y=rng.randint(90,310); w=rng.randint(20,80)
+            draw.rectangle((x,y,x+w,y+3), fill=(0,220,255))
+    elif theme_key == 'ocean':
+        for r in range(40,210,35): draw.arc((1050-r,120-r,1050+r,120+r), 200, 345, fill=(35,120,190), width=3)
+        for _ in range(45):
+            x=rng.randint(760,1510); y=rng.randint(75,330); rr=rng.randint(2,7)
+            draw.ellipse((x-rr,y-rr,x+rr,y+rr), outline=(75,170,230), width=1)
+    elif theme_key == 'gold':
+        for _ in range(50):
+            x=rng.randint(760,1510); y=rng.randint(70,330); rr=rng.choice((1,2,3))
+            draw.ellipse((x-rr,y-rr,x+rr,y+rr), fill=(238,188,73))
+        draw.polygon([(760,338),(930,210),(1080,338),(1230,185),(1390,338),(1500,260),(1530,338)], fill=(20,14,3))
+    elif theme_key == 'emerald':
+        for _ in range(12):
+            x=rng.randint(780,1470); y=rng.randint(90,300); h=rng.randint(35,120)
+            draw.line((x,y,x,y+h), fill=(38,214,155), width=3)
+            draw.ellipse((x-5,y-5,x+5,y+5), fill=(88,255,195))
+    elif theme_key == 'mono':
+        for _ in range(35):
+            x=rng.randint(760,1510); y=rng.randint(70,330); rr=rng.choice((1,2))
+            draw.ellipse((x-rr,y-rr,x+rr,y+rr), fill=(170,175,185))
+        draw.polygon([(650,352),(850,270),(1030,352),(1220,230),(1400,352),(1510,290),(1540,352)], fill=(8,9,11))
+    else:
+        for _ in range(95):
+            x = rng.randint(760, 1515); y = rng.randint(66, 250); r = rng.choice((1, 1, 1, 2))
+            color = rng.choice(((115, 158, 222), (181, 207, 241), (78, 121, 193)))
+            draw.ellipse((x-r, y-r, x+r, y+r), fill=color)
+        draw.ellipse((1270, 74, 1374, 178), fill=(188, 216, 247))
+        draw.ellipse((1297, 70, 1383, 157), fill=panel_alt)
+        draw.polygon([(650, 352), (790, 280), (910, 352), (1050, 255), (1170, 352), (1310, 292), (1480, 352)], fill=(3, 10, 21))
+        for bx, by, bw, bh in [(1060,235,35,117),(1110,270,28,82),(1150,214,40,138),(1210,265,26,87)]:
+            draw.rectangle((bx,by,bx+bw,by+bh), fill=(2,8,18))
+            draw.polygon([(bx-5,by),(bx+bw//2,by-30),(bx+bw+5,by)], fill=(2,8,18))
+        draw.line((700,338,1485,338), fill=(18,55,104), width=2)
 
     # フォント
     tiny = _find_japanese_font(19)
