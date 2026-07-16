@@ -1,5 +1,6 @@
 # Profile assets
 
-`backgrounds/devi.png` は落ち着いた紫の夜空・月・城・DEVIロゴを使ったプロフィール背景です。
-プロフィールUIは `cogs/member_onboarding.py` が上から描画します。
-背景はUIを含まない素材として管理してください。
+- `backgrounds/<theme>.png`: 背景アートのみ（文字・枠・可変情報なし）
+- `overlays/glass_overlay.png`: 共通ガラスUI。背景とは独立した透過PNG
+
+描画順: 背景 → glass_overlay → アバター・文字・バッジ・ランキング
