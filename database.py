@@ -125,13 +125,13 @@ class Database:
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS member_profiles (
             guild_id TEXT, user_id TEXT, nickname TEXT, hobby TEXT, comment TEXT, mbti TEXT, games TEXT,
-            about_q1 TEXT, about_a1 TEXT, about_q2 TEXT, about_a2 TEXT, about_q3 TEXT, about_a3 TEXT, free_text TEXT,
+            about_q1 TEXT, about_a1 TEXT, about_q2 TEXT, about_a2 TEXT, about_q3 TEXT, about_a3 TEXT, free_text TEXT, badges TEXT, custom_badge TEXT,
             PRIMARY KEY (guild_id, user_id)
         )""")
         # 既存DB向けの安全な列追加
         c.execute("PRAGMA table_info(member_profiles)")
         existing_cols = {row[1] for row in c.fetchall()}
-        for col in ('about_q1','about_a1','about_q2','about_a2','about_q3','about_a3','free_text'):
+        for col in ('about_q1','about_a1','about_q2','about_a2','about_q3','about_a3','free_text','badges','custom_badge'):
             if col not in existing_cols:
                 c.execute(f"ALTER TABLE member_profiles ADD COLUMN {col} TEXT")
         c.execute("""CREATE TABLE IF NOT EXISTS member_registration (
@@ -1060,14 +1060,14 @@ class Database:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ メンバー登録・文字列設定
     def get_member_profile(self, guild_id, user_id):
         conn=self.get_conn(); c=conn.cursor()
-        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text")
+        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","badges","custom_badge")
         c.execute("SELECT "+",".join(keys)+" FROM member_profiles WHERE guild_id=? AND user_id=?",(str(guild_id),str(user_id)))
         row=c.fetchone(); conn.close()
         if not row: return None
         return dict(zip(keys,row))
 
     def update_member_profile(self, guild_id, user_id, **fields):
-        allowed_keys={"nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text"}
+        allowed_keys={"nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","badges","custom_badge"}
         allowed={k:v for k,v in fields.items() if k in allowed_keys}
         if not allowed: return
         conn=self.get_conn(); c=conn.cursor()
@@ -1078,7 +1078,7 @@ class Database:
 
     def get_all_member_profiles(self, guild_id):
         conn=self.get_conn(); c=conn.cursor()
-        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text")
+        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","badges","custom_badge")
         c.execute("SELECT user_id,"+",".join(keys)+" FROM member_profiles WHERE guild_id=?",(str(guild_id),))
         rows=c.fetchall(); conn.close()
         return [(str(row[0]), dict(zip(keys,row[1:]))) for row in rows]

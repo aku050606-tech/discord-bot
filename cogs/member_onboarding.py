@@ -25,6 +25,85 @@ MBTIS = ['INTJ','INTP','ENTJ','ENTP','INFJ','INFP','ENFJ','ENFP','ISTJ','ISFJ','
 GAMES = ['League of Legends','VALORANT','Apex Legends','Minecraft','Steamゲーム','雑談メイン']
 
 
+BADGE_CATEGORIES = {
+    'personality': {
+        'title': '性格',
+        'color': (245, 190, 70),
+        'items': [
+            ('bright', '明るい', '😄'), ('quiet', 'おとなしい', '🤫'), ('friendly', '話しかけやすい', '🤝'),
+            ('shy', '人見知り', '🙈'), ('easygoing', 'マイペース', '😎'), ('cheerful', 'ノリがいい', '😂'),
+            ('gentle', '優しい', '😊'), ('serious', '真面目', '🧠'), ('natural', '天然', '🌿'),
+            ('calm', '落ち着いている', '☕'), ('competitive', '負けず嫌い', '🔥'), ('listener', '聞き上手', '👂'),
+            ('caregiver', '面倒見がいい', '🤍'), ('moodmaker', '盛り上げ役', '🎉'), ('relaxed', 'のんびり', '🛋️'),
+        ],
+    },
+    'communication': {
+        'title': 'コミュニケーション',
+        'color': (60, 165, 235),
+        'items': [
+            ('chat_love', '雑談好き', '💬'), ('vc_love', 'VC好き', '🎙️'), ('listen_only', '聞き専', '🎧'),
+            ('invite_me', '誘ってほしい', '📞'), ('talk_ok', '話しかけ歓迎', '🙌'), ('dm_ok', 'DM歓迎', '📩'),
+            ('rom', '見る専多め', '👀'), ('reply_fast', '返信早め', '⚡'), ('reply_slow', '返信ゆっくり', '🐢'),
+            ('small_group', '少人数派', '👥'), ('large_group', '大人数OK', '📣'), ('late_vc', '深夜VC', '🌙'),
+            ('day_vc', '昼VC', '☀️'), ('text_main', 'チャット中心', '⌨️'), ('voice_main', 'VC中心', '🔊'),
+        ],
+    },
+    'hobby': {
+        'title': '趣味',
+        'color': (174, 105, 230),
+        'items': [
+            ('music', '音楽', '🎵'), ('karaoke', 'カラオケ', '🎤'), ('movie', '映画', '🎬'),
+            ('anime', 'アニメ', '📺'), ('manga', '漫画', '📖'), ('reading', '読書', '📚'),
+            ('cafe', 'カフェ', '☕'), ('gourmet', 'グルメ', '🍜'), ('cooking', '料理', '🍳'),
+            ('drive', 'ドライブ', '🚗'), ('travel', '旅行', '✈️'), ('photo', '写真', '📷'),
+            ('drawing', 'イラスト', '🎨'), ('fitness', '筋トレ', '💪'), ('sports', '運動', '🏃'),
+            ('shopping', 'ショッピング', '🛍️'), ('dog', '犬派', '🐶'), ('cat', '猫派', '🐱'),
+        ],
+    },
+    'game': {
+        'title': 'ゲーム',
+        'color': (235, 92, 104),
+        'items': [
+            ('game_love', 'ゲーム好き', '🎮'), ('no_game', 'ゲームはしない', '🚫'), ('fps', 'FPS', '🔫'),
+            ('rpg', 'RPG', '⚔️'), ('craft', 'クラフト', '🏗️'), ('openworld', 'オープンワールド', '🌍'),
+            ('survival', 'サバイバル', '🏕️'), ('horror', 'ホラー', '👻'), ('party', 'パーティーゲーム', '🎲'),
+            ('mobile', 'スマホゲーム', '📱'), ('pc_game', 'PCゲーム', '💻'), ('console', '家庭用ゲーム', '🕹️'),
+            ('casual', 'エンジョイ勢', '😆'), ('serious_game', 'ガチ勢', '🏆'), ('beginner_ok', '初心者歓迎', '🌱'),
+            ('teach_me', '教えてほしい', '📚'), ('teach_you', '教えるの好き', '🎓'),
+        ],
+    },
+    'purpose': {
+        'title': '交流目的・生活',
+        'color': (75, 200, 145),
+        'items': [
+            ('friends', '友達募集', '🤝'), ('hangout', '一緒に遊びたい', '🎉'), ('talking', '雑談したい', '☕'),
+            ('game_friends', 'ゲーム仲間募集', '🎮'), ('hobby_friends', '趣味友募集', '📚'), ('casual_social', '気軽に交流', '🌈'),
+            ('morning', '朝型', '🌞'), ('night', '夜型', '🌙'), ('indoor', 'インドア', '🏠'),
+            ('outdoor', 'アウトドア', '🏕️'), ('weekend', '休日中心', '📅'), ('weekday', '平日中心', '🗓️'),
+        ],
+    },
+}
+
+BADGE_LOOKUP = {
+    key: {'label': label, 'emoji': emoji, 'category': category, 'color': data['color']}
+    for category, data in BADGE_CATEGORIES.items()
+    for key, label, emoji in data['items']
+}
+
+
+def _badge_keys(profile):
+    raw = (profile or {}).get('badges') or ''
+    return [x for x in raw.split('|') if x in BADGE_LOOKUP]
+
+
+def _badge_labels(profile):
+    labels = [BADGE_LOOKUP[x]['label'] for x in _badge_keys(profile)]
+    custom = ((profile or {}).get('custom_badge') or '').strip()
+    if custom:
+        labels.append(custom)
+    return labels[:4]
+
+
 def _kv(gid, key):
     return db.get_log_channel_id(str(gid), key)
 
@@ -178,6 +257,115 @@ class AboutMePlusView(discord.ui.View):
     async def slot3(self, interaction, button): await self._open(interaction, 3)
 
 
+
+class BadgeCategorySelect(discord.ui.Select):
+    def __init__(self, category, owner_id, current):
+        self.category = category
+        self.owner_id = int(owner_id)
+        data = BADGE_CATEGORIES[category]
+        selected = set(_badge_keys(current))
+        options = [
+            discord.SelectOption(label=label, value=key, emoji=emoji, default=key in selected)
+            for key, label, emoji in data['items']
+        ]
+        super().__init__(
+            placeholder=f"{data['title']}から選択（合計4個まで）",
+            min_values=0,
+            max_values=min(4, len(options)),
+            options=options,
+        )
+
+    async def callback(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message('本人だけ変更できます。', ephemeral=True)
+            return
+        profile = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        existing = _badge_keys(profile)
+        category_keys = {key for key, _, _ in BADGE_CATEGORIES[self.category]['items']}
+        kept = [key for key in existing if key not in category_keys]
+        custom = (profile.get('custom_badge') or '').strip()
+        merged = kept + list(self.values)
+        max_regular = 3 if custom else 4
+        if len(merged) > max_regular:
+            await interaction.response.send_message(
+                f'バッジは自由枠を含めて4個までです。現在の自由バッジ：{custom or "なし"}',
+                ephemeral=True,
+            )
+            return
+        db.update_member_profile(str(interaction.guild.id), str(interaction.user.id), badges='|'.join(merged))
+        await interaction.response.send_message('バッジを更新しました：' + ('・'.join(_badge_labels({**profile, 'badges': '|'.join(merged)})) or '未選択'), ephemeral=True)
+        await publish_profile(interaction.user)
+
+
+class BadgeCategoryView(discord.ui.View):
+    def __init__(self, category, owner_id, current):
+        super().__init__(timeout=180)
+        self.add_item(BadgeCategorySelect(category, owner_id, current))
+
+
+class CustomBadgeModal(discord.ui.Modal, title='自由バッジを設定'):
+    badge = discord.ui.TextInput(
+        label='自由バッジ（1個）',
+        placeholder='例：麻雀、競馬、釣り、Aimer好き',
+        required=False,
+        max_length=18,
+    )
+    def __init__(self, current=None):
+        super().__init__()
+        self.badge.default = ((current or {}).get('custom_badge') or '')
+
+    async def on_submit(self, interaction):
+        profile = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        value = self.badge.value.strip()
+        if value and len(_badge_keys(profile)) >= 4:
+            await interaction.response.send_message('すでに通常バッジを4個選んでいます。自由バッジを入れる場合は通常バッジを3個以下にしてください。', ephemeral=True)
+            return
+        db.update_member_profile(str(interaction.guild.id), str(interaction.user.id), custom_badge=value)
+        await interaction.response.send_message('自由バッジを保存しました。' if value else '自由バッジを削除しました。', ephemeral=True)
+        await publish_profile(interaction.user)
+
+
+class BadgeMenuView(discord.ui.View):
+    def __init__(self, owner_id):
+        super().__init__(timeout=180)
+        self.owner_id = int(owner_id)
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message('本人だけ変更できます。', ephemeral=True)
+            return False
+        return True
+
+    async def _open_category(self, interaction, category):
+        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_message(
+            f"【{BADGE_CATEGORIES[category]['title']}】から選んでください。選び直すと、このカテゴリの選択だけ更新されます。",
+            view=BadgeCategoryView(category, interaction.user.id, current),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label='性格', style=discord.ButtonStyle.primary, row=0)
+    async def personality(self, interaction, button): await self._open_category(interaction, 'personality')
+    @discord.ui.button(label='コミュニケーション', style=discord.ButtonStyle.primary, row=0)
+    async def communication(self, interaction, button): await self._open_category(interaction, 'communication')
+    @discord.ui.button(label='趣味', style=discord.ButtonStyle.primary, row=0)
+    async def hobby(self, interaction, button): await self._open_category(interaction, 'hobby')
+    @discord.ui.button(label='ゲーム', style=discord.ButtonStyle.primary, row=0)
+    async def game(self, interaction, button): await self._open_category(interaction, 'game')
+    @discord.ui.button(label='交流・生活', style=discord.ButtonStyle.primary, row=0)
+    async def purpose(self, interaction, button): await self._open_category(interaction, 'purpose')
+
+    @discord.ui.button(label='自由バッジ', style=discord.ButtonStyle.success, row=1)
+    async def custom(self, interaction, button):
+        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_modal(CustomBadgeModal(current))
+
+    @discord.ui.button(label='すべて解除', style=discord.ButtonStyle.danger, row=1)
+    async def clear(self, interaction, button):
+        db.update_member_profile(str(interaction.guild.id), str(interaction.user.id), badges='', custom_badge='')
+        await interaction.response.send_message('バッジをすべて解除しました。', ephemeral=True)
+        await publish_profile(interaction.user)
+
 class ProfileEditMenu(discord.ui.View):
     def __init__(self, owner_id):
         super().__init__(timeout=180)
@@ -206,6 +394,16 @@ class ProfileEditMenu(discord.ui.View):
     async def about_plus(self, interaction, button):
         await interaction.response.send_message('編集する項目を選んでください。質問と回答を自由に設定できます。', view=AboutMePlusView(interaction.user.id), ephemeral=True)
 
+    @discord.ui.button(label='BADGES', style=discord.ButtonStyle.secondary, row=1)
+    async def badges(self, interaction, button):
+        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        selected = '・'.join(_badge_labels(current)) or '未選択'
+        await interaction.response.send_message(
+            f'あなたを表すバッジを4個まで選べます。\n現在：{selected}',
+            view=BadgeMenuView(interaction.user.id),
+            ephemeral=True,
+        )
+
     @discord.ui.button(label='自由欄', style=discord.ButtonStyle.secondary, row=1)
     async def free(self, interaction, button):
         cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
@@ -231,6 +429,16 @@ class RegistrationPanel(discord.ui.View):
     @discord.ui.button(label='⭐ ABOUT ME+', style=discord.ButtonStyle.secondary, custom_id='member:about_plus', row=1)
     async def about_plus(self, interaction, button):
         await interaction.response.send_message('任意項目です。編集する枠を選んでください。', view=AboutMePlusView(interaction.user.id), ephemeral=True)
+    @discord.ui.button(label='🏅 BADGES', style=discord.ButtonStyle.secondary, custom_id='member:badges', row=2)
+    async def badges(self, interaction, button):
+        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        selected = '・'.join(_badge_labels(current)) or '未選択'
+        await interaction.response.send_message(
+            f'任意項目です。あなたを表すバッジを4個まで選べます。\n現在：{selected}',
+            view=BadgeMenuView(interaction.user.id),
+            ephemeral=True,
+        )
+
     @discord.ui.button(label='📄 自由欄', style=discord.ButtonStyle.secondary, custom_id='member:free_text', row=2)
     async def free_text(self, interaction, button):
         cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
@@ -564,7 +772,7 @@ async def build_profile_card_file(member, p):
     # セクション座標
     col1_x, col2_x, col3_x, col4_x = 78, 545, 905, 1260
     top_y = 410
-    for x, title in ((col1_x, 'ABOUT ME'), (col2_x, 'ABOUT ME+'), (col3_x, 'PLAY STYLE'), (col4_x, 'RANKING')):
+    for x, title in ((col1_x, 'ABOUT ME'), (col2_x, 'ABOUT ME+'), (col3_x, 'BADGES'), (col4_x, 'RANKING')):
         draw.text((x, top_y), title, font=section, fill=(78, 145, 255), anchor='lm')
     for x in (515, 875, 1235):
         draw.line((x, 392, x, 692), fill=line, width=2)
@@ -611,18 +819,36 @@ async def build_profile_card_file(member, p):
     vc_rank = stats['vc_rank']
     chat_rank = stats['chat_rank']
 
-    # PLAY STYLE：実データから簡易ラベルを生成
-    vc_style = 'よくVCする' if vc_total >= 5 * 3600 else ('VCはまったり' if vc_total > 0 else '—')
-    chat_style = 'よく喋る' if chat_total >= 100 else ('聞き専寄り' if chat_total > 0 else '—')
-    activity_style = '今週も活動中' if (vc_total or chat_total) else '—'
-    style_rows = [('VCスタイル', vc_style), ('チャット', chat_style), ('アクティビティ', activity_style)]
-    py = 452
-    for label, value in style_rows:
-        draw.text((col3_x, py), label, font=small_b, fill=text_sub, anchor='la')
-        box = (col3_x, py + 31, 1195, py + 73)
-        draw.rounded_rectangle(box, radius=11, fill=(11, 22, 38), outline=(35, 58, 88), width=2)
-        draw.text((col3_x + 15, py + 52), value, font=small, fill=text_main, anchor='lm')
-        py += 87
+    # BADGES：本人が選んだ4つを2列×2段で表示
+    selected_badges = []
+    for key in _badge_keys(p):
+        info = BADGE_LOOKUP[key]
+        selected_badges.append((info['label'], info['color']))
+    custom_badge = (p.get('custom_badge') or '').strip()
+    if custom_badge:
+        selected_badges.append((custom_badge, (130, 145, 170)))
+    selected_badges = selected_badges[:4]
+    while len(selected_badges) < 4:
+        selected_badges.append(('未設定', (65, 78, 100)))
+
+    badge_boxes = [
+        (col3_x, 452, 1044, 528), (1055, 452, 1195, 528),
+        (col3_x, 544, 1044, 620), (1055, 544, 1195, 620),
+    ]
+    for (label, color), box in zip(selected_badges, badge_boxes):
+        fill = tuple(max(10, int(c * 0.22)) for c in color)
+        draw.rounded_rectangle(box, radius=15, fill=fill, outline=color, width=2)
+        dot_x = box[0] + 18
+        dot_y = (box[1] + box[3]) // 2
+        draw.ellipse((dot_x - 7, dot_y - 7, dot_x + 7, dot_y + 7), fill=color)
+        max_w = box[2] - box[0] - 52
+        badge_label_font = _fit_text(draw, label, max_w, 22, 16, bold=True)
+        display = label
+        while display and draw.textbbox((0, 0), display, font=badge_label_font)[2] > max_w:
+            display = display[:-1]
+        if display != label:
+            display = display.rstrip() + '…'
+        draw.text((box[0] + 38, dot_y), display, font=badge_label_font, fill=text_main, anchor='lm')
 
     # RANKING：既存activity_logから実数と順位を表示
     joined_days = 0
