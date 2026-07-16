@@ -924,9 +924,9 @@ async def build_profile_card_file(member, p):
     # ── 中段：4つの透明枠 ──
     title_font = _find_japanese_font(27, bold=True)
     draw.text((55, 438), 'ABOUT ME', font=title_font, fill=title_col)
-    draw.text((378, 438), 'ABOUT ME+', font=title_font, fill=title_col)
-    draw.text((719, 438), 'BADGES', font=title_font, fill=title_col)
-    draw.text((1055, 438), 'RANKING', font=title_font, fill=title_col)
+    draw.text((398, 438), 'ABOUT ME+', font=title_font, fill=title_col)
+    draw.text((744, 438), 'BADGES', font=title_font, fill=title_col)
+    draw.text((1085, 438), 'RANKING', font=title_font, fill=title_col)
 
     # ABOUT ME（枠 34,412 ～ 337,831）
     rows = [('名前', name), ('MBTI', mbti), ('趣味', hobby), ('一言', comment)]
@@ -942,11 +942,11 @@ async def build_profile_card_file(member, p):
         q = (p.get(f'about_q{i}') or '').strip() or f'自由項目{i}'
         a = (p.get(f'about_a{i}') or '').strip() or '—'
         qf = _fit_text(draw, q, 270, 21, 14, bold=True)
-        draw.text((378, py), q, font=qf, fill=(224, 205, 237))
-        box = (378, py + 31, 653, py + 83)
+        draw.text((398, py), q, font=qf, fill=(224, 205, 237))
+        box = (398, py + 31, 673, py + 83)
         draw.rounded_rectangle(box, radius=10, fill=(18, 14, 54, 165), outline=(112, 83, 155, 210), width=1)
         af = _fit_text(draw, a, 246, 20, 13)
-        draw.text((392, py + 58), a, font=af, fill=text_main, anchor='lm')
+        draw.text((412, py + 58), a, font=af, fill=text_main, anchor='lm')
         py += 105
 
     # BADGES（枠 698,412 ～ 1016,831）
@@ -961,8 +961,8 @@ async def build_profile_card_file(member, p):
     while len(selected) < 4:
         selected.append(('未設定', (98, 88, 132)))
 
-    boxes = [(720, 540, 844, 650), (866, 540, 990, 650),
-             (720, 682, 844, 792), (866, 682, 990, 792)]
+    boxes = [(745, 540, 865, 650), (883, 540, 1003, 650),
+             (745, 682, 865, 792), (883, 682, 1003, 792)]
     for (label, color), box in zip(selected, boxes):
         fill = tuple(max(18, int(c * .20)) for c in color) + (215,)
         draw.rounded_rectangle(box, radius=17, fill=fill, outline=color, width=2)
@@ -984,12 +984,12 @@ async def build_profile_card_file(member, p):
     ry = [548, 670, 786]
     for (lab, val, detail, col), yy in zip(ranks, ry):
         lf = _fit_text(draw, lab, 176, 20, 14)
-        draw.text((1055, yy), lab, font=lf, fill=text_main, anchor='lm')
+        draw.text((1085, yy), lab, font=lf, fill=text_main, anchor='lm')
         vf = _fit_text(draw, val, 90, 27, 18, bold=True)
-        draw.text((1320, yy), val, font=vf, fill=col, anchor='rm')
+        draw.text((1328, yy), val, font=vf, fill=col, anchor='rm')
         if detail:
             df = _fit_text(draw, detail, 120, 19, 13)
-            draw.text((1320, yy + 32), detail, font=df, fill=text_sub, anchor='rm')
+            draw.text((1328, yy + 32), detail, font=df, fill=text_sub, anchor='rm')
 
     # ── 下段：好きなこと（枠 34,855 ～ 1147,1056） ──
     free = ((p.get('free_text') or '').strip() or hobby or '—').replace('☆', '★')
