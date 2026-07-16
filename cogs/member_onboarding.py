@@ -114,6 +114,104 @@ class ProfileModal(discord.ui.Modal, title='プロフィール入力・編集'):
         await publish_profile(interaction.user)
         await report_promotion(interaction)
 
+
+class AboutSlotModal(discord.ui.Modal):
+    question = discord.ui.TextInput(label='質問', placeholder='例：好きなアニメ', max_length=40)
+    answer = discord.ui.TextInput(label='回答', placeholder='例：攻殻機動隊', style=discord.TextStyle.paragraph, max_length=160)
+
+    def __init__(self, slot, current=None):
+        super().__init__(title=f'ABOUT ME+ 項目{slot}')
+        self.slot = int(slot)
+        current = current or {}
+        self.question.default = current.get(f'about_q{slot}') or ''
+        self.answer.default = current.get(f'about_a{slot}') or ''
+
+    async def on_submit(self, interaction):
+        db.update_member_profile(
+            str(interaction.guild.id), str(interaction.user.id),
+            **{f'about_q{self.slot}': self.question.value.strip(),
+               f'about_a{self.slot}': self.answer.value.strip()}
+        )
+        await interaction.response.send_message(f'✅ ABOUT ME+ の項目{self.slot}を保存しました。', ephemeral=True)
+        await publish_profile(interaction.user)
+
+
+class FreeTextModal(discord.ui.Modal, title='自由欄を編集'):
+    free_text = discord.ui.TextInput(
+        label='自由欄',
+        placeholder='好きなこと、最近ハマっていること、誘ってほしいゲームなど自由にどうぞ',
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=300,
+    )
+
+    def __init__(self, current=None):
+        super().__init__()
+        self.free_text.default = (current or {}).get('free_text') or ''
+
+    async def on_submit(self, interaction):
+        db.update_member_profile(str(interaction.guild.id), str(interaction.user.id), free_text=self.free_text.value.strip())
+        await interaction.response.send_message('✅ 自由欄を保存しました。', ephemeral=True)
+        await publish_profile(interaction.user)
+
+
+class AboutMePlusView(discord.ui.View):
+    def __init__(self, owner_id):
+        super().__init__(timeout=180)
+        self.owner_id = int(owner_id)
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message('本人だけ編集できます。', ephemeral=True)
+            return False
+        return True
+
+    async def _open(self, interaction, slot):
+        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_modal(AboutSlotModal(slot, current))
+
+    @discord.ui.button(label='項目1', style=discord.ButtonStyle.primary)
+    async def slot1(self, interaction, button): await self._open(interaction, 1)
+    @discord.ui.button(label='項目2', style=discord.ButtonStyle.primary)
+    async def slot2(self, interaction, button): await self._open(interaction, 2)
+    @discord.ui.button(label='項目3', style=discord.ButtonStyle.primary)
+    async def slot3(self, interaction, button): await self._open(interaction, 3)
+
+
+class ProfileEditMenu(discord.ui.View):
+    def __init__(self, owner_id):
+        super().__init__(timeout=180)
+        self.owner_id = int(owner_id)
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message('このプロフィールは本人だけ編集できます。', ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label='基本プロフィール', style=discord.ButtonStyle.success, row=0)
+    async def basic(self, interaction, button):
+        cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_modal(ProfileModal(cur))
+
+    @discord.ui.button(label='MBTI', style=discord.ButtonStyle.primary, row=0)
+    async def mbti(self, interaction, button):
+        await interaction.response.send_message('MBTIを選択してください。', view=MBTIView(), ephemeral=True)
+
+    @discord.ui.button(label='GAME', style=discord.ButtonStyle.primary, row=0)
+    async def games(self, interaction, button):
+        await interaction.response.send_message('遊ぶゲームを選択または自由入力してください。', view=GameView(), ephemeral=True)
+
+    @discord.ui.button(label='ABOUT ME+', style=discord.ButtonStyle.secondary, row=1)
+    async def about_plus(self, interaction, button):
+        await interaction.response.send_message('編集する項目を選んでください。質問と回答を自由に設定できます。', view=AboutMePlusView(interaction.user.id), ephemeral=True)
+
+    @discord.ui.button(label='自由欄', style=discord.ButtonStyle.secondary, row=1)
+    async def free(self, interaction, button):
+        cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_modal(FreeTextModal(cur))
+
+
 class RegistrationPanel(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -130,7 +228,14 @@ class RegistrationPanel(discord.ui.View):
     async def profile(self, interaction, button):
         cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id))
         await interaction.response.send_modal(ProfileModal(cur))
-    @discord.ui.button(label='✅ 登録状況', style=discord.ButtonStyle.secondary, custom_id='member:status', row=1)
+    @discord.ui.button(label='⭐ ABOUT ME+', style=discord.ButtonStyle.secondary, custom_id='member:about_plus', row=1)
+    async def about_plus(self, interaction, button):
+        await interaction.response.send_message('任意項目です。編集する枠を選んでください。', view=AboutMePlusView(interaction.user.id), ephemeral=True)
+    @discord.ui.button(label='📄 自由欄', style=discord.ButtonStyle.secondary, custom_id='member:free_text', row=2)
+    async def free_text(self, interaction, button):
+        cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
+        await interaction.response.send_modal(FreeTextModal(cur))
+    @discord.ui.button(label='✅ 登録状況', style=discord.ButtonStyle.secondary, custom_id='member:status', row=2)
     async def status(self, interaction, button):
         p = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
         rule = db.get_member_rule(str(interaction.guild.id), str(interaction.user.id))
@@ -303,61 +408,125 @@ def _wrap_by_width(draw, text, font, max_width, max_lines=2):
     return lines[:max_lines]
 
 
-async def build_profile_card_file(member, p):
-    """ゲーム風の横長プロフィールカードを生成する。
+def _profile_weekly_stats(guild_id, user_id):
+    """過去7日間のVC・チャット合計とサーバー内順位を返す。"""
+    import time
+    since_hour = int(time.time()) // 3600 - (24 * 7)
+    result = {
+        'vc_total': 0, 'vc_rank': None,
+        'chat_total': 0, 'chat_rank': None,
+    }
+    conn = db.get_conn()
+    try:
+        cur = conn.cursor()
+        for kind in ('vc', 'chat'):
+            try:
+                cur.execute(
+                    """SELECT user_id, SUM(amount) AS total
+                       FROM activity_log
+                       WHERE guild_id=? AND kind=? AND ts_hour>=?
+                       GROUP BY user_id
+                       ORDER BY total DESC, user_id ASC""",
+                    (str(guild_id), kind, int(since_hour)),
+                )
+            except Exception:
+                continue
+            rows = [(str(uid), int(total or 0)) for uid, total in cur.fetchall()]
+            for index, (uid, total) in enumerate(rows, start=1):
+                if uid == str(user_id):
+                    result[f'{kind}_total'] = total
+                    result[f'{kind}_rank'] = index
+                    break
+    finally:
+        conn.close()
+    return result
 
-    参照画像の情報配置を参考にしつつ、背景や装飾はBOTORI独自の描画にしている。
-    現在DBに存在しない項目は空欄のまま表示する。
-    """
+
+def _format_profile_vc(seconds):
+    seconds = max(0, int(seconds or 0))
+    hours, rem = divmod(seconds, 3600)
+    minutes = rem // 60
+    if hours:
+        return f'{hours}時間{minutes}分'
+    if minutes:
+        return f'{minutes}分'
+    return '0分'
+
+
+def _draw_centered_text(draw, box, text, font, fill):
+    x1, y1, x2, y2 = box
+    draw.text(((x1 + x2) / 2, (y1 + y2) / 2), text, font=font, fill=fill, anchor='mm')
+
+
+async def build_profile_card_file(member, p):
+    """BOTORI用の横長プロフィール画像カードを生成する。"""
+    import random
+    import re
+    from datetime import datetime, timezone
+
     width, height = 1600, 860
-    img = Image.new('RGB', (width, height), '#07101d')
+    img = Image.new('RGB', (width, height), '#050b16')
     draw = ImageDraw.Draw(img)
 
-    # 背景：夜空のグラデーション
-    top = (6, 18, 39)
-    bottom = (2, 8, 17)
+    # 配色
+    accent = (57, 122, 255)
+    accent_soft = (27, 72, 145)
+    text_main = (241, 246, 255)
+    text_sub = (159, 180, 216)
+    panel_fill = (5, 15, 29)
+    panel_alt = (8, 21, 39)
+    line = (31, 63, 101)
+
+    # 全体背景グラデーション
+    top = (5, 15, 34)
+    bottom = (1, 7, 15)
     for y in range(height):
         t = y / max(1, height - 1)
         color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
         draw.line((0, y, width, y), fill=color)
 
-    # 星・月・遠景（外部画像不要の控えめな背景）
-    import random
-    rng = random.Random(int(member.id) % 100000)
-    for _ in range(130):
-        x = rng.randint(360, width - 40)
-        y = rng.randint(35, 330)
-        r = rng.choice((1, 1, 1, 2))
-        c = rng.choice(((130, 165, 220), (170, 190, 230), (90, 130, 195)))
-        draw.ellipse((x-r, y-r, x+r, y+r), fill=c)
-    draw.ellipse((1250, 58, 1355, 163), fill=(192, 217, 246))
-    draw.ellipse((1278, 55, 1365, 143), fill=(12, 27, 54))
-
-    # 山・城のシルエット
-    draw.polygon([(700, 350), (820, 260), (930, 350), (1060, 235), (1190, 350), (1330, 275), (1520, 350), (1600, 350), (1600, 430), (650, 430)], fill=(4, 12, 25))
-    for bx, by, bw, bh in [(1110, 215, 36, 145), (1160, 250, 30, 110), (1210, 190, 42, 170), (1270, 255, 26, 105)]:
-        draw.rectangle((bx, by, bx+bw, by+bh), fill=(5, 13, 27))
-        draw.polygon([(bx-5, by), (bx+bw//2, by-35), (bx+bw+5, by)], fill=(5, 13, 27))
-
-    # メイン外枠・上部バナー
-    accent = (55, 116, 255)
+    # 外枠・各パネル
     draw.rounded_rectangle((28, 28, width-28, height-28), radius=34, outline=accent, width=3)
-    draw.rounded_rectangle((48, 48, width-48, 352), radius=26, fill=(7, 20, 40), outline=(34, 70, 125), width=2)
-    # 半透明風の下部パネル
-    draw.rounded_rectangle((48, 370, width-48, 720), radius=24, fill=(5, 14, 25), outline=(31, 53, 78), width=2)
-    draw.rounded_rectangle((48, 735, width-48, 812), radius=20, fill=(5, 14, 25), outline=(31, 53, 78), width=2)
+    header_box = (48, 48, width-48, 352)
+    content_box = (48, 370, width-48, 720)
+    footer_box = (48, 735, width-48, 812)
+    draw.rounded_rectangle(header_box, radius=26, fill=panel_alt, outline=(38, 79, 137), width=2)
+    draw.rounded_rectangle(content_box, radius=24, fill=panel_fill, outline=line, width=2)
+    draw.rounded_rectangle(footer_box, radius=20, fill=panel_fill, outline=line, width=2)
+
+    # ヘッダー右側の夜景装飾（パネルの上に描く）
+    rng = random.Random(int(member.id) % 999983)
+    for _ in range(95):
+        x = rng.randint(760, 1515)
+        y = rng.randint(66, 250)
+        r = rng.choice((1, 1, 1, 2))
+        color = rng.choice(((115, 158, 222), (181, 207, 241), (78, 121, 193)))
+        draw.ellipse((x-r, y-r, x+r, y+r), fill=color)
+    # 月と青い光
+    draw.ellipse((1270, 74, 1374, 178), fill=(188, 216, 247))
+    draw.ellipse((1297, 70, 1383, 157), fill=panel_alt)
+    for radius, alpha_color in ((150, (13, 38, 77)), (110, (19, 53, 102)), (70, (25, 70, 137))):
+        cx, cy = 1110, 212
+        draw.ellipse((cx-radius, cy-radius, cx+radius, cy+radius), outline=alpha_color, width=2)
+    # 城・山シルエット
+    draw.polygon([(650, 352), (790, 280), (910, 352), (1050, 255), (1170, 352), (1310, 292), (1480, 352)], fill=(3, 10, 21))
+    for bx, by, bw, bh in [(1060, 235, 35, 117), (1110, 270, 28, 82), (1150, 214, 40, 138), (1210, 265, 26, 87)]:
+        draw.rectangle((bx, by, bx+bw, by+bh), fill=(2, 8, 18))
+        draw.polygon([(bx-5, by), (bx+bw//2, by-30), (bx+bw+5, by)], fill=(2, 8, 18))
+    draw.line((700, 338, 1485, 338), fill=(18, 55, 104), width=2)
 
     # フォント
-    tiny = _find_japanese_font(20)
-    small = _find_japanese_font(24)
-    small_b = _find_japanese_font(24, bold=True)
-    medium = _find_japanese_font(30)
-    medium_b = _find_japanese_font(30, bold=True)
+    tiny = _find_japanese_font(19)
+    small = _find_japanese_font(23)
+    small_b = _find_japanese_font(23, bold=True)
+    medium = _find_japanese_font(29)
+    medium_b = _find_japanese_font(29, bold=True)
     section = _find_japanese_font(25, bold=True)
-    name = p.get('nickname') or member.display_name
-    name_font = _fit_text(draw, name, 620, 68, 38, bold=True)
+    name = (p.get('nickname') or member.display_name).strip()
+    name_font = _fit_text(draw, name, 610, 70, 40, bold=True)
 
     # アバター
+    avatar_box = (70, 72, 356, 358)
     try:
         avatar_bytes = await member.display_avatar.with_size(512).read()
         avatar = Image.open(io.BytesIO(avatar_bytes)).convert('RGB')
@@ -369,97 +538,118 @@ async def build_profile_card_file(member, p):
         ring = Image.new('RGB', (286, 286), accent)
         img.paste(ring, (70, 72), ring_mask)
         img.paste(avatar, (83, 85), mask)
-        # オンライン風ドット（実際のpresence権限に依存しない装飾）
-        draw.ellipse((315, 300, 352, 337), fill=(35, 210, 115), outline=(7, 20, 40), width=5)
+        draw.ellipse((315, 300, 352, 337), fill=(35, 210, 115), outline=panel_alt, width=5)
     except Exception:
-        draw.ellipse((70, 72, 356, 358), fill=accent)
+        draw.ellipse(avatar_box, fill=accent)
         draw.ellipse((83, 85, 343, 345), fill=(27, 39, 61))
 
-    # ヘッダー
-    draw.text((405, 74), 'MEMBER PROFILE', font=small_b, fill=(76, 143, 255))
-    draw.text((405, 112), name, font=name_font, fill=(245, 248, 255))
-    draw.text((410, 185), f'@{member.name}', font=small, fill=(139, 154, 184))
+    # ヘッダー文字（anchorで縦位置を統一）
+    draw.text((405, 92), 'MEMBER PROFILE', font=small_b, fill=(81, 148, 255), anchor='lm')
+    draw.text((405, 155), name, font=name_font, fill=text_main, anchor='lm')
+    draw.text((410, 208), f'@{member.name}', font=small, fill=(139, 158, 190), anchor='lm')
 
     mbti = (p.get('mbti') or '').strip()
-    if mbti:
-        box = draw.textbbox((0, 0), mbti, font=small_b)
-        bw = box[2] - box[0] + 30
-        draw.rounded_rectangle((410, 226, 410+bw, 270), radius=12, fill=(45, 30, 105), outline=(100, 72, 215), width=2)
-        draw.text((425, 234), mbti, font=small_b, fill=(224, 217, 255))
+    badge_text = mbti or '未設定'
+    badge_font = small_b
+    badge_w = draw.textbbox((0, 0), badge_text, font=badge_font)[2] + 34
+    badge_box = (410, 229, 410 + badge_w, 275)
+    draw.rounded_rectangle(badge_box, radius=12, fill=(43, 31, 100), outline=(104, 78, 220), width=2)
+    _draw_centered_text(draw, badge_box, badge_text, badge_font, (226, 220, 255))
 
     comment = (p.get('comment') or '').strip()
-    quote = comment if comment else ''
-    qfont = _fit_text(draw, quote, 830, 32, 22) if quote else medium
-    draw.text((405, 300), f'“ {quote} ”' if quote else '“  ”', font=qfont, fill=(225, 232, 244))
+    quote = comment or '一言はまだ登録されていません'
+    quote_font = _fit_text(draw, quote, 790, 31, 21)
+    draw.text((405, 315), f'“ {quote} ”', font=quote_font, fill=(224, 232, 246), anchor='lm')
 
-    # セクション見出し
+    # セクション座標
     col1_x, col2_x, col3_x, col4_x = 78, 545, 905, 1260
-    top_y = 392
-    draw.text((col1_x, top_y), 'ABOUT ME', font=section, fill=(74, 142, 255))
-    draw.text((col2_x, top_y), 'FAVORITE GAMES', font=section, fill=(74, 142, 255))
-    draw.text((col3_x, top_y), 'PLAY STYLE', font=section, fill=(74, 142, 255))
-    draw.text((col4_x, top_y), 'RANKING', font=section, fill=(74, 142, 255))
-
-    # 縦区切り線
+    top_y = 410
+    for x, title in ((col1_x, 'ABOUT ME'), (col2_x, 'ABOUT ME+'), (col3_x, 'PLAY STYLE'), (col4_x, 'RANKING')):
+        draw.text((x, top_y), title, font=section, fill=(78, 145, 255), anchor='lm')
     for x in (515, 875, 1235):
-        draw.line((x, 392, x, 692), fill=(30, 52, 78), width=2)
+        draw.line((x, 392, x, 692), fill=line, width=2)
 
-    # ABOUT ME
+    # ABOUT ME：各行を同じ高さに揃える
     hobby = (p.get('hobby') or '').strip()
-    about_rows = [
-        ('名前', name),
-        ('MBTI', mbti),
-        ('趣味', hobby),
-        ('一言', comment),
+    about_rows = [('名前', name), ('MBTI', mbti or '—'), ('趣味', hobby or '—'), ('一言', comment or '—')]
+    row_centers = [468, 528, 588, 648]
+    for (label, value), cy in zip(about_rows, row_centers):
+        draw.text((col1_x, cy), label, font=small_b, fill=text_sub, anchor='lm')
+        value_font = _fit_text(draw, value, 285, 24, 18)
+        value_display = value
+        while value_display and draw.textbbox((0, 0), value_display, font=value_font)[2] > 285:
+            value_display = value_display[:-1]
+        if value_display != value:
+            value_display = value_display.rstrip() + '…'
+        draw.text((205, cy), value_display, font=value_font, fill=text_main, anchor='lm')
+
+    # ABOUT ME+：本人が自由に設定できる3つの質問と回答
+    plus_rows = []
+    for index in (1, 2, 3):
+        question = (p.get(f'about_q{index}') or '').strip()
+        answer = (p.get(f'about_a{index}') or '').strip()
+        plus_rows.append((question or f'自由項目{index}', answer or '—'))
+    py_plus = 450
+    for question, answer in plus_rows:
+        q_font = _fit_text(draw, question, 285, 22, 17, bold=True)
+        a_font = _fit_text(draw, answer, 285, 21, 16)
+        draw.text((col2_x, py_plus), question, font=q_font, fill=text_sub, anchor='la')
+        box = (col2_x, py_plus + 29, 835, py_plus + 73)
+        draw.rounded_rectangle(box, radius=11, fill=(11, 22, 38), outline=(35, 58, 88), width=2)
+        answer_display = answer
+        while answer_display and draw.textbbox((0,0), answer_display, font=a_font)[2] > 255:
+            answer_display = answer_display[:-1]
+        if answer_display != answer:
+            answer_display = answer_display.rstrip() + '…'
+        draw.text((col2_x + 14, py_plus + 51), answer_display, font=a_font, fill=text_main, anchor='lm')
+        py_plus += 86
+
+    # 週間アクティビティを取得
+    stats = _profile_weekly_stats(member.guild.id, member.id)
+    vc_total = stats['vc_total']
+    chat_total = stats['chat_total']
+    vc_rank = stats['vc_rank']
+    chat_rank = stats['chat_rank']
+
+    # PLAY STYLE：実データから簡易ラベルを生成
+    vc_style = 'よくVCする' if vc_total >= 5 * 3600 else ('VCはまったり' if vc_total > 0 else '—')
+    chat_style = 'よく喋る' if chat_total >= 100 else ('聞き専寄り' if chat_total > 0 else '—')
+    activity_style = '今週も活動中' if (vc_total or chat_total) else '—'
+    style_rows = [('VCスタイル', vc_style), ('チャット', chat_style), ('アクティビティ', activity_style)]
+    py = 452
+    for label, value in style_rows:
+        draw.text((col3_x, py), label, font=small_b, fill=text_sub, anchor='la')
+        box = (col3_x, py + 31, 1195, py + 73)
+        draw.rounded_rectangle(box, radius=11, fill=(11, 22, 38), outline=(35, 58, 88), width=2)
+        draw.text((col3_x + 15, py + 52), value, font=small, fill=text_main, anchor='lm')
+        py += 87
+
+    # RANKING：既存activity_logから実数と順位を表示
+    joined_days = 0
+    if getattr(member, 'joined_at', None):
+        now = datetime.now(timezone.utc)
+        joined_days = max(1, (now - member.joined_at).days + 1)
+    rank_rows = [
+        ('VC時間（今週）', f'{vc_rank}位' if vc_rank else '—', _format_profile_vc(vc_total)),
+        ('チャット数（今週）', f'{chat_rank}位' if chat_rank else '—', f'{chat_total:,}件'),
+        ('サーバー参加日数', f'{joined_days}日' if joined_days else '—', ''),
     ]
-    ay = 448
-    for label, value in about_rows:
-        draw.text((col1_x, ay), label, font=small_b, fill=(151, 169, 202))
-        lines = _wrap_by_width(draw, value, small, 280, max_lines=2) if value else ['']
-        for i, line in enumerate(lines):
-            draw.text((205, ay), line, font=small, fill=(235, 239, 248))
-        ay += 62 if len(lines) == 1 else 82
+    ry = 470
+    for label, rank_value, detail in rank_rows:
+        draw.text((col4_x, ry), label, font=small, fill=(219, 227, 242), anchor='lm')
+        color = (68, 160, 255) if 'VC' in label else ((255, 91, 121) if 'チャット' in label else (81, 215, 145))
+        draw.text((1510, ry), rank_value, font=small_b, fill=color, anchor='rm')
+        if detail:
+            draw.text((1510, ry + 30), detail, font=tiny, fill=text_sub, anchor='rm')
+        ry += 83
 
-    # GAMES：タグ風。カンマ・中点・改行に対応
-    raw_games = (p.get('games') or '').strip()
-    import re
-    games = [g.strip() for g in re.split(r'[,、・\n]+', raw_games) if g.strip()]
-    gx, gy = col2_x, 448
-    for game in games[:8]:
-        f = _fit_text(draw, game, 240, 24, 18, bold=True)
-        tw = draw.textbbox((0, 0), game, font=f)[2]
-        tag_w = min(270, tw + 38)
-        if gx + tag_w > 845:
-            gx = col2_x
-            gy += 58
-        draw.rounded_rectangle((gx, gy, gx+tag_w, gy+44), radius=12, fill=(19, 27, 43), outline=(38, 57, 88), width=2)
-        draw.text((gx+18, gy+9), game, font=f, fill=(238, 242, 250))
-        gx += tag_w + 12
-
-    # PLAY STYLE（現状DBにないため空欄）
-    blank_rows = [('VCスタイル', ''), ('チャット', ''), ('イベント', '')]
-    py = 448
-    for label, value in blank_rows:
-        draw.text((col3_x, py), label, font=small_b, fill=(151, 169, 202))
-        draw.rounded_rectangle((col3_x, py+34, 1195, py+72), radius=10, fill=(12, 21, 35), outline=(29, 47, 72), width=2)
-        if value:
-            draw.text((col3_x+14, py+42), value, font=small, fill=(235, 239, 248))
-        py += 88
-
-    # RANKING（現状プロフィールDBにないため空欄）
-    rank_rows = [('VC時間（今週）', ''), ('チャット数（今週）', ''), ('累計ログイン日数', '')]
-    ry = 448
-    for label, value in rank_rows:
-        draw.text((col4_x, ry), label, font=small, fill=(220, 227, 240))
-        if value:
-            draw.text((1510, ry), value, font=small_b, fill=(66, 154, 255), anchor='ra')
-        ry += 66
-
-    # 下部：好きなこと（趣味を流用）
-    draw.text((78, 755), '好きなこと', font=section, fill=(74, 142, 255))
-    hobby_lines = _wrap_by_width(draw, hobby, medium, 1240, max_lines=1) if hobby else ['']
-    draw.text((260, 754), hobby_lines[0] if hobby_lines else '', font=medium, fill=(236, 241, 249))
-    draw.text((1320, 758), member.guild.name[:24], font=tiny, fill=(106, 132, 184))
+    # 下部：好きなこと + BOTORIロゴ文字
+    draw.text((78, 773), '好きなこと', font=section, fill=(78, 145, 255), anchor='lm')
+    hobby_display = (p.get('free_text') or '').strip() or hobby or '—'
+    hobby_font = _fit_text(draw, hobby_display, 1020, 28, 19)
+    draw.text((260, 773), hobby_display, font=hobby_font, fill=text_main, anchor='lm')
+    draw.text((1485, 773), 'BOTORI', font=small_b, fill=(91, 137, 220), anchor='rm')
+    draw.text((1485, 797), 'MEMBER PROFILE', font=tiny, fill=(72, 101, 153), anchor='rm')
 
     out = io.BytesIO()
     img.save(out, format='PNG', optimize=True)
@@ -467,11 +657,24 @@ async def build_profile_card_file(member, p):
     return discord.File(out, filename=f'profile_{member.id}.png')
 
 
-class ProfileLinkView(discord.ui.View):
-    def __init__(self, member_id):
+class ProfileCardView(discord.ui.View):
+    def __init__(self, member_id=None):
         super().__init__(timeout=None)
-        self.add_item(discord.ui.Button(label='プロフィールを開く', style=discord.ButtonStyle.link,
-                                        url=f'https://discord.com/users/{member_id}'))
+        if member_id:
+            self.add_item(discord.ui.Button(label='プロフィールを開く', style=discord.ButtonStyle.link,
+                                            url=f'https://discord.com/users/{member_id}', row=0))
+
+    @discord.ui.button(label='編集', emoji='✏️', style=discord.ButtonStyle.secondary,
+                       custom_id='member:profile_card_edit', row=0)
+    async def edit_profile(self, interaction, button):
+        target = interaction.message.mentions[0] if interaction.message and interaction.message.mentions else None
+        if target is None:
+            await interaction.response.send_message('プロフィールの所有者を確認できませんでした。', ephemeral=True)
+            return
+        if interaction.user.id != target.id:
+            await interaction.response.send_message('このプロフィールは本人だけ編集できます。', ephemeral=True)
+            return
+        await interaction.response.send_message('編集する項目を選んでください。', view=ProfileEditMenu(target.id), ephemeral=True)
 
 
 async def publish_profile(member):
@@ -502,9 +705,9 @@ async def publish_profile(member):
         if mode == 'IMAGE':
             file = await build_profile_card_file(member, p)
             if msg:
-                await msg.edit(content=member.mention, embed=None, attachments=[file], view=ProfileLinkView(member.id))
+                await msg.edit(content=member.mention, embed=None, attachments=[file], view=ProfileCardView(member.id))
             else:
-                msg = await channel.send(content=member.mention, file=file, view=ProfileLinkView(member.id))
+                msg = await channel.send(content=member.mention, file=file, view=ProfileCardView(member.id))
         else:
             embed = directory_profile_embed(member, p)
             if msg:
@@ -560,6 +763,7 @@ class MemberOnboarding(commands.Cog):
         self.profile_messages = {}
         self.sticky_tasks = {}
         bot.add_view(RegistrationPanel())
+        bot.add_view(ProfileCardView())
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
