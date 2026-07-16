@@ -77,7 +77,8 @@ def build_admin_embed(interaction: discord.Interaction = None) -> discord.Embed:
             "🎯 **残高を設定** — ちょうどその額に上書き\n"
             "📢 **全員に配布** — このサーバーの全員に加算\n"
             "📋 **ログ設定** — カテゴリ別にログchを指定／OFF\n"
-            "📣 **アナウンス** — 設定したchへお知らせを投稿"
+            "📣 **アナウンス** — 設定したchへお知らせを投稿\n"
+            "👥 **メンバー管理** — 参加登録・プロフィール・本メンバー付与"
         ),
         inline=False,
     )
@@ -126,6 +127,12 @@ class AdminMenuView(discord.ui.View):
         await interaction.response.edit_message(
             embed=build_tempvc_embed(interaction.guild),
             view=TempVCConfigView(self.admin_id))
+
+    @discord.ui.button(label="👥 メンバー管理", style=discord.ButtonStyle.success, row=3)
+    async def member_management(self, interaction, button):
+        if not await self._guard(interaction): return
+        from cogs.member_onboarding import admin_embed, MemberAdminView
+        await interaction.response.edit_message(embed=admin_embed(interaction.guild), view=MemberAdminView())
 
     @discord.ui.button(label="📊 非アクティブ抽出", style=discord.ButtonStyle.secondary, row=3)
     async def inactive(self, interaction, button):
@@ -483,6 +490,7 @@ class AnnounceBuilderView(discord.ui.View):
         self.body_text = body
         self.pairs = []  # [{key, role_id, raw}]
         self.line_all = False
+        self.sticky = False
         self.add_item(AnnounceRoleSelect(self))
 
     def _rr_lines(self):
@@ -500,8 +508,8 @@ class AnnounceBuilderView(discord.ui.View):
                         value="（なし）役職を選び絵文字を割り当てると追加されます。無しでも投稿OK。",
                         inline=False)
         e.add_field(name="📩 全員のLINEにも送る",
-                    value="✅ ON（全メンバーの受信箱に届く）" if self.line_all else "OFF",
-                    inline=False)
+                    value="✅ ON（全メンバーの受信箱に届く）" if self.line_all else "OFF", inline=False)
+        e.add_field(name="📌 常に一番下へ固定", value="✅ ON" if self.sticky else "OFF", inline=False)
         ch = guild.get_channel(int(self.channel_id))
         e.set_footer(text=f"送信先: #{ch.name if ch else '不明'} ／ 「投稿する」で確定")
         return e
@@ -525,6 +533,15 @@ class AnnounceBuilderView(discord.ui.View):
             embed.add_field(name="🎭 リアクションで役職GET", value=self._rr_lines(), inline=False)
         try:
             msg = await ch.send(embed=embed)
+            if self.sticky:
+                import json
+                gid = str(interaction.guild.id)
+                db.set_log_channel(gid, 'sticky_channel', str(ch.id))
+                db.set_log_channel(gid, 'sticky_message', str(msg.id))
+                db.set_setting_text(gid, 'sticky_content', json.dumps({
+                    'title': f'📣 {self.title_text}' if self.title_text else '📣 お知らせ',
+                    'body': self.body_text
+                }, ensure_ascii=False))
         except discord.Forbidden:
             await interaction.response.send_message("⚠️ そのchに投稿する権限がありません。", ephemeral=True)
             return
@@ -570,6 +587,15 @@ class AnnounceBuilderView(discord.ui.View):
         button.label = "📩 全員のLINEに送る：ON" if self.line_all else "📩 全員のLINEにも送る"
         await interaction.response.edit_message(
             embed=self.preview_embed(interaction.guild), view=self)
+
+    @discord.ui.button(label="📌 常に一番下へ固定", style=discord.ButtonStyle.secondary, row=3)
+    async def toggle_sticky(self, interaction, button):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        self.sticky = not self.sticky
+        button.style = discord.ButtonStyle.success if self.sticky else discord.ButtonStyle.secondary
+        button.label = "📌 固定：ON" if self.sticky else "📌 常に一番下へ固定"
+        await interaction.response.edit_message(embed=self.preview_embed(interaction.guild), view=self)
 
     @discord.ui.button(label="❌ やめる", style=discord.ButtonStyle.secondary, row=2)
     async def cancel(self, interaction, button):

@@ -177,6 +177,7 @@ class Logger(commands.Cog):
             embed.add_field(name="移動前", value=before.channel.name, inline=True)
             embed.add_field(name="移動後", value=after.channel.name, inline=True)
 
+        embed.set_thumbnail(url=member.display_avatar.url)
         embed.set_footer(text=jst_now())
         await ch.send(embed=embed)
 

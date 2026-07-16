@@ -123,6 +123,18 @@ class Database:
             user_id TEXT, guild_id TEXT, dm_notify INTEGER DEFAULT 0,
             PRIMARY KEY (user_id, guild_id)
         )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS member_profiles (
+            guild_id TEXT, user_id TEXT, nickname TEXT, hobby TEXT, comment TEXT, mbti TEXT, games TEXT,
+            PRIMARY KEY (guild_id, user_id)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS member_registration (
+            guild_id TEXT, user_id TEXT, rule_ok INTEGER DEFAULT 0,
+            PRIMARY KEY (guild_id, user_id)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS bot_settings_text (
+            guild_id TEXT, key TEXT, value TEXT,
+            PRIMARY KEY (guild_id, key)
+        )""")
         # ── 解放ファンド（コミュニティ募金で次コンテンツ解放）──
         c.execute("""CREATE TABLE IF NOT EXISTS community_fund (
             guild_id TEXT, goal_key TEXT, total INTEGER DEFAULT 0, unlocked INTEGER DEFAULT 0,
@@ -1036,3 +1048,46 @@ class Database:
         c.execute("INSERT OR REPLACE INTO voyage (user_id, data) VALUES (?, ?)",
                   (str(user_id), json.dumps(data, ensure_ascii=False)))
         conn.commit(); conn.close()
+
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ メンバー登録・文字列設定
+    def get_member_profile(self, guild_id, user_id):
+        conn=self.get_conn(); c=conn.cursor()
+        c.execute("SELECT nickname,hobby,comment,mbti,games FROM member_profiles WHERE guild_id=? AND user_id=?",(str(guild_id),str(user_id)))
+        row=c.fetchone(); conn.close()
+        if not row: return None
+        return dict(zip(("nickname","hobby","comment","mbti","games"),row))
+
+    def update_member_profile(self, guild_id, user_id, **fields):
+        allowed={k:v for k,v in fields.items() if k in {"nickname","hobby","comment","mbti","games"}}
+        if not allowed: return
+        conn=self.get_conn(); c=conn.cursor()
+        c.execute("INSERT OR IGNORE INTO member_profiles (guild_id,user_id) VALUES (?,?)",(str(guild_id),str(user_id)))
+        sets=", ".join(f"{k}=?" for k in allowed)
+        c.execute(f"UPDATE member_profiles SET {sets} WHERE guild_id=? AND user_id=?",tuple(allowed.values())+(str(guild_id),str(user_id)))
+        conn.commit(); conn.close()
+
+    def get_all_member_profiles(self, guild_id):
+        conn=self.get_conn(); c=conn.cursor()
+        c.execute("SELECT user_id,nickname,hobby,comment,mbti,games FROM member_profiles WHERE guild_id=?",(str(guild_id),))
+        rows=c.fetchall(); conn.close()
+        keys=("nickname","hobby","comment","mbti","games")
+        return [(str(row[0]), dict(zip(keys,row[1:]))) for row in rows]
+
+    def set_member_rule(self, guild_id, user_id, ok):
+        conn=self.get_conn(); c=conn.cursor()
+        c.execute("INSERT INTO member_registration (guild_id,user_id,rule_ok) VALUES (?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET rule_ok=excluded.rule_ok",(str(guild_id),str(user_id),int(ok)))
+        conn.commit(); conn.close()
+
+    def get_member_rule(self, guild_id, user_id):
+        conn=self.get_conn(); c=conn.cursor(); c.execute("SELECT rule_ok FROM member_registration WHERE guild_id=? AND user_id=?",(str(guild_id),str(user_id)))
+        row=c.fetchone(); conn.close(); return bool(row and row[0])
+
+    def set_setting_text(self, guild_id, key, value):
+        conn=self.get_conn(); c=conn.cursor()
+        c.execute("INSERT INTO bot_settings_text (guild_id,key,value) VALUES (?,?,?) ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value",(str(guild_id),str(key),str(value)))
+        conn.commit(); conn.close()
+
+    def get_setting_text(self, guild_id, key):
+        conn=self.get_conn(); c=conn.cursor(); c.execute("SELECT value FROM bot_settings_text WHERE guild_id=? AND key=?",(str(guild_id),str(key)))
+        row=c.fetchone(); conn.close(); return row[0] if row else None
