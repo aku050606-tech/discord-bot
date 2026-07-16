@@ -25,17 +25,23 @@ MBTIS = ['INTJ','INTP','ENTJ','ENTP','INFJ','INFP','ENFJ','ENFP','ISTJ','ISFJ','
 GAMES = ['League of Legends','VALORANT','Apex Legends','Minecraft','Steamゲーム','雑談メイン']
 
 PROFILE_THEMES = {
-    'night': {'label': '夜空', 'accent': (57,122,255), 'top': (5,15,34), 'bottom': (1,7,15), 'panel': (5,15,29), 'alt': (8,21,39), 'line': (31,63,101)},
-    'devi': {'label': 'DEVI 悪魔', 'accent': (185,72,255), 'top': (20,4,32), 'bottom': (4,1,10), 'panel': (18,6,25), 'alt': (28,8,39), 'line': (94,35,125)},
-    'cyber': {'label': 'サイバー', 'accent': (0,220,255), 'top': (2,18,28), 'bottom': (1,5,12), 'panel': (3,18,29), 'alt': (4,27,42), 'line': (0,95,125)},
-    'purple': {'label': 'パープル', 'accent': (151,92,255), 'top': (18,8,38), 'bottom': (4,2,12), 'panel': (16,8,31), 'alt': (24,12,47), 'line': (75,45,120)},
-    'emerald': {'label': 'エメラルド', 'accent': (38,214,155), 'top': (3,27,25), 'bottom': (1,8,9), 'panel': (4,23,22), 'alt': (7,34,31), 'line': (20,91,75)},
-    'sunset': {'label': '夕焼け', 'accent': (255,132,89), 'top': (47,18,35), 'bottom': (10,4,14), 'panel': (32,13,25), 'alt': (46,18,31), 'line': (117,55,61)},
-    'sakura': {'label': '桜', 'accent': (255,132,184), 'top': (42,18,34), 'bottom': (10,4,11), 'panel': (31,13,25), 'alt': (45,18,33), 'line': (116,52,82)},
-    'ocean': {'label': '深海', 'accent': (45,161,255), 'top': (2,24,48), 'bottom': (0,7,17), 'panel': (2,20,38), 'alt': (4,31,55), 'line': (18,77,121)},
-    'mono': {'label': 'モノクロ', 'accent': (210,218,229), 'top': (20,22,27), 'bottom': (5,6,8), 'panel': (18,20,24), 'alt': (28,31,37), 'line': (73,78,89)},
-    'gold': {'label': 'ゴールド', 'accent': (238,188,73), 'top': (36,27,8), 'bottom': (8,6,2), 'panel': (27,21,7), 'alt': (42,31,10), 'line': (110,83,27)},
+    'devi': {'label': 'DEVI 悪魔', 'accent': (185,72,255), 'panel': (10,7,20), 'alt': (14,8,27), 'line': (105,45,145)},
+    'sakura': {'label': 'SAKURA 桜', 'accent': (255,126,188), 'panel': (23,10,24), 'alt': (34,13,33), 'line': (127,52,91)},
+    'cyber': {'label': 'CYBER サイバー', 'accent': (0,220,255), 'panel': (3,17,27), 'alt': (4,24,38), 'line': (0,102,135)},
+    'space': {'label': 'SPACE 宇宙', 'accent': (156,95,255), 'panel': (12,8,30), 'alt': (19,10,43), 'line': (84,48,135)},
+    'ocean': {'label': 'OCEAN 深海', 'accent': (45,161,255), 'panel': (2,18,36), 'alt': (4,29,52), 'line': (20,79,124)},
+    'fantasy': {'label': 'FANTASY 幻想', 'accent': (239,184,87), 'panel': (20,17,14), 'alt': (31,24,16), 'line': (112,83,35)},
+    'city': {'label': 'CITY 夜景', 'accent': (91,137,255), 'panel': (6,12,27), 'alt': (9,18,38), 'line': (39,66,121)},
+    'hell': {'label': 'HELL 地獄', 'accent': (255,74,45), 'panel': (27,5,7), 'alt': (42,7,9), 'line': (132,35,29)},
+    'snow': {'label': 'SNOW 雪国', 'accent': (126,211,255), 'panel': (6,20,35), 'alt': (10,31,51), 'line': (48,103,143)},
+    'forest': {'label': 'FOREST 森', 'accent': (45,218,151), 'panel': (4,22,20), 'alt': (7,32,29), 'line': (24,94,75)},
 }
+
+THEME_ALIASES = {
+    'night': 'city', 'purple': 'space', 'emerald': 'forest', 'sunset': 'hell',
+    'mono': 'snow', 'gold': 'fantasy',
+}
+
 
 
 BADGE_CATEGORIES = {
@@ -712,9 +718,10 @@ async def build_profile_card_file(member, p):
     img = Image.new('RGB', (width, height), '#050b16')
     draw = ImageDraw.Draw(img)
 
-    # 配色（本人が選んだ背景テーマ）
-    theme_key = (p.get('profile_theme') or 'night').strip()
-    theme = PROFILE_THEMES.get(theme_key, PROFILE_THEMES['night'])
+    # 配色・背景（テーマごとに完全に異なる専用アートを使用）
+    raw_theme_key = (p.get('profile_theme') or 'city').strip()
+    theme_key = THEME_ALIASES.get(raw_theme_key, raw_theme_key)
+    theme = PROFILE_THEMES.get(theme_key, PROFILE_THEMES['city'])
     accent = theme['accent']
     accent_soft = tuple(max(0, int(c * 0.58)) for c in accent)
     text_main = (241, 246, 255)
@@ -723,88 +730,34 @@ async def build_profile_card_file(member, p):
     panel_alt = theme['alt']
     line = theme['line']
 
-    # 全体背景グラデーション
-    top = theme['top']
-    bottom = theme['bottom']
-    for y in range(height):
-        t = y / max(1, height - 1)
-        color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
-        draw.line((0, y, width, y), fill=color)
+    background_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        'assets', 'profile', 'backgrounds', f'{theme_key}.png'
+    )
+    try:
+        background = Image.open(background_path).convert('RGB').resize((width, height), Image.Resampling.LANCZOS)
+        img.paste(background, (0, 0))
+    except Exception:
+        # アセット破損時もプロフィール生成自体は止めない
+        for y in range(height):
+            t = y / max(1, height - 1)
+            color = tuple(int(panel_alt[i] * (1 - t) + panel_fill[i] * t) for i in range(3))
+            draw.line((0, y, width, y), fill=color)
 
-    # 外枠・各パネル
-    draw.rounded_rectangle((28, 28, width-28, height-28), radius=34, outline=accent, width=3)
+    # 読みやすさを保つガラス風レイヤー。背景アートは右上・周辺に見える。
+    overlay = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    od.rounded_rectangle((28, 28, width-28, height-28), radius=34, fill=(2, 7, 18, 28), outline=(*accent, 235), width=3)
     header_box = (48, 48, width-48, 352)
     content_box = (48, 370, width-48, 720)
     footer_box = (48, 735, width-48, 812)
-    draw.rounded_rectangle(header_box, radius=26, fill=panel_alt, outline=(38, 79, 137), width=2)
-    draw.rounded_rectangle(content_box, radius=24, fill=panel_fill, outline=line, width=2)
-    draw.rounded_rectangle(footer_box, radius=20, fill=panel_fill, outline=line, width=2)
-
-    # ヘッダー右側のテーマ装飾
-    rng = random.Random(int(member.id) % 999983)
-    if theme_key == 'devi':
-        for _ in range(75):
-            x = rng.randint(760, 1515); y = rng.randint(66, 300); r = rng.choice((1,1,2))
-            draw.ellipse((x-r,y-r,x+r,y+r), fill=rng.choice(((180,75,255),(105,38,145),(235,125,255))))
-        draw.ellipse((1210, 74, 1370, 234), fill=(120,35,154))
-        draw.ellipse((1250, 62, 1402, 214), fill=panel_alt)
-        mascot_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'devi_mascot.png')
-        try:
-            mascot = Image.open(mascot_path).convert('RGBA')
-            alpha = mascot.getchannel('A').point(lambda a: int(a * 0.70))
-            mascot.putalpha(alpha)
-            img.alpha_composite(mascot, (1045, 62)) if img.mode == 'RGBA' else img.paste(mascot, (1045, 62), mascot)
-        except Exception:
-            draw.polygon([(1110,310),(1170,185),(1230,310)], fill=(22,4,31))
-            draw.polygon([(1180,310),(1245,150),(1310,310)], fill=(22,4,31))
-        draw.line((700,338,1485,338), fill=theme['line'], width=2)
-    elif theme_key in ('sakura','sunset'):
-        moon = (255,190,205) if theme_key == 'sakura' else (255,170,95)
-        draw.ellipse((1260,78,1375,193), fill=moon)
-        for _ in range(70):
-            x=rng.randint(760,1515); y=rng.randint(70,330); rr=rng.choice((2,3,4))
-            color=(255,150,195) if theme_key=='sakura' else (255,145,90)
-            draw.ellipse((x-rr,y-rr,x+rr,y+rr), fill=color)
-        draw.polygon([(650,352),(820,285),(980,352),(1160,270),(1340,352),(1480,310),(1530,352)], fill=(15,5,16))
-    elif theme_key == 'cyber':
-        for x in range(760,1515,55): draw.line((x,80,x,338), fill=(0,70,92), width=1)
-        for y in range(90,339,45): draw.line((760,y,1515,y), fill=(0,70,92), width=1)
-        for _ in range(25):
-            x=rng.randint(780,1480); y=rng.randint(90,310); w=rng.randint(20,80)
-            draw.rectangle((x,y,x+w,y+3), fill=(0,220,255))
-    elif theme_key == 'ocean':
-        for r in range(40,210,35): draw.arc((1050-r,120-r,1050+r,120+r), 200, 345, fill=(35,120,190), width=3)
-        for _ in range(45):
-            x=rng.randint(760,1510); y=rng.randint(75,330); rr=rng.randint(2,7)
-            draw.ellipse((x-rr,y-rr,x+rr,y+rr), outline=(75,170,230), width=1)
-    elif theme_key == 'gold':
-        for _ in range(50):
-            x=rng.randint(760,1510); y=rng.randint(70,330); rr=rng.choice((1,2,3))
-            draw.ellipse((x-rr,y-rr,x+rr,y+rr), fill=(238,188,73))
-        draw.polygon([(760,338),(930,210),(1080,338),(1230,185),(1390,338),(1500,260),(1530,338)], fill=(20,14,3))
-    elif theme_key == 'emerald':
-        for _ in range(12):
-            x=rng.randint(780,1470); y=rng.randint(90,300); h=rng.randint(35,120)
-            draw.line((x,y,x,y+h), fill=(38,214,155), width=3)
-            draw.ellipse((x-5,y-5,x+5,y+5), fill=(88,255,195))
-    elif theme_key == 'mono':
-        for _ in range(35):
-            x=rng.randint(760,1510); y=rng.randint(70,330); rr=rng.choice((1,2))
-            draw.ellipse((x-rr,y-rr,x+rr,y+rr), fill=(170,175,185))
-        draw.polygon([(650,352),(850,270),(1030,352),(1220,230),(1400,352),(1510,290),(1540,352)], fill=(8,9,11))
-    else:
-        for _ in range(95):
-            x = rng.randint(760, 1515); y = rng.randint(66, 250); r = rng.choice((1, 1, 1, 2))
-            color = rng.choice(((115, 158, 222), (181, 207, 241), (78, 121, 193)))
-            draw.ellipse((x-r, y-r, x+r, y+r), fill=color)
-        draw.ellipse((1270, 74, 1374, 178), fill=(188, 216, 247))
-        draw.ellipse((1297, 70, 1383, 157), fill=panel_alt)
-        draw.polygon([(650, 352), (790, 280), (910, 352), (1050, 255), (1170, 352), (1310, 292), (1480, 352)], fill=(3, 10, 21))
-        for bx, by, bw, bh in [(1060,235,35,117),(1110,270,28,82),(1150,214,40,138),(1210,265,26,87)]:
-            draw.rectangle((bx,by,bx+bw,by+bh), fill=(2,8,18))
-            draw.polygon([(bx-5,by),(bx+bw//2,by-30),(bx+bw+5,by)], fill=(2,8,18))
-        draw.line((700,338,1485,338), fill=(18,55,104), width=2)
-
+    od.rounded_rectangle(header_box, radius=26, fill=(*panel_alt, 176), outline=(*line, 220), width=2)
+    od.rounded_rectangle(content_box, radius=24, fill=(*panel_fill, 226), outline=(*line, 235), width=2)
+    od.rounded_rectangle(footer_box, radius=20, fill=(*panel_fill, 228), outline=(*line, 235), width=2)
+    # ヘッダー左側だけ少し暗くし、右側の背景アートを強く残す
+    od.rounded_rectangle((48, 48, 690, 352), radius=26, fill=(0, 4, 12, 78))
+    img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
+    draw = ImageDraw.Draw(img)
     # フォント
     tiny = _find_japanese_font(19)
     small = _find_japanese_font(23)
