@@ -702,153 +702,8 @@ def _draw_centered_text(draw, box, text, font, fill):
     draw.text(((x1 + x2) / 2, (y1 + y2) / 2), text, font=font, fill=fill, anchor='mm')
 
 
-async def _build_profile_card_file_legacy(member, p):
-    """背景・ガラスUI・可変情報を完全分離してプロフィールカードを生成する。"""
-    from datetime import datetime, timezone
-
-    width, height = 1370, 1148
-    root = os.path.dirname(os.path.dirname(__file__))
-    raw_theme_key = (p.get('profile_theme') or 'devi').strip()
-    theme_key = THEME_ALIASES.get(raw_theme_key, raw_theme_key)
-    bg_path = os.path.join(root, 'assets', 'profile', 'backgrounds', f'{theme_key}.png')
-    overlay_path = os.path.join(root, 'assets', 'profile', 'overlays', 'glass_overlay.png')
-
-    try:
-        src = Image.open(bg_path).convert('RGB')
-        img = ImageOps.fit(src, (width, height), method=Image.Resampling.LANCZOS).convert('RGBA')
-    except Exception:
-        img = Image.new('RGBA', (width, height), '#20213f')
-
-    try:
-        overlay = Image.open(overlay_path).convert('RGBA')
-        if overlay.size != (width, height):
-            overlay = overlay.resize((width, height), Image.Resampling.LANCZOS)
-        img.alpha_composite(overlay)
-    except Exception:
-        pass
-
-    draw = ImageDraw.Draw(img)
-    text_main = (246, 244, 252)
-    text_sub = (196, 184, 220)
-    input_fill = (20, 20, 48, 210)
-    title_col = (211, 172, 240)
-
-    small = _find_japanese_font(22)
-    small_b = _find_japanese_font(22, bold=True)
-    medium = _find_japanese_font(28)
-    medium_b = _find_japanese_font(28, bold=True)
-
-    name = (p.get('nickname') or member.display_name).strip()
-    mbti = (p.get('mbti') or '').strip() or '未設定'
-    hobby = (p.get('hobby') or '').strip() or '—'
-    comment = (p.get('comment') or '').strip() or '—'
-
-    # Header profile information
-    draw.text((350, 92), 'MEMBER PROFILE', font=_find_japanese_font(25, bold=True), fill=title_col)
-    nf = _fit_text(draw, name, 280, 64, 36, bold=True)
-    draw.text((350, 140), name, font=nf, fill=text_main)
-    draw.text((350, 220), f'@{member.name}', font=medium, fill=(174, 157, 201))
-    badge_w = max(100, draw.textbbox((0, 0), mbti, font=medium_b)[2] + 38)
-    badge_box = (350, 265, 350 + badge_w, 321)
-    draw.rounded_rectangle(badge_box, radius=15, fill=(72, 53, 125, 230), outline=(168, 132, 220), width=2)
-    _draw_centered_text(draw, badge_box, mbti, medium_b, text_main)
-    qtext = comment.replace('☆', '★')
-    qf = _fit_text(draw, qtext, 285, 30, 18)
-    draw.text((350, 353), f'“ {qtext} ”', font=qf, fill=(235, 229, 244))
-
-    # Avatar
-    avatar_size = 250
-    ax, ay = 58, 92
-    try:
-        avatar_bytes = await member.display_avatar.with_size(512).read()
-        avatar = Image.open(io.BytesIO(avatar_bytes)).convert('RGB')
-        avatar = ImageOps.fit(avatar, (avatar_size, avatar_size), method=Image.Resampling.LANCZOS)
-        mask = Image.new('L', (avatar_size, avatar_size), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, avatar_size - 1, avatar_size - 1), fill=255)
-        draw.ellipse((ax - 10, ay - 10, ax + avatar_size + 10, ay + avatar_size + 10), fill=(174, 145, 220))
-        img.paste(avatar, (ax, ay), mask)
-        draw.ellipse((ax + 218, ay + 218, ax + 252, ay + 252), fill=(93, 212, 139), outline=(55, 50, 92), width=4)
-    except Exception:
-        pass
-
-    # Section titles
-    for text, pos in [('ABOUT ME',(50,477)),('ABOUT ME+',(378,477)),('BADGES',(694,477)),('RANKING',(1008,477))]:
-        draw.text(pos, text, font=_find_japanese_font(28, bold=True), fill=title_col)
-
-    # ABOUT ME
-    rows = [('名前', name), ('MBTI', mbti), ('趣味', hobby), ('一言', comment)]
-    ys = [590, 660, 730, 800]
-    for (lab, val), yy in zip(rows, ys):
-        draw.text((58, yy), lab, font=small_b, fill=(204, 188, 224), anchor='lm')
-        vf = _fit_text(draw, val, 145, 25, 16)
-        draw.text((180, yy), val, font=vf, fill=text_main, anchor='lm')
-
-    # ABOUT ME+
-    py = 560
-    for i in (1, 2, 3):
-        q = (p.get(f'about_q{i}') or '').strip() or f'自由項目{i}'
-        a = (p.get(f'about_a{i}') or '').strip() or '—'
-        qf = _fit_text(draw, q, 240, 22, 15, bold=True)
-        draw.text((378, py), q, font=qf, fill=(214, 199, 230))
-        box = (378, py + 31, 620, py + 82)
-        draw.rounded_rectangle(box, radius=10, fill=input_fill, outline=(77, 69, 113), width=1)
-        af = _fit_text(draw, a, 218, 21, 14)
-        draw.text((392, py + 57), a, font=af, fill=text_main, anchor='lm')
-        py += 112
-
-    # BADGES
-    selected = []
-    for key in _badge_keys(p):
-        info = BADGE_LOOKUP[key]
-        selected.append((info['label'], info['color']))
-    custom = (p.get('custom_badge') or '').strip()
-    if custom:
-        selected.append((custom, (130, 145, 170)))
-    selected = selected[:4]
-    while len(selected) < 4:
-        selected.append(('未設定', (90, 90, 120)))
-    boxes = [(688, 575, 806, 685), (820, 575, 940, 685), (688, 710, 806, 820), (820, 710, 940, 820)]
-    for (label, color), box in zip(selected, boxes):
-        fill = tuple(max(18, int(c * .22)) for c in color) + (235,)
-        draw.rounded_rectangle(box, radius=18, fill=fill, outline=color, width=2)
-        cx = (box[0] + box[2]) // 2
-        draw.ellipse((cx - 10, box[1] + 17, cx + 10, box[1] + 37), fill=color)
-        bf = _fit_text(draw, label, box[2] - box[0] - 16, 20, 13, bold=True)
-        draw.text((cx, box[1] + 80), label, font=bf, fill=text_main, anchor='mm')
-
-    # RANKING
-    stats = _profile_weekly_stats(member.guild.id, member.id)
-    joined_days = 0
-    if getattr(member, 'joined_at', None):
-        joined_days = max(1, (datetime.now(timezone.utc) - member.joined_at).days + 1)
-    ranks = [
-        ('VC時間（今週）', f"{stats['vc_rank']}位" if stats['vc_rank'] else '—', _format_profile_vc(stats['vc_total']), (105, 174, 255)),
-        ('チャット数（今週）', f"{stats['chat_rank']}位" if stats['chat_rank'] else '—', f"{stats['chat_total']:,}件", (247, 106, 157)),
-        ('サーバー参加日数', f'{joined_days}日' if joined_days else '—', '', (93, 211, 145)),
-    ]
-    ry = [590, 710, 820]
-    for (lab, val, detail, col), yy in zip(ranks, ry):
-        draw.text((1010, yy), lab, font=small, fill=text_main, anchor='lm')
-        draw.text((1287, yy), val, font=medium_b, fill=col, anchor='rm')
-        if detail:
-            draw.text((1287, yy + 34), detail, font=small, fill=text_sub, anchor='rm')
-
-    # Bottom panels
-    free = ((p.get('free_text') or '').strip() or hobby or '—').replace('☆', '★')
-    draw.text((250, 965), '好きなこと', font=_find_japanese_font(30, bold=True), fill=(238, 139, 193))
-    ff = _fit_text(draw, free, 570, 30, 17)
-    draw.text((250, 1040), free, font=ff, fill=text_main)
-    draw.text((1114, 985), 'DEVI', font=_find_japanese_font(32, bold=True), fill=(235, 140, 194), anchor='ma')
-    draw.text((1114, 1032), 'MEMBER PROFILE', font=small, fill=(170, 153, 199), anchor='ma')
-
-    out = io.BytesIO()
-    img.convert('RGB').save(out, format='PNG', optimize=True)
-    out.seek(0)
-    return discord.File(out, filename=f'profile_{member.id}.png')
-
-
 async def build_profile_card_file(member, p):
-    """DEVI・桜の完成背景へ、同一レイアウトで可変文字とアバターだけを描画する。"""
+    """背景画像 + 共通ガラスUI素材 + 可変文字/アバターでプロフィールカードを生成する。"""
     from datetime import datetime, timezone
 
     raw_theme_key = (p.get('profile_theme') or 'devi').strip()
@@ -858,6 +713,7 @@ async def build_profile_card_file(member, p):
 
     root = os.path.dirname(os.path.dirname(__file__))
     bg_path = os.path.join(root, 'assets', 'profile', 'backgrounds', f'{theme_key}.png')
+    overlay_path = os.path.join(root, 'assets', 'profile', 'overlays', 'glass_overlay.png')
     width, height = 1402, 1122
 
     try:
@@ -866,6 +722,15 @@ async def build_profile_card_file(member, p):
             img = ImageOps.fit(img, (width, height), method=Image.Resampling.LANCZOS)
     except Exception:
         img = Image.new('RGBA', (width, height), '#15133d')
+
+    # 旧背景埋め込み枠は使わず、共通UI素材を重ねる。
+    try:
+        overlay = Image.open(overlay_path).convert('RGBA')
+        if overlay.size != (width, height):
+            overlay = overlay.resize((width, height), Image.Resampling.LANCZOS)
+        img = Image.alpha_composite(img, overlay)
+    except Exception:
+        pass
 
     draw = ImageDraw.Draw(img)
     text_main = (250, 247, 255)
@@ -883,7 +748,7 @@ async def build_profile_card_file(member, p):
     hobby = (p.get('hobby') or '').strip() or '—'
     comment = (p.get('comment') or '').strip() or '—'
 
-    # ── 左上：プロフィール基本情報（枠 34,46 ～ 656,387） ──
+    # ── 上段：PROFILE ──
     avatar_size = 238
     ax, ay = 58, 91
     try:
@@ -902,70 +767,49 @@ async def build_profile_card_file(member, p):
 
     tx = 330
     draw.text((tx, 87), 'MEMBER PROFILE', font=_find_japanese_font(24, bold=True), fill=title_col)
-    nf = _fit_text(draw, name, 292, 58, 34, bold=True)
+    nf = _fit_text(draw, name, 292, 58, 30, bold=True)
     draw.text((tx, 132), name, font=nf, fill=text_main)
-    draw.text((tx, 202), f'@{member.name}', font=medium, fill=text_sub)
+    user_name = f'@{member.name}'
+    uf = _fit_text(draw, user_name, 292, 27, 17)
+    draw.text((tx, 202), user_name, font=uf, fill=text_sub)
 
     badge_w = min(280, max(104, draw.textbbox((0, 0), mbti, font=medium_b)[2] + 42))
     badge_box = (tx, 247, tx + badge_w, 302)
-    draw.rounded_rectangle(badge_box, radius=15, fill=(58, 35, 104, 220), outline=soft_line, width=2)
+    draw.rounded_rectangle(badge_box, radius=15, fill=(58, 35, 104, 205), outline=soft_line, width=2)
     _draw_centered_text(draw, badge_box, mbti, medium_b, text_main)
 
     qtext = comment.replace('☆', '★')
-    qf = _fit_text(draw, f'“ {qtext} ”', 292, 27, 16)
+    qf = _fit_text(draw, f'“ {qtext} ”', 292, 27, 14)
     draw.text((tx, 331), f'“ {qtext} ”', font=qf, fill=(240, 231, 248))
 
-    # ── 中段：4つの透明枠 ──
+    # ── 中段：ABOUT ME / ABOUT ME+ / RANKING ──
     title_font = _find_japanese_font(27, bold=True)
     draw.text((55, 438), 'ABOUT ME', font=title_font, fill=title_col)
-    draw.text((398, 438), 'ABOUT ME+', font=title_font, fill=title_col)
-    draw.text((744, 438), 'BADGES', font=title_font, fill=title_col)
-    draw.text((1085, 438), 'RANKING', font=title_font, fill=title_col)
+    draw.text((487, 438), 'ABOUT ME+', font=title_font, fill=title_col)
+    draw.text((929, 438), 'RANKING', font=title_font, fill=title_col)
 
-    # ABOUT ME（枠 34,412 ～ 337,831）
+    # ABOUT ME（34,412 ～ 445,831）
     rows = [('名前', name), ('MBTI', mbti), ('趣味', hobby), ('一言', comment)]
     ys = [540, 620, 700, 780]
     for (lab, val), yy in zip(rows, ys):
         draw.text((55, yy), lab, font=small_b, fill=(220, 199, 235), anchor='lm')
-        vf = _fit_text(draw, val, 154, 24, 15)
-        draw.text((165, yy), val, font=vf, fill=text_main, anchor='lm')
+        vf = _fit_text(draw, val, 245, 24, 13)
+        draw.text((155, yy), val, font=vf, fill=text_main, anchor='lm')
 
-    # ABOUT ME+（枠 356,412 ～ 677,831）
+    # ABOUT ME+（466,412 ～ 887,831）
     py = 510
     for i in (1, 2, 3):
         q = (p.get(f'about_q{i}') or '').strip() or f'自由項目{i}'
         a = (p.get(f'about_a{i}') or '').strip() or '—'
-        qf = _fit_text(draw, q, 270, 21, 14, bold=True)
-        draw.text((398, py), q, font=qf, fill=(224, 205, 237))
-        box = (398, py + 31, 673, py + 83)
-        draw.rounded_rectangle(box, radius=10, fill=(18, 14, 54, 165), outline=(112, 83, 155, 210), width=1)
-        af = _fit_text(draw, a, 246, 20, 13)
-        draw.text((412, py + 58), a, font=af, fill=text_main, anchor='lm')
+        qf = _fit_text(draw, q, 360, 21, 13, bold=True)
+        draw.text((487, py), q, font=qf, fill=(224, 205, 237))
+        box = (487, py + 31, 866, py + 83)
+        draw.rounded_rectangle(box, radius=10, fill=(18, 14, 54, 145), outline=(112, 83, 155, 190), width=1)
+        af = _fit_text(draw, a, 350, 20, 12)
+        draw.text((501, py + 58), a, font=af, fill=text_main, anchor='lm')
         py += 105
 
-    # BADGES（枠 698,412 ～ 1016,831）
-    selected = []
-    for key in _badge_keys(p):
-        info = BADGE_LOOKUP[key]
-        selected.append((info['label'], info['color']))
-    custom = (p.get('custom_badge') or '').strip()
-    if custom:
-        selected.append((custom, (150, 142, 180)))
-    selected = selected[:4]
-    while len(selected) < 4:
-        selected.append(('未設定', (98, 88, 132)))
-
-    boxes = [(745, 540, 865, 650), (883, 540, 1003, 650),
-             (745, 682, 865, 792), (883, 682, 1003, 792)]
-    for (label, color), box in zip(selected, boxes):
-        fill = tuple(max(18, int(c * .20)) for c in color) + (215,)
-        draw.rounded_rectangle(box, radius=17, fill=fill, outline=color, width=2)
-        cx = (box[0] + box[2]) // 2
-        draw.ellipse((cx - 10, box[1] + 18, cx + 10, box[1] + 38), fill=color)
-        bf = _fit_text(draw, label, box[2] - box[0] - 14, 19, 12, bold=True)
-        draw.text((cx, box[1] + 82), label, font=bf, fill=text_main, anchor='mm')
-
-    # RANKING（枠 1034,412 ～ 1345,831）
+    # RANKING（908,412 ～ 1345,831）
     stats = _profile_weekly_stats(member.guild.id, member.id)
     joined_days = 0
     if getattr(member, 'joined_at', None):
@@ -977,40 +821,37 @@ async def build_profile_card_file(member, p):
     ]
     ry = [548, 670, 786]
     for (lab, val, detail, col), yy in zip(ranks, ry):
-        lf = _fit_text(draw, lab, 176, 20, 14)
-        draw.text((1085, yy), lab, font=lf, fill=text_main, anchor='lm')
-        vf = _fit_text(draw, val, 90, 27, 18, bold=True)
-        draw.text((1328, yy), val, font=vf, fill=col, anchor='rm')
+        lf = _fit_text(draw, lab, 235, 20, 13)
+        draw.text((929, yy), lab, font=lf, fill=text_main, anchor='lm')
+        vf = _fit_text(draw, val, 120, 27, 16, bold=True)
+        draw.text((1320, yy), val, font=vf, fill=col, anchor='rm')
         if detail:
-            df = _fit_text(draw, detail, 120, 19, 13)
-            draw.text((1328, yy + 32), detail, font=df, fill=text_sub, anchor='rm')
+            df = _fit_text(draw, detail, 155, 19, 12)
+            draw.text((1320, yy + 32), detail, font=df, fill=text_sub, anchor='rm')
 
-    # ── 下段：好きなこと（枠 34,855 ～ 1147,1056） ──
-    free = ((p.get('free_text') or '').strip() or hobby or '—').replace('☆', '★')
-    draw.text((60, 885), '好きなこと', font=_find_japanese_font(29, bold=True), fill=title_col)
-    # 長文は2行まで自動折返し
-    max_width = 1010
-    words = list(free)
-    lines, current = [], ''
-    body_font = _find_japanese_font(27)
-    for ch in words:
-        test = current + ch
-        if draw.textbbox((0, 0), test, font=body_font)[2] <= max_width:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = ch
-            if len(lines) == 1:
-                break
-    if current and len(lines) < 2:
-        lines.append(current)
-    if len(''.join(lines)) < len(free) and lines:
-        while lines[-1] and draw.textbbox((0, 0), lines[-1] + '…', font=body_font)[2] > max_width:
-            lines[-1] = lines[-1][:-1]
-        lines[-1] += '…'
-    draw.multiline_text((60, 948), '\n'.join(lines or ['—']), font=body_font,
-                        fill=text_main, spacing=13)
+    # ── 下段：BADGES ──
+    draw.text((60, 881), 'BADGES', font=_find_japanese_font(29, bold=True), fill=title_col)
+    selected = []
+    for key in _badge_keys(p):
+        info = BADGE_LOOKUP[key]
+        selected.append((info['label'], info['color']))
+    custom = (p.get('custom_badge') or '').strip()
+    if custom:
+        selected.append((custom, (150, 142, 180)))
+    selected = selected[:6]
+    while len(selected) < 6:
+        selected.append(('未設定', (98, 88, 132)))
+
+    start_x, gap, bw, bh, by = 62, 18, 197, 105, 930
+    for i, (label, color) in enumerate(selected):
+        x1 = start_x + i * (bw + gap)
+        box = (x1, by, x1 + bw, by + bh)
+        fill = tuple(max(18, int(c * .20)) for c in color) + (195,)
+        draw.rounded_rectangle(box, radius=17, fill=fill, outline=color, width=2)
+        cx = (box[0] + box[2]) // 2
+        draw.ellipse((cx - 10, box[1] + 18, cx + 10, box[1] + 38), fill=color)
+        bf = _fit_text(draw, label, box[2] - box[0] - 16, 19, 11, bold=True)
+        draw.text((cx, box[1] + 78), label, font=bf, fill=text_main, anchor='mm')
 
     out = io.BytesIO()
     img.convert('RGB').save(out, format='PNG', optimize=True)
