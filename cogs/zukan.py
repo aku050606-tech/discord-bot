@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from config import (LAKE_FISH, RIVER_FISH, SEA_FISH, RARITY_COLORS, AREA_BOSS,
+from config import (LAKE_FISH, RIVER_FISH, SEA_FISH, AREA_BOSS,
                     TREASURE_BY_AREA, RARE_TRASH_BY_AREA,
                     LIMITED_FISH, STORM_TREASURES, BLOOD_MOON_BOSS)
 

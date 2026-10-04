@@ -6,7 +6,6 @@ from config import CHINCHIRO_MULT, CHINCHIRO_MIN_BET, CHINCHIRO_MAX_BET, jst_tod
 from quest_tracker import record as quest_record
 import random
 import asyncio
-from datetime import date
 
 db = Database()
 
@@ -187,10 +186,6 @@ class ChinchiroAIView(discord.ui.View):
             color=discord.Color.blue()
         )
         await interaction.response.edit_message(embed=embed, view=ChinchiroModeView(self.bet))
-
-    async def _play(self, interaction: discord.Interaction):
-        # 後方互換のため残置（現在は player_throw / resolve_vs_ai を使用）
-        await player_throw(interaction, self.user_id, self.guild_id, self.bet, attempt=1)
 
 
 # ── プレイヤーの手動投げ（目なしのみ最大3投・各投を手動の振り直しボタンで）──

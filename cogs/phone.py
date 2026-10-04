@@ -8,7 +8,7 @@
 循環import回避のため、menu.py の関数はメソッド内で遅延importする。
 """
 import time
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 import discord
 from database import Database
 from config import DAILY_AMOUNT, jst_today_str

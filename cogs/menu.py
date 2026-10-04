@@ -2,10 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 import random
-import time
-from config import DAILY_AMOUNT, DAILY_SEND_LIMIT, jst_today_str, ADMIN_USER_IDS
+from config import DAILY_SEND_LIMIT, jst_today_str
 from quest_tracker import record as quest_record
 import quest_tracker as QT
 
@@ -245,15 +244,6 @@ async def go_home(interaction: discord.Interaction, user_id: str = None):
 async def go_town(interaction: discord.Interaction, user_id: str = None):
     """ナトタウン（=ホーム本体）へ戻る。go_home と同義。"""
     await go_home(interaction, user_id)
-
-
-async def _coming_soon(interaction, title):
-    """未実装の棚：準備中アナウンス（本人だけにephemeral）。"""
-    embed = discord.Embed(
-        title=f"🔧 {title} ── 準備中",
-        description="この施設は近日オープン予定。お楽しみに！",
-        color=0x7F8C8D)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -518,7 +508,7 @@ _GAME_ENTRY = {
 def build_game_entry_embed(game: str) -> discord.Embed:
     title, catch, betword = _GAME_ENTRY[game]
     E = "\u001b"
-    G = f"{E}[1;33m"; R = f"{E}[1;31m"; W = f"{E}[1;37m"; K = f"{E}[1;30m"; g = f"{E}[0;33m"; X = f"{E}[0m"
+    R = f"{E}[1;31m"; W = f"{E}[1;37m"; K = f"{E}[1;30m"; g = f"{E}[0;33m"; X = f"{E}[0m"
     desc = (
         "```ansi\n"
         f"{R}╔══════════════════════════════╗{X}\n"
@@ -536,7 +526,7 @@ def build_game_entry_embed(game: str) -> discord.Embed:
 def build_mode_select_embed(game: str, bet: int) -> discord.Embed:
     title, _catch, betword = _GAME_ENTRY[game]
     E = "\u001b"
-    G = f"{E}[1;33m"; R = f"{E}[1;31m"; W = f"{E}[1;37m"; K = f"{E}[1;30m"; g = f"{E}[0;33m"; X = f"{E}[0m"
+    R = f"{E}[1;31m"; W = f"{E}[1;37m"; K = f"{E}[1;30m"; g = f"{E}[0;33m"; X = f"{E}[0m"
     desc = (
         "```ansi\n"
         f"{R}╔══════════════════════════════╗{X}\n"
@@ -745,23 +735,6 @@ def make_bet_view(user_id: str, guild_id: str, game_type: str, title: str, back_
             await open_casino_menu(interaction, self._user_id)
 
     return BetView()
-
-
-# 後方互換（他から呼ばれても動くように残す）
-def BlackjackBetView(user_id: str):
-    return make_bet_view(user_id, None, "blackjack", "ブラックジャック — 賭け金入力")
-
-def PokerBetView(user_id: str):
-    return make_bet_view(user_id, None, "poker", "ポーカー — アンティ入力")
-
-def ChinchiroBetView(user_id: str):
-    return make_bet_view(user_id, None, "chinchiro", "チンチロ — 賭け金入力")
-
-def NumguessBetView(user_id: str):
-    return make_bet_view(user_id, None, "numguess", "数字当て — 賭け金入力")
-
-def CoinflipBetView(user_id: str):
-    return make_bet_view(user_id, None, "coinflip", "コインフリップ — 賭け金入力")
 
 
 class CoinflipChoiceView(discord.ui.View):

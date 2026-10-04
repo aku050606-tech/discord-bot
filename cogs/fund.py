@@ -84,12 +84,6 @@ def build_locked_port_embed(guild, user, goal_key=DEFAULT_GOAL):
     return embed
 
 
-def build_port_hub_embed(guild, goal_key=DEFAULT_GOAL):
-    # ⚓ 再興ハブは廃止（解放済みは open_port → open_voyage で母港へ直行）。互換のため最小限残置。
-    total, _ = db.get_fund(str(guild.id), goal_key)
-    return discord.Embed(title="⚓ さびれた港", description="母港へ。", color=0x16a085)
-
-
 # ── 未解放：支援するボタンのみ ──
 class LockedPortView(discord.ui.View):
     def __init__(self, user_id, goal_key=DEFAULT_GOAL):
@@ -114,38 +108,6 @@ class LockedPortView(discord.ui.View):
             return
         from cogs.menu import go_town
         await go_town(interaction, self.user_id)
-
-
-# ── 解放後：港ハブ（危険水域 / ショップ）──
-class PortHubView(discord.ui.View):
-    def __init__(self, user_id, goal_key=DEFAULT_GOAL):
-        super().__init__(timeout=900)
-        self.user_id = str(user_id)
-        self.goal_key = goal_key
-
-    @discord.ui.button(label="🌊 危険水域（航海）", style=discord.ButtonStyle.danger, row=0)
-    async def waters(self, interaction, button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
-            return
-        from cogs.voyage import open_voyage
-        await open_voyage(interaction, self.user_id)
-
-    @discord.ui.button(label="🏪 総合ショップ", style=discord.ButtonStyle.success, row=0)
-    async def shop(self, interaction, button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
-            return
-        from cogs.voyage import open_voyage
-        await open_voyage(interaction, self.user_id)
-
-    @discord.ui.button(label="🚪 立ち去る", style=discord.ButtonStyle.secondary, row=1)
-    async def leave(self, interaction, button):
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message("これはあなたの画面ではありません", ephemeral=True)
-            return
-        await interaction.response.edit_message(content="港を後にした。", embed=None, view=None)
-
 
 
 def _grant_port_pet(user_id: str, pet_id: str):

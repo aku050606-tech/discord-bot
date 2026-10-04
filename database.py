@@ -252,16 +252,6 @@ class Database:
         conn.close()
         return bool(row and row[0] == today)
 
-    def get_ranking(self, guild_id, limit=10):
-        conn = self.get_conn()
-        c = conn.cursor()
-        c.execute(
-            "SELECT user_id, balance FROM economy WHERE guild_id = ? ORDER BY balance DESC LIMIT ?",
-            (guild_id, limit),
-        )
-        rows = c.fetchall()
-        conn.close()
-        return rows
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # デイリー（サーバーごと）
@@ -419,13 +409,6 @@ class Database:
         conn.close()
         return rows
 
-    def get_crown_count(self, user_id):
-        conn = self.get_conn()
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM zukan_crown WHERE user_id = ?", (user_id,))
-        count = c.fetchone()[0]
-        conn.close()
-        return count
 
     def check_zukan_bonus(self, user_id, bonus_type):
         conn = self.get_conn()
@@ -473,13 +456,6 @@ class Database:
         conn.close()
         return users
 
-    def get_all_zukan_stats(self, guild_id):
-        conn = self.get_conn()
-        c = conn.cursor()
-        c.execute("SELECT DISTINCT user_id FROM economy WHERE guild_id = ?", (guild_id,))
-        users = [r[0] for r in c.fetchall()]
-        conn.close()
-        return users
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 釣り装備管理
@@ -658,14 +634,6 @@ class Database:
         conn.commit()
         conn.close()
 
-    def get_temp_vc(self, channel_id):
-        """owner_id を返す（無ければ None）。"""
-        conn = self.get_conn()
-        c = conn.cursor()
-        c.execute("SELECT owner_id FROM temp_vc WHERE channel_id=?", (str(channel_id),))
-        row = c.fetchone()
-        conn.close()
-        return row[0] if row else None
 
     def get_temp_vc_row(self, channel_id):
         """(owner_id, kind, parent_id) を返す（無ければ None）。"""

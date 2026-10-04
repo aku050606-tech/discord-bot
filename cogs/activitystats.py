@@ -7,10 +7,9 @@
 import time
 import io
 import os
-import textwrap
 from datetime import datetime, timezone, timedelta
 import discord
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 from discord.ext import commands
 from database import Database
 
@@ -488,10 +487,6 @@ class PublicRankingView(discord.ui.View):
 
 
 async def _register_public_ranking(bot: commands.Bot):
-    existing = bot.tree.get_command("ranking")
-    if existing is not None:
-        bot.tree.remove_command("ranking")
-
     @bot.tree.command(name="ranking", description="VC時間・チャット数ランキングを表示します")
     async def ranking(interaction: discord.Interaction):
         if interaction.guild is None:

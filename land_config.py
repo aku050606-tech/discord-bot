@@ -187,7 +187,6 @@ MIDRARE_SPAWN_RATE = 0.05   # 戦闘のうち中レアに化ける確率（5%）
 HOT_EVENT_EQUIP_DROP = [("dist", 0.03, [(1, 0.70), (2, 0.30)])]
 
 
-
 # ── 💎 経験値逃走モンスター v17 ──
 # 戦闘枠の中で低確率。装備/アイテムの平均ドロップ率を変えないため、ドロップは無し。
 # 通常版：約2% / キング版：約0.1%。毎ターン50%で逃げる。
@@ -230,11 +229,6 @@ LAND_CALM = [
 # ── 遭遇の重み（探索1回・エリア別に調整可）──
 #   combat＝戦闘（基本これが半分）。story＝陸ストーリー。event＝海っぽい寄り道イベント。
 #   gather＝採取。calm＝なにもなし。各エリア合計100。
-LAND_ENCOUNTERS = {
-    1: {"combat": 50, "story": 14, "event": 16, "gather": 14, "calm": 6},
-    2: {"combat": 50, "story": 16, "event": 16, "gather": 12, "calm": 6},
-    3: {"combat": 46, "story": 18, "event": 18, "gather": 11, "calm": 7},  # 山再調整：戦闘率は戻しすぎず微増
-}
 
 # ── 装備ドロップ（陸でも“たまに”落ちる。エリア＝☆対応・一律0.5%）──
 # 通常雑魚の装備ドロップ。
@@ -414,7 +408,6 @@ LAND_EVENTS = {
          ]},
     ],
 }
-
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -699,17 +692,7 @@ def pick_random_event(area):
 
 
 def pick_story(area):
-    # 🟣 観測者シリーズ：メインのstory出現率は変えず、story枠の中で低確率差し込み。
-    # 敵遭遇率・ホットイベント率・ドロップ率には触れない。
-    obs = OBSERVER_STORY_EVENTS.get(area, []) if "OBSERVER_STORY_EVENTS" in globals() else []
-    if obs and random.random() < OBSERVER_STORY_RATE:
-        return random.choice(obs)
     pool = LAND_STORY.get(area, [])
-    return random.choice(pool) if pool else None
-
-
-def pick_event(area):
-    pool = LAND_EVENTS.get(area, [])
     return random.choice(pool) if pool else None
 
 

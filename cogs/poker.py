@@ -53,17 +53,6 @@ def evaluate_5(hand):
 HAND_NAMES = ["ハイカード", "ワンペア", "ツーペア", "スリーカード",
               "ストレート", "フラッシュ", "フルハウス", "フォーカード", "ストレートフラッシュ"]
 
-def ai_hand_strength(hand: list, community: list) -> int:
-    """AIの手の強さを0〜8で返す（役レベル）"""
-    all_cards = hand + community
-    if len(all_cards) < 5:
-        # フロップ前は手札だけで簡易評価
-        vals = sorted([RANK_VAL[c["rank"]] for c in hand], reverse=True)
-        if vals[0] == vals[1]: return 2          # ポケットペア
-        if min(vals) >= 9: return 1              # 両方J以上
-        if max(vals) >= 11: return 1             # A or K を持っている
-        return 0
-    return best_hand(all_cards)[0]
 
 def ai_equity(hand, community_shown, iters=320):
     """モンテカルロで勝率(エクイティ)を推定。残りコミュニティと相手2枚をランダムに配って比較。"""
@@ -108,24 +97,6 @@ def ai_decide(equity, to_call, pot, ante):
         return "raise"                            # 5% セミブラフ
     return "fold"
 
-
-def ai_action(strength: int, to_call: int) -> str:
-    """（旧・役カテゴリ判断：互換のため残置。現在は ai_decide を使用）"""
-    if to_call <= 0:
-        if strength >= 4:
-            return "raise" if random.random() < 0.70 else "call"
-        if strength >= 2:
-            return "raise" if random.random() < 0.40 else "call"
-        if strength == 1:
-            return "raise" if random.random() < 0.15 else "call"
-        return "call"
-    if strength >= 4:
-        return "raise" if random.random() < 0.55 else "call"
-    if strength >= 2:
-        return "raise" if random.random() < 0.25 else "call"
-    if strength == 1:
-        return "fold" if random.random() < 0.12 else "call"
-    return "fold" if random.random() < 0.45 else "call"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 対人戦ポーカー
@@ -318,7 +289,7 @@ def build_hu_reveal_embed(room, ev):
     e.add_field(name=f"{p0['name']} → {n0}", value=hand_str(p0["hand"]), inline=True)
     e.add_field(name=f"{p1['name']} → {n1}", value=hand_str(p1["hand"]), inline=True)
     if ev["winner"] is None:
-        e.add_field(name="結果", value=f"🤝 引き分け！ ポット折半", inline=False)
+        e.add_field(name="結果", value="🤝 引き分け！ ポット折半", inline=False)
     else:
         w = room["players"][ev["winner"]]
         e.add_field(name="結果", value=f"👑 **{w['name']}** の勝ち！ +{room['pot']:,} ナトコイン", inline=False)

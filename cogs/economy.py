@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from datetime import date
 from config import DAILY_AMOUNT, jst_today_str
 from quest_tracker import record as quest_record
 
@@ -85,29 +84,6 @@ class Economy(commands.Cog):
         )
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="ranking", description="ナトコインランキングを表示する")
-    async def ranking(self, interaction: discord.Interaction):
-        guild_id = str(interaction.guild.id)
-        rows = db.get_ranking(guild_id, limit=10)
-
-        embed = discord.Embed(title="🏆 ナトコインランキング", color=discord.Color.gold())
-        medals = ["🥇", "🥈", "🥉"]
-
-        if not rows:
-            embed.description = "まだデータがありません"
-        else:
-            lines = []
-            for i, (uid, bal) in enumerate(rows):
-                medal = medals[i] if i < 3 else f"{i+1}."
-                try:
-                    member = interaction.guild.get_member(int(uid))
-                    name = member.display_name if member else f"ID:{uid}"
-                except:
-                    name = f"ID:{uid}"
-                lines.append(f"{medal} **{name}** — {bal:,} ナトコイン")
-            embed.description = "\n".join(lines)
-
-        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))

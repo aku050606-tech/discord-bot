@@ -3,7 +3,9 @@
 プロフィール画像は `assets/profile/backgrounds/` のテーマ画像と、`cogs/member_onboarding.py` の描画レイヤーを合成して生成します。
 
 ## 収録テーマ
-DEVI / SAKURA / CYBER / SPACE / OCEAN / FANTASY / CITY / HELL / SNOW / FOREST
+DEVI / SAKURA（2種類）
+
+旧テーマの保存値は本体側でDEVIに読み替えます。
 
 ## 再生成
 背景素材を調整した場合は次を実行してください。

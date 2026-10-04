@@ -174,7 +174,7 @@ class NumguessPlayView(discord.ui.View):
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("あなたのゲームではありません", ephemeral=True)
             return
-        game = active_games.pop(self.user_id, None)
+        active_games.pop(self.user_id, None)
         from cogs.menu import open_casino_menu
         await open_casino_menu(interaction, self.user_id)
 

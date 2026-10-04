@@ -1,4 +1,4 @@
-"""街道バランスシミュレーター GUI版。
+r"""街道バランスシミュレーター GUI版。
 
 PowerShellで以下を実行:
   python tools\simulator_gui.py

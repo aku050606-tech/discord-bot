@@ -2,8 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import random
-from datetime import date
-from config import jst_today, jst_today_str
+from config import jst_today_str
 
 FORTUNES = [
     ("大吉", discord.Color.gold(), "🌟", "最高の一日になりそう！何でも積極的に挑戦しよう！"),

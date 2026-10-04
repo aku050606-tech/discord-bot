@@ -5,7 +5,6 @@
 #   ・進捗は record() を各ゲーム側から呼んで加算。受取はクエスト画面のボタンで一括。
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import random
-from datetime import date
 from config import jst_today_str
 from database import Database
 

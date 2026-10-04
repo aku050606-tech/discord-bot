@@ -1,93 +1,102 @@
-# 🤖 Discord BOT
+# NATO Discord BOT
 
-Claude AI連携・サーバー内通貨・ゲーム・占い機能付きの多機能Discordボット
+Discordサーバーで遊ぶ「通貨・カジノ・釣り・冒険RPG」と、募集・VC・メンバー管理をまとめたBOTです。
+現在の入口は `/menu`。管理は `/admin`。2026-10-04に実際の起動構成から機能を再確認しました。
 
----
+## できること
 
-## 📦 ファイル構成
+| 分野 | 現在の機能 | 主な入口 |
+|---|---|---|
+| ナトコイン | 残高、毎日2,000コイン、送金、チャット・VC報酬 | `/balance` `/daily` `/send_coin`、スマホの銀行 |
+| カジノ | GRAVITASスロット、ジャグラー、ブラックジャック、テキサスホールデム、チンチロ、数字当て、コインフリップ、一部ゲームのダブルアップ | `/menu` → カジノ、一部は単独コマンドあり |
+| 対戦 | ブラックジャック・ポーカー・チンチロのBOT対戦／プレイヤー対戦 | 各ゲームのモード選択 |
+| 釣り | 湖・川・海、釣具、天候・時間帯の影響、レア魚、ぬし、宝の地図、図鑑・コンプリート報酬 | `/fish` `/shop` `/zukan` |
+| 航海 | 港の共同復興、船購入、燃料、海域探索、イベント、敵との戦闘、航海中の釣り・報酬持ち帰り | `/menu` → さびれた港 |
+| 街道RPG | 平原・森・山、敵・ボス、選択肢イベント、経験値・レベル、採取、装備ドロップ、宿屋の回復 | `/menu` → 街道・宿屋 |
+| 装備・育成 | 個人の武器・防具の売買／装着／技の刻印、素材から鍛冶、ガチャ、メダル交換、ペット | `/menu` → 商店街、`/鍛冶屋` |
+| 日替わりクエスト | 固定2件＋ランダム3件、進捗・報酬受取 | `/quest`、スマホ |
+| スマホ | 銀行、クエスト、活動統計、BOT内メッセージ・受信箱、指定チャンネルへのつぶやき、募集 | `/menu` → スマホ |
+| 募集・チーム分け | ゲーム募集パネル、参加・管理、ランダムチーム分け | `/募集パネル設置` `/teamsplit` `/teamsplit_custom` |
+| VC管理 | 一時VC作成・空室削除、名前・人数上限、公開／非公開、待機室、信頼・招待・キック・ブロック、権限移譲 | `/admin` → 自由部屋設定でパネル設置 |
+| メンバー管理 | ルール同意、MBTI・ゲーム・プロフィール登録、プロフィールカード、条件によるロール昇格、VC時間ロール | `/admin` → メンバー管理・VC自動ロール |
+| 活動統計 | VC時間・チャット数のランキングと推移、1日／1週間／1カ月の切替、非アクティブ抽出 | `/ranking`、スマホ、管理画面 |
+| サーバー運営 | 入退室・メッセージ編集／削除等のログ、リアクションロール、お知らせ、最下部への再投稿、コイン管理 | `/admin` `/logchannel` |
+| その他 | 日替わり占い、キーワード・メンションへの定型返信 | `/fortune`、チャット |
 
-```
-discord-bot/
-├── bot.py              # メインファイル
-├── database.py         # SQLiteデータベース管理
-├── requirements.txt    # 依存パッケージ
-├── railway.toml        # Railwayデプロイ設定
-└── cogs/
-    ├── ai_chat.py      # Claude AI会話
-    ├── economy.py      # コイン・経済システム
-    ├── games.py        # スロット・コインフリップ
-    ├── fortune.py      # 占い・タロット
-    └── auto_reply.py   # 自動返信
-```
+「LINE」「ツイッター」はBOT内の機能名です。外部LINEやXのAPIには接続していません。
+BOT対戦の「AI」はゲーム内ロジックです。生成AIとの会話機能ではありません。
 
----
+## 有効なスラッシュコマンド（21個）
 
-## 🚀 Railwayへのデプロイ手順
+| コマンド | 内容 |
+|---|---|
+| `/menu` | 全体メニュー |
+| `/balance` | 残高 |
+| `/daily` | 日替わりボーナス |
+| `/send_coin` | 他ユーザーへの送金 |
+| `/fortune` | 今日の運勢 |
+| `/blackjack` | ブラックジャック |
+| `/poker` | テキサスホールデム |
+| `/chinchiro` | チンチロ |
+| `/numguess` | 数字当て |
+| `/slot` | GRAVITASスロット |
+| `/fish` | 釣り |
+| `/shop` | 釣具屋 |
+| `/zukan` | 図鑑 |
+| `/鍛冶屋` | 素材から装備を製作 |
+| `/quest` | 今日のクエスト |
+| `/ranking` | VC時間・チャット数ランキング |
+| `/teamsplit` | 1～10番を5対5に分ける |
+| `/teamsplit_custom` | 名前を入力してチーム分け |
+| `/募集パネル設置` | ゲーム募集パネル設置 |
+| `/logchannel` | ログ送信先の確認 |
+| `/admin` | 管理者メニュー |
 
-### 1. GitHubリポジトリを作成
+コインフリップとジャグラーはメニューから利用します。`/coinflip`・`/chat`・`/reset_chat`・`/tarot`・`/help` は登録されません。
+旧READMEの「コインランキング」は現行の `/ranking` と異なります。`/ranking` は活動ランキングです。
+
+## 現在利用できない機能
+
+- ギルド討伐コンテンツは準備中の案内のみ。
+- 船装備の購入・装着・船技の刻印は無効。準備中表示と、既存保存データを読み取る処理を維持しています。
+- 外部生成AIとの会話、マーケット取引、協力航海は利用可能な機能として確認できません。
+- プロフィール背景はDEVI・SAKURAの2種類。古いテーマ名はDEVIに読み替えます。
+
+## 起動
+
+Python 3.12でオフライン検証済みです。プロジェクト直下で実行してください。
+
 ```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/あなたのGitHubユーザー名/discord-bot.git
-git push -u origin main
-```
-
-### 2. Railwayでデプロイ
-1. [railway.app](https://railway.app) にログイン
-2. 「New Project」→「Deploy from GitHub repo」
-3. 上記リポジトリを選択
-
-### 3. 環境変数を設定
-Railwayの「Variables」タブで以下を追加:
-
-| 変数名 | 値 |
-|--------|-----|
-| `DISCORD_TOKEN` | Discordボットのトークン |
-| `ANTHROPIC_API_KEY` | AnthropicのAPIキー |
-
-### 4. デプロイ完了！
-環境変数を保存すると自動的に再起動・24時間稼働します。
-
----
-
-## 🎮 コマンド一覧
-
-### 🤖 AI会話
-| コマンド | 説明 |
-|---------|------|
-| `/chat [message]` | Claude AIと会話する |
-| `/reset_chat` | 会話履歴をリセット |
-
-### 💰 経済システム
-| コマンド | 説明 |
-|---------|------|
-| `/balance` | 所持コインを確認 |
-| `/daily` | 毎日500コインのボーナス |
-| `/send_coin [ユーザー] [枚数]` | コインを送る |
-| `/ranking` | コインランキング表示 |
-
-### 🎰 ゲーム
-| コマンド | 説明 |
-|---------|------|
-| `/slot [bet]` | スロットマシン（最低10コイン）|
-| `/coinflip [表/裏] [bet]` | コインフリップ |
-
-### 🔮 占い
-| コマンド | 説明 |
-|---------|------|
-| `/fortune` | 今日の運勢（1日固定）|
-| `/tarot` | タロットカードを引く |
-
-### 💬 自動返信キーワード
-「おはよう」「おやすみ」「ありがとう」「こんにちは」「こんばんは」「疲れた」「ヒマ」「にゃ」
-
----
-
-## ⚙️ ローカルでのテスト
-```bash
-pip install -r requirements.txt
-export DISCORD_TOKEN="あなたのトークン"
-export ANTHROPIC_API_KEY="あなたのAPIキー"
+python -m pip install -r requirements.txt
+export DISCORD_TOKEN="自分のBOTトークン"
 python bot.py
 ```
+
+PowerShellの場合は `$env:DISCORD_TOKEN="自分のBOTトークン"` を設定してから `python bot.py`。
+`.env` の自動読み込みはありません。`ANTHROPIC_API_KEY` は不要です。
+
+BOTはMembers／Message ContentのIntentsを有効にして接続します。使用先でも対応する設定を有効にしてください。
+メッセージ・埋め込み・添付送信に加え、VC管理にはチャンネル管理／メンバー移動、ロール付与にはロール管理の権限が必要です。
+管理者の対象IDは `config.py` の `ADMIN_USER_IDS` にあります。元ファイルの設定を維持しています。
+
+## 保存データとデプロイ
+
+- `railway.toml` の起動コマンドは `python bot.py`。
+- `RAILWAY_VOLUME_MOUNT_PATH` があれば、その直下の `bot_data.db` に保存します。なければ実行ディレクトリです。
+- 継続運用ではデータベースを永続化してください。修正版ZIPには運用データを含みません。
+- 既存運用に適用するときはBOTを停止し、実DBをバックアップしてからコードを更新してください。稼働中のDBを空のファイルで置き換えないでください。
+- ランキング画像にはNoto CJKフォントが必要です。`nixpacks.toml` に `fonts-noto-cjk` を指定しています。
+- 一部の釣り・ジャグラー画像は既存のGitHub raw URLを参照します。移転時は `cogs/fish_assets.py` と `cogs/juggler.py` のURLを見直してください。
+
+## 保守・検証
+
+```bash
+python -m unittest discover -s tests -v
+python tools/simulate_land.py --area plain --runs 1000 --seed 1
+python tools/generate_sea_balance_doc.py
+```
+
+テストは一時DBを使用し、Discordへ接続しません。日本語フォントがない場合、画像描画テストだけスキップします。
+`tools/` には保守用シミュレーター、Windows用GUI起動ファイル、素材・仕様書の生成処理を残しています。
+
+整理内容、検証範囲、残る既存課題は `ANALYSIS.md`、削除・変更一覧は `CLEANUP.md` を参照してください。

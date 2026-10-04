@@ -4,7 +4,7 @@
 ・HPは持ち越し（毎戦は回復しない）。タウンに戻っても全快しない。回復は🏨宿屋/🍖食料で行う。
 ・敵の攻撃は低め＝あまり食らわない。きついのは「装備が足りない」とき。
 ・XPは一旦“海レンジ（数十）”。大きく稼ぐのはレアキャラで後から調整。
-※ 今は管理者のみ解放（menu.py の街道ボタンでゲート）。
+メニューの街道から利用可能。
 """
 import random
 import asyncio
@@ -17,8 +17,7 @@ import voyage_config as V
 import voyage_combat as C
 from cogs.voyage import (
     make_board_enemy, build_combat_embed, CombatView,
-    add_xp, max_hp, grant_random_equip, build_wait_embed,
-    attack_power, defense_power, board_skills,
+    add_xp, max_hp, attack_power, defense_power, board_skills,
     equipped_inst, hp_bar,
 )
 
@@ -57,9 +56,6 @@ def _pet_line(vp):
             parts.append(f"{p['emoji']} {p['name']}" + (f"×{n}" if n > 1 else ""))
     return " / ".join(parts) if parts else "なし"
 
-def _has_dog_and_cat(vp):
-    counts = _pet_counts(vp)
-    return counts.get("pet_dog", 0) > 0 and counts.get("pet_cat", 0) > 0
 
 def _pet_effect_line(vp):
     counts = _pet_counts(vp)
@@ -102,12 +98,6 @@ def _apply_pet_explore_heal(uid, vp):
                 notes.append(f"🐶🐱 犬と猫{suffix}が寄り添ってくれた。HP {before}→{vp['cur_hp']}（+{vp['cur_hp']-before}）")
     return "\n".join(notes) if notes else None
 
-def _heal_full(uid):
-    """タウン帰還で全快。"""
-    vp = db.get_voyage(uid)
-    vp["cur_hp"] = max_hp(vp)
-    db.save_voyage(uid, vp)
-
 
 def _land_xp_amount(vp, area, raw_xp):
     """街道XP補正。
@@ -126,7 +116,6 @@ def _land_xp_amount(vp, area, raw_xp):
 
 
 # ━━━ 探索の収穫トラッキング（死亡で50%失う対象） ━━━
-import math
 
 def _run(vp):
     """今回の探索セッションの収穫（コイン＋装備ドロップ）。"""
@@ -556,7 +545,6 @@ def _apply_coin_buff(vp, coin, active_buffs=None):
     return coin, False
 
 
-
 class LandItemSelect(discord.ui.Select):
     """街道専用消耗品を使う。"""
     def __init__(self, uid, gid, area, rebuild):
@@ -667,9 +655,6 @@ class LandAreaView(discord.ui.View):
         await asyncio.sleep(1.6 if theater in ("rare", "midrare") else 1.15)
         await self._resolve_prepared(interaction, kind, spec=spec, ev=ev)
 
-    async def _resolve(self, interaction):
-        # 旧呼び出し互換。新規は _play_and_resolve を使う。
-        await self._play_and_resolve(interaction)
 
     async def _resolve_prepared(self, interaction, kind, spec=None, ev=None):
         vp = db.get_voyage(self.uid)
@@ -1070,7 +1055,6 @@ class _RareFleeBtn(discord.ui.Button):
         await interaction.edit_original_response(embed=build_combat_embed(fight_view.state), view=fight_view)
 
 
-
 # ━━━ イベントのサブ抽選（イベントは「きっかけ」、結果は毎回揺れる）━━━
 def _choice_outcome(ch):
     outs = ch.get("outcomes")
@@ -1119,7 +1103,6 @@ def _apply_event_outcome(uid, gid, vp, area, outcome, event=None, choice=None):
     elif outcome == "story":
         lines.append("## 📖 塔の痕跡\n古い文字が残っている。意味はわからない。だが、海を嫌っていることだけは伝わってくる。")
     return lines, start_combat
-
 
 
 def _is_land_escape_choice(label):
@@ -1330,7 +1313,6 @@ def land_on_end(uid, gid, area, spec):
             view = WakeHomeView(uid, gid)
         await interaction.response.edit_message(embed=emb, view=view)
     return _end
-
 
 
 class FeatherChoiceView(discord.ui.View):

@@ -1,7 +1,6 @@
 import asyncio
 import io
 import os
-import textwrap
 import discord
 from discord.ext import commands
 from database import Database
@@ -35,7 +34,6 @@ THEME_ALIASES = {
     'ocean': 'devi', 'fantasy': 'devi', 'city': 'devi', 'hell': 'devi',
     'snow': 'devi', 'forest': 'devi',
 }
-
 
 
 def _kv(gid, key):
@@ -213,7 +211,6 @@ class AboutMePlusView(discord.ui.View):
     async def slot2(self, interaction, button): await self._open(interaction, 2)
     @discord.ui.button(label='項目3', style=discord.ButtonStyle.primary)
     async def slot3(self, interaction, button): await self._open(interaction, 3)
-
 
 
 class ProfileThemeSelect(discord.ui.Select):
@@ -565,9 +562,7 @@ async def build_profile_card_file(member, p):
     title_col = (245, 157, 210)
     soft_line = (190, 146, 235)
 
-    small = _find_japanese_font(21)
     small_b = _find_japanese_font(21, bold=True)
-    medium = _find_japanese_font(27)
     medium_b = _find_japanese_font(27, bold=True)
 
     name = (p.get('nickname') or member.display_name).strip()

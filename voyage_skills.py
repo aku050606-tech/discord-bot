@@ -170,15 +170,8 @@ SKILLS = {
 }
 
 # ── ある武器に、その技を刻めるか（武器種別で判定）──
-def skill_fits_weapon(skill_id, wtype):
-    s = SKILLS.get(skill_id)
-    if not s or s["slot"] != "weapon":
-        return False
-    return wtype in s.get("wtypes", [])
 
 # ── 刻みスロット種(weapon/armor) に対する技ID一覧 ──
-def skills_for_slot(slot):
-    return [sid for sid, s in SKILLS.items() if s["slot"] == slot]
 
 # ── 技外しキット（付け替えに必要なアイテム）──
 UNEQUIP_KIT_PRICE = 3000

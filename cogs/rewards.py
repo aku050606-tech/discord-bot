@@ -3,7 +3,6 @@ from discord.ext import commands, tasks
 from database import Database
 from config import VC_REWARD_COINS, VC_REWARD_INTERVAL, CHAT_REWARD_COINS
 from datetime import datetime, timezone, timedelta
-import asyncio
 import time
 from quest_tracker import record as quest_record
 

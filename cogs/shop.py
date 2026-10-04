@@ -449,7 +449,6 @@ class EquipReelView(discord.ui.View):
 
     @discord.ui.button(label="🔙 戻る", style=discord.ButtonStyle.secondary, row=4)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        gear = db.get_gear(self.uid)
         await show_equip(interaction)
 
 

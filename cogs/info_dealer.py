@@ -1,8 +1,11 @@
 import discord
 import random
-from datetime import date
 from database import Database
-from config import *   # get_daily_machines, is_high_setting_day など
+from config import (
+    get_daily_machines,
+    is_high_setting_day,
+    jst_today_str,
+)   # get_daily_machines, is_high_setting_day など
 
 db = Database()
 

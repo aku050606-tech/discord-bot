@@ -6,10 +6,8 @@ import uuid
 from database import Database
 from config import (
     JUGGLER_BET, JUGGLER_KOYAKU, JUGGLER_BIG_NET, JUGGLER_REG_NET,
-    JUGGLER_HYPER_NET, JUGGLER_BONUS, JUGGLER_PREEMPTIVE_RATE, get_juggler_setting,
-    JUGGLER_WAIT, JUGGLER_PEKA_PRE, JUGGLER_PEKA_POST,
-    JUGGLER_BIG_REVEAL, JUGGLER_REG_REVEAL, JUGGLER_HYPER_REVEAL, JUGGLER_MISS_LINES,
-    SLOT_BET,
+    JUGGLER_HYPER_NET, JUGGLER_BONUS, get_juggler_setting,
+    JUGGLER_WAIT, JUGGLER_BIG_REVEAL, JUGGLER_REG_REVEAL, JUGGLER_HYPER_REVEAL, SLOT_BET,
 )
 from cogs.embed_utils import pad_embed
 from quest_tracker import record as quest_record
@@ -204,10 +202,6 @@ async def _expire(interaction, view):
             await interaction.response.send_message("セッションが切れました。もう一度始めてください。", ephemeral=True)
         except Exception:
             pass
-
-
-def _handle_timeout_cleanup(view):
-    active_jug.pop(getattr(view, "user_id", None), None)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

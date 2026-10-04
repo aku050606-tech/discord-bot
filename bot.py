@@ -12,7 +12,6 @@ except Exception:
 
 import discord
 from discord.ext import commands
-from discord import app_commands
 import asyncio
 from database import Database
 

@@ -73,9 +73,17 @@ def roll_equip_drop(area: int, tier: str) -> int | None:
         table = random.choice(L.LAND_MIDRARES[area]).get("drop", [])
     else:
         table = L.RARE_BOSS.get("drop", [])
-    for rank, rate in table:
-        if random.random() < rate:
-            return rank
+    for entry in table:
+        if entry[0] == "dist":
+            _, rate, distribution = entry
+            if random.random() < float(rate):
+                ranks = [int(rank) for rank, _ in distribution]
+                weights = [float(weight) for _, weight in distribution]
+                return random.choices(ranks, weights=weights)[0]
+        else:
+            rank, rate = entry
+            if random.random() < float(rate):
+                return int(rank)
     return None
 
 def random_event_outcome(area: int) -> tuple[str, dict]:

@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database import Database
 from config import ADMIN_USER_IDS, ADMIN_MAX_AMOUNT
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 db = Database()
 

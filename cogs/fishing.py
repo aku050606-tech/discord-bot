@@ -2,11 +2,44 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from config import *
+from config import (
+    AREA_BOSS,
+    BLOOD_MOON_BOSS,
+    BOSS_REWARD,
+    FISHING_AREAS,
+    FISHING_EFFECTS,
+    FISHING_EFFECT_POOL,
+    FISHING_LINES,
+    FISHING_RARITY,
+    FISHING_REELS,
+    FISHING_RODS,
+    FISHING_SHADOW_WAIT,
+    FISHING_WAIT_NORMAL,
+    FISHING_WAIT_SUPER,
+    GOLDEN_CROWN_CHANCE,
+    LAKE_FISH,
+    LIMITED_FISH,
+    RARE_TRASH_BY_AREA,
+    RARE_TRASH_RATE,
+    RARITY_COLORS,
+    RIVER_FISH,
+    SEA_FISH,
+    SHADOW_CHANCE,
+    SHADOW_SUCCESS_RATES,
+    STORM_CHEST_RATE,
+    STORM_TREASURES,
+    SUSPENSE_COLOR,
+    TREASURE_BY_AREA,
+    TREASURE_MAP_DROP_RATE,
+    TREASURE_OUTCOMES,
+    ZUKAN_ALL_BONUS,
+    ZUKAN_COMPLETE_BONUS,
+    get_rod_dura_cost,
+)
 import random
 import asyncio
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 from cogs.embed_utils import pad_embed
 from cogs import fish_assets as FA
 import weather as W
@@ -503,7 +536,7 @@ async def _do_fish_impl(interaction: discord.Interaction, area: str, spot: int =
                 desc += "\n🗑️✨ **レアごみ図鑑に新しく登録されました！**"
         else:
             embed3.title = f"{fish['emoji']} {fish['name']}"
-            desc = f"ゴミだった...\n換金額: **0ナトコイン**"
+            desc = "ゴミだった...\n換金額: **0ナトコイン**"
             if is_new:
                 desc += "\n🗑️ **ごみ図鑑に新しく登録されました！**"
     else:

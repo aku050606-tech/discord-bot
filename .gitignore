@@ -4,3 +4,12 @@ __pycache__/
 .env
 .venv/
 venv/
+
+# ローカル実行・検証で生成されるもの
+*.db
+*.db-wal
+*.db-shm
+.ruff_cache/
+*.bak
+*.orig
+tools/sim_reports/

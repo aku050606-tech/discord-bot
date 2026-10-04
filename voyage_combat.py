@@ -307,16 +307,6 @@ def enemy_action(state):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 1ターン進行（味方の行動 → 敵の行動 → ラウンド終了）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def _offhand_strike(state):
-    """双剣の追撃。白兵のみ・武器power分だけ（レベルボーナス抜き＝案B）。溜め中は出ない。"""
-    a = state["ally"]; e = state["enemy"]
-    if a.get("charging"):
-        return
-    d = dmg_calc(a["offhand_power"], e["def"], 1.0)
-    amt, line = _deal(state, a, e, d)
-    state["log"].append(f"  🗡️ 追撃！{e['name']} に {amt}")
-    if e["hp"] <= 0:
-        state["over"] = True; state["result"] = "win"
 
 
 def take_turn(state, ally_action):

@@ -2,11 +2,52 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database import Database
-from config import *
+from config import (
+    GOD_AIM_LABELS,
+    GOD_BADGE_INFO,
+    GOD_BURST_EFFECTS,
+    GOD_BURST_RATE,
+    GOD_BURST_TABLE,
+    GOD_CONTINUE_EFFECTS,
+    GOD_END_EFFECTS,
+    GOD_ENTRY_EFFECTS,
+    GOD_ENTRY_TABLE,
+    GOD_FEINT_CONTINUE,
+    GOD_FEINT_END,
+    GOD_FEINT_INTRO,
+    GOD_FEINT_RATE,
+    GOD_FINISH_HOLY,
+    GOD_FINISH_LINES,
+    GOD_GAME_KOYAKU,
+    GOD_GAME_UP_BALANCED,
+    GOD_GAME_UP_BIGBANG,
+    GOD_GAME_UP_ORBIT,
+    GOD_HOLY_BEATS,
+    GOD_KOYAKU_REEL,
+    GOD_PAYOUT_SCALE,
+    GOD_RANKS,
+    GOD_RANKUP_EFFECTS,
+    GOD_RANK_COLOR,
+    GOD_SETTEI_BADGES,
+    GOD_SET_GAMES,
+    GOD_SINGULARITY,
+    GOD_TRIGGER_GROUP,
+    GOD_TRIGGER_RATE,
+    GOD_ZONE_NAME,
+    MISS_REELS,
+    REELS,
+    SLOT_BET,
+    SLOT_EFFECTS,
+    SLOT_EFFECT_WEIGHTS,
+    SLOT_KOYAKU,
+    SLOT_SETTINGS,
+    SLOT_WAIT,
+    get_daily_machines,
+)
 import random
 import asyncio
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 from cogs.embed_utils import pad_embed
 from quest_tracker import record as quest_record
 
