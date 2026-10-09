@@ -892,7 +892,7 @@ class MemberOnboarding(commands.Cog):
         # DiscordでBANされたユーザーは、BAN解除後も自動で参加権を戻さない。
         db.set_member_blocked(guild.id, user.id, True)
 
-    @app_commands.command(name='参加禁止ID', description='退会済み・BAN済みユーザーのIDを参加禁止に登録／解除する')
+    @app_commands.command(name='参加禁止id', description='退会済み・BAN済みユーザーのIDを参加禁止に登録／解除する')
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.describe(user_id='対象DiscordユーザーID（数字）', blocked='True:参加禁止 / False:解除')
