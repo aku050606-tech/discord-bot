@@ -23,12 +23,17 @@ K_RULE_BODY = 'member_rules_body'
 K_RULE_MESSAGE_ID = 'member_rules_posted_message'
 K_RULE_POSTED_CHANNEL = 'member_rules_posted_channel'
 K_RULE_POSTED_HASH = 'member_rules_posted_hash'
-K_TEMP_RATING_MIN_VOTES = 'temp_rating_min_votes'
-K_TEMP_RATING_POSITIVE_PERCENT = 'temp_rating_positive_percent'
-K_TEMP_RATING_MIN_AVERAGE = 'temp_rating_min_average'
-DEFAULT_MIN_VOTES = 5
-DEFAULT_POSITIVE_PERCENT = 80
-DEFAULT_MIN_AVERAGE = 3.0
+# 評価をDBに保存する数値は点数ではなく選択肢ID（4/3/2/1）。
+# 点数の変更は既存投票にも反映し、票数・個々の評価は公開しない。
+K_TEMP_RATING_THRESHOLD = 'temp_rating_promotion_threshold'
+RATING_WEIGHT_KEYS = {
+    4: 'temp_rating_weight_very_easy',
+    3: 'temp_rating_weight_easy',
+    2: 'temp_rating_weight_hard',
+    1: 'temp_rating_weight_very_hard',
+}
+DEFAULT_RATING_WEIGHTS = {4: 2, 3: 1, 2: -1, 1: -2}
+DEFAULT_RATING_THRESHOLD = 10
 PROMOTION_LOCKS = {}
 DEFAULT_RULE_VERSION = '2026-10-v1'
 REGISTRATION_LOCKS = {}
@@ -766,17 +771,18 @@ async def build_profile_card_file(member, p):
     return discord.File(out, filename=f'profile_{member.id}.png')
 
 def _rating_config(guild_id):
-    def load(key, default, conv, lower, upper):
+    """(自動昇格を超えるべき合計点, 選択肢ID→現在の点数) を返す。"""
+    def load(key, default, lower, upper):
         try:
-            value = conv(db.get_setting_text(guild_id, key))
+            value = int(db.get_setting_text(guild_id, key))
             return value if lower <= value <= upper else default
         except (TypeError, ValueError):
             return default
-    return (
-        load(K_TEMP_RATING_MIN_VOTES, DEFAULT_MIN_VOTES, int, 2, 100),
-        load(K_TEMP_RATING_POSITIVE_PERCENT, DEFAULT_POSITIVE_PERCENT, int, 1, 100),
-        load(K_TEMP_RATING_MIN_AVERAGE, DEFAULT_MIN_AVERAGE, float, 1.0, 4.0),
-    )
+
+    threshold = load(K_TEMP_RATING_THRESHOLD, DEFAULT_RATING_THRESHOLD, 0, 10000)
+    weights = {choice: load(key, DEFAULT_RATING_WEIGHTS[choice], -100, 100)
+               for choice, key in RATING_WEIGHT_KEYS.items()}
+    return threshold, weights
 
 
 def _valid_temp_rating_scores(member):
@@ -794,12 +800,11 @@ def _valid_temp_rating_scores(member):
 
 
 def _temporary_rating_passes(scores, settings):
-    min_votes, positive_percent, min_average = settings
-    if len(scores) < min_votes:
+    """閾値は『超える』で判定。10点なら合計11点以上で昇格。"""
+    threshold, weights = settings
+    if not scores:
         return False
-    positives = sum(score >= 3 for score in scores)
-    return (positives * 100 >= len(scores) * positive_percent
-            and sum(scores) >= len(scores) * min_average)
+    return sum(weights[choice] for choice in scores) > threshold
 
 
 async def _remove_temporary_profile(member):
@@ -1127,29 +1132,67 @@ class MemberOnboarding(commands.Cog):
         # DiscordでBANされたユーザーは、BAN解除後も自動で参加権を戻さない。
         db.set_member_blocked(guild.id, user.id, True)
 
-    @app_commands.command(name='仮評価条件', description='仮メンバーが自動昇格する条件を設定（管理者専用）')
+    @app_commands.command(name='仮評価設定', description='仮評価の配点や自動昇格点を確認・変更（管理者専用）')
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
-    @app_commands.describe(最低人数='異なる正式メンバーからの最低評価人数（2〜100）',
-                           好意的割合='話しやすい／とても話しやすいの必要割合（1〜100%）',
-                           最低平均='4段階評価の最低平均点（1.0〜4.0）')
-    async def configure_temp_ratings(self, interaction: discord.Interaction,
-                                     最低人数: app_commands.Range[int, 2, 100],
-                                     好意的割合: app_commands.Range[int, 1, 100],
-                                     最低平均: app_commands.Range[float, 1.0, 4.0]):
+    @app_commands.describe(
+        とても話しやすい='該当評価の点数（-100〜100）',
+        話しやすい='該当評価の点数（-100〜100）',
+        話しにくい='該当評価の点数（-100〜100）',
+        とても話しにくい='該当評価の点数（-100〜100）',
+        昇格基準='合計がこの点数を超えたら昇格（0〜10000）',
+    )
+    async def configure_temp_ratings(
+        self, interaction: discord.Interaction,
+        とても話しやすい: int | None = None,
+        話しやすい: int | None = None,
+        話しにくい: int | None = None,
+        とても話しにくい: int | None = None,
+        昇格基準: int | None = None,
+    ):
+        if interaction.guild is None:
+            await interaction.response.send_message('サーバー内から操作してください。', ephemeral=True)
+            return
+        # 変更する項目だけ指定できる。未指定なら現在の設定を表示。
+        new_weights = {4: とても話しやすい, 3: 話しやすい,
+                       2: 話しにくい, 1: とても話しにくい}
+        if any(value is not None and not (-100 <= value <= 100)
+               for value in new_weights.values()) or (昇格基準 is not None and not (0 <= 昇格基準 <= 10000)):
+            await interaction.response.send_message(
+                '評価の点数は-100〜100、昇格基準は0〜10000で指定してください。', ephemeral=True)
+            return
         gid = interaction.guild.id
-        db.set_setting_text(gid, K_TEMP_RATING_MIN_VOTES, str(最低人数))
-        db.set_setting_text(gid, K_TEMP_RATING_POSITIVE_PERCENT, str(好意的割合))
-        db.set_setting_text(gid, K_TEMP_RATING_MIN_AVERAGE, str(最低平均))
+        changed = any(value is not None for value in new_weights.values()) or 昇格基準 is not None
+        if changed:
+            if 昇格基準 is not None:
+                db.set_setting_text(gid, K_TEMP_RATING_THRESHOLD, 昇格基準)
+            for choice, value in new_weights.items():
+                if value is not None:
+                    db.set_setting_text(gid, RATING_WEIGHT_KEYS[choice], value)
+        threshold, weights = _rating_config(gid)
         await interaction.response.send_message(
-            f'✅ 自動昇格条件を設定：最低{最低人数}名、好意的評価{好意的割合}%以上、平均{最低平均:.2f}以上。'
-            '\nこのメッセージは管理者本人だけに表示されます。', ephemeral=True)
-        # 設定緩和で既に条件を満たした対象がいる場合にも昇格する。
+            ('✅ 配点・昇格基準を更新しました。' if changed else '🛠️ 現在の仮評価設定です。')
+            + f'\n・とても話しやすい：{weights[4]:+d}点'
+            + f'\n・話しやすい：{weights[3]:+d}点'
+            + f'\n・話しにくい：{weights[2]:+d}点'
+            + f'\n・とても話しにくい：{weights[1]:+d}点'
+            + f'\n・自動昇格：合計{threshold}点を超えたら（{threshold + 1}点以上）'
+            + '\n※ 評価者・個別評価・合計点は表示しません。', ephemeral=True)
+        if not changed:
+            return
+        # 既存投票は選択肢IDのまま保存。配点変更で全員分を再計算する。
+        # 閾値引き下げなどで新たに条件を満たした場合は、その場で昇格を実行。
+        # Discord操作が長引く場合に備え、応答は先に返しておく。
         for uid in db.list_temp_member_rating_targets(gid):
             if uid.isdigit():
                 target = interaction.guild.get_member(int(uid))
                 if target:
-                    await _try_auto_promote(target)
+                    try:
+                        result, _ = await _try_auto_promote(target)
+                        if result == 'error':
+                            print(f'⚠️ 自動昇格（設定変更）に失敗 guild={gid} target={uid}')
+                    except Exception as exc:
+                        print(f'⚠️ 自動昇格（設定変更）例外 guild={gid} target={uid}: {type(exc).__name__}')
 
     @app_commands.command(name='仮メンバー昇格', description='評価条件に関係なく仮メンバーを正式昇格（管理者専用）')
     @app_commands.default_permissions(administrator=True)
