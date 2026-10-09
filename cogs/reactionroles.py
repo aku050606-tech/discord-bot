@@ -35,6 +35,10 @@ class ReactionRoles(commands.Cog):
         member = payload.member or guild.get_member(payload.user_id)
         if role is None or member is None:
             return
+        reserved = {db.get_log_channel_id(str(guild.id), 'member_temp_role'),
+                    db.get_log_channel_id(str(guild.id), 'member_full_role')}
+        if str(role.id) in reserved:
+            return
         try:
             await member.add_roles(role, reason="リアクションロール")
         except (discord.Forbidden, discord.HTTPException):
@@ -53,6 +57,10 @@ class ReactionRoles(commands.Cog):
         role = guild.get_role(int(role_id))
         member = guild.get_member(payload.user_id)
         if role is None or member is None:
+            return
+        reserved = {db.get_log_channel_id(str(guild.id), 'member_temp_role'),
+                    db.get_log_channel_id(str(guild.id), 'member_full_role')}
+        if str(role.id) in reserved:
             return
         try:
             await member.remove_roles(role, reason="リアクションロール解除")

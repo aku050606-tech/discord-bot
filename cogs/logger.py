@@ -43,6 +43,21 @@ def jst_now() -> str:
     return datetime.now(jst).strftime("%Y/%m/%d %H:%M:%S")
 
 
+def _profile_view(user_id: int) -> discord.ui.View:
+    # URLボタンなので、BOT再起動後もコールバック登録なしで利用できる。
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(
+        label="プロフィールを開く",
+        style=discord.ButtonStyle.link,
+        url=f"https://discord.com/users/{user_id}",
+    ))
+    return view
+
+
+def _user_label(user) -> str:
+    return f"{user.mention}\n({discord.utils.escape_markdown(user.name)})"
+
+
 async def _recent_audit_actor(guild, action, target_id, within=12):
     """監査ログから、対象ユーザーへの直近アクションの実行者・理由を返す。
     取得できない（権限不足等）場合は (None, None)。"""
@@ -70,12 +85,13 @@ class Logger(commands.Cog):
         embed = discord.Embed(title="📥 サーバー入室", color=discord.Color.green(),
                               timestamp=discord.utils.utcnow())
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="ユーザー", value=f"{member.mention}\n({member.name})", inline=True)
+        embed.add_field(name="ユーザー", value=_user_label(member), inline=False)
         embed.add_field(name="ID", value=str(member.id), inline=True)
         embed.add_field(name="アカウント作成日", value=member.created_at.strftime("%Y/%m/%d"), inline=True)
         embed.add_field(name="サーバー人数", value=f"{member.guild.member_count}人", inline=True)
         embed.set_footer(text=jst_now())
-        await ch.send(embed=embed)
+        await ch.send(embed=embed, view=_profile_view(member.id),
+                      allowed_mentions=discord.AllowedMentions.none())
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ サーバー退室 / KICK ━━
     @commands.Cog.listener()
@@ -92,12 +108,13 @@ class Logger(commands.Cog):
             embed = discord.Embed(title="👢 KICK", color=discord.Color.orange(),
                                   timestamp=discord.utils.utcnow())
             embed.set_thumbnail(url=member.display_avatar.url)
-            embed.add_field(name="対象", value=f"{member.name}", inline=True)
+            embed.add_field(name="対象", value=_user_label(member), inline=False)
             embed.add_field(name="ID", value=str(member.id), inline=True)
             embed.add_field(name="実行者", value=actor.mention, inline=True)
             embed.add_field(name="理由", value=reason or "（なし）", inline=False)
             embed.set_footer(text=jst_now())
-            await ch.send(embed=embed)
+            await ch.send(embed=embed, view=_profile_view(member.id),
+                          allowed_mentions=discord.AllowedMentions.none())
             return
 
         # BAN由来の退室は on_member_ban 側で記録するのでここでは出さない（二重防止）
@@ -114,14 +131,15 @@ class Logger(commands.Cog):
         embed = discord.Embed(title="📤 サーバー退室", color=discord.Color.red(),
                               timestamp=discord.utils.utcnow())
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.add_field(name="ユーザー", value=f"{member.name}", inline=True)
+        embed.add_field(name="ユーザー", value=_user_label(member), inline=False)
         embed.add_field(name="ID", value=str(member.id), inline=True)
         embed.add_field(name="参加日",
                         value=member.joined_at.strftime("%Y/%m/%d") if member.joined_at else "不明",
                         inline=True)
         embed.add_field(name="所持ロール", value=", ".join(roles) if roles else "なし", inline=False)
         embed.set_footer(text=jst_now())
-        await ch.send(embed=embed)
+        await ch.send(embed=embed, view=_profile_view(member.id),
+                      allowed_mentions=discord.AllowedMentions.none())
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ BAN ━━
     @commands.Cog.listener()
@@ -133,12 +151,13 @@ class Logger(commands.Cog):
         embed = discord.Embed(title="🔨 BAN", color=discord.Color.dark_red(),
                               timestamp=discord.utils.utcnow())
         embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(name="対象", value=f"{user.name}", inline=True)
+        embed.add_field(name="対象", value=_user_label(user), inline=False)
         embed.add_field(name="ID", value=str(user.id), inline=True)
         embed.add_field(name="実行者", value=actor.mention if actor else "不明", inline=True)
         embed.add_field(name="理由", value=reason or "（なし）", inline=False)
         embed.set_footer(text=jst_now())
-        await ch.send(embed=embed)
+        await ch.send(embed=embed, view=_profile_view(user.id),
+                      allowed_mentions=discord.AllowedMentions.none())
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━ VC 入室 / 退室 / 移動 ━━
     @commands.Cog.listener()

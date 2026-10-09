@@ -3,6 +3,7 @@ import io
 import os
 import discord
 from discord.ext import commands
+from discord import app_commands
 from database import Database
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
@@ -15,6 +16,10 @@ K_PANEL_CHANNEL = 'member_panel_channel'
 K_PANEL_MESSAGE = 'member_panel_message'
 K_PROFILE_CHANNEL = 'member_profile_channel'
 K_PROFILE_DISPLAY_MODE = 'member_profile_display_mode'
+K_RULE_CHANNEL = 'member_rules_channel'
+K_RULE_VERSION = 'member_rules_version'
+DEFAULT_RULE_VERSION = '2026-10-v1'
+REGISTRATION_LOCKS = {}
 K_HOURS_ENABLED = 'member_hours_enabled'
 K_STICKY_CHANNEL = 'sticky_channel'
 K_STICKY_MESSAGE = 'sticky_message'
@@ -43,28 +48,28 @@ def _set(gid, key, value):
     db.set_log_channel(str(gid), key, str(value))
 
 
-def panel_embed():
+def current_rules_version(guild_id):
+    return db.get_setting_text(str(guild_id), K_RULE_VERSION) or DEFAULT_RULE_VERSION
+
+
+def rules_channel(guild):
+    channel_id = _kv(guild.id, K_RULE_CHANNEL)
+    return guild.get_channel(int(channel_id)) if channel_id and channel_id.isdigit() else None
+
+
+def panel_embed(guild=None):
+    target = rules_channel(guild) if guild else None
+    rules = target.mention if target else 'ルールチャンネル（管理者が設定してください）'
     return discord.Embed(
         title='👥 サーバー参加登録',
         description=(
-            'このパネルだけで参加登録が完了します。\n\n'
-            '① **ルールを確認して同意**\n'
-            '② **MBTIを選択**\n'
-            '③ **遊ぶGAMEを選択**（複数可）\n'
-            '④ **名前・趣味を記入**\n'
-            '⑤ **一言を記入**\n\n'
-            '登録内容は後からいつでも変更できます。必要項目を満たすと本メンバーロールが付与されます。'
+            '**「参加手続きを始める」から登録できます。**\n\n'
+            f'1. {rules} を読み、18歳以上であることとルールへの同意を確認\n'
+            '2. 名前・性別・一言を登録\n'
+            '3. 登録内容を確認して「登録して参加」を押す\n\n'
+            '完了したら **仮メンバー** になります。正式昇格は別の手続きです。\n'
+            'プロフィールはサーバー内のプロフィール欄に公開され、後から本人が変更できます。'
         ), color=discord.Color.blurple())
-
-
-class RuleConfirmView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=180)
-    @discord.ui.button(label='✅ ルールを読み、同意します', style=discord.ButtonStyle.success)
-    async def confirm(self, interaction, button):
-        db.set_member_rule(str(interaction.guild.id), str(interaction.user.id), 1)
-        await interaction.response.edit_message(content='✅ ルール同意を記録しました。', embed=None, view=None)
-        await report_promotion(interaction)
 
 
 class MBTISelect(discord.ui.Select):
@@ -251,6 +256,11 @@ class ProfileEditMenu(discord.ui.View):
         cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
         await interaction.response.send_modal(ProfileModal(cur))
 
+    @discord.ui.button(label='名前・性別・一言', style=discord.ButtonStyle.success, row=0)
+    async def short(self, interaction, button):
+        cur = db.get_member_profile(interaction.guild.id, interaction.user.id) or {}
+        await interaction.response.send_modal(TempProfileModal(cur))
+
     @discord.ui.button(label='MBTI', style=discord.ButtonStyle.primary, row=0)
     async def mbti(self, interaction, button):
         await interaction.response.send_message('MBTIを選択してください。', view=MBTIView(), ephemeral=True)
@@ -275,135 +285,215 @@ class ProfileEditMenu(discord.ui.View):
         await interaction.response.send_modal(FreeTextModal(cur))
 
 
-class RegistrationPanel(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-    @discord.ui.button(label='📖 ルール確認', style=discord.ButtonStyle.secondary, custom_id='member:rules', row=0)
-    async def rules(self, interaction, button):
-        await interaction.response.send_message('サーバーのルールを最後まで確認したうえで、下のボタンを押してください。', view=RuleConfirmView(), ephemeral=True)
-    @discord.ui.button(label='🧠 MBTI', style=discord.ButtonStyle.primary, custom_id='member:mbti', row=0)
-    async def mbti(self, interaction, button):
-        await interaction.response.send_message('MBTIを選択してください。', view=MBTIView(), ephemeral=True)
-    @discord.ui.button(label='🎮 GAME', style=discord.ButtonStyle.primary, custom_id='member:games', row=0)
-    async def games(self, interaction, button):
-        await interaction.response.send_message('遊ぶゲームを選択してください。', view=GameView(), ephemeral=True)
-    @discord.ui.button(label='✏️ プロフィール', style=discord.ButtonStyle.success, custom_id='member:profile', row=1)
-    async def profile(self, interaction, button):
-        cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id))
-        await interaction.response.send_modal(ProfileModal(cur))
-    @discord.ui.button(label='⭐ ABOUT ME+', style=discord.ButtonStyle.secondary, custom_id='member:about_plus', row=1)
-    async def about_plus(self, interaction, button):
-        await interaction.response.send_message('任意項目です。編集する枠を選んでください。', view=AboutMePlusView(interaction.user.id), ephemeral=True)
-    @discord.ui.button(label='💬 一言', style=discord.ButtonStyle.secondary, custom_id='member:comment', row=2)
-    async def comment(self, interaction, button):
-        current = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
-        await interaction.response.send_modal(CommentModal(current))
+def get_temp_role(guild):
+    value = _kv(guild.id, K_TEMP_ROLE)
+    return guild.get_role(int(value)) if value and value.isdigit() else None
 
-    @discord.ui.button(label='💙 好きなこと', style=discord.ButtonStyle.secondary, custom_id='member:free_text', row=2)
-    async def free_text(self, interaction, button):
-        cur = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
-        await interaction.response.send_modal(FreeTextModal(cur))
-    @discord.ui.button(label='✅ 登録状況', style=discord.ButtonStyle.secondary, custom_id='member:status', row=2)
-    async def status(self, interaction, button):
-        p = db.get_member_profile(str(interaction.guild.id), str(interaction.user.id)) or {}
-        rule = db.get_member_rule(str(interaction.guild.id), str(interaction.user.id))
-        secs = db.get_vc_seconds(interaction.user.id, interaction.guild.id)
-        need = float(_kv(interaction.guild.id, K_HOURS) or 0)
-        hours_on = (_kv(interaction.guild.id, K_HOURS_ENABLED) or 'OFF') == 'ON'
-        lines = [
-            f"ルール：{'✅' if rule else '❌'}",
-            f"MBTI：{'✅ ' + p.get('mbti','') if p.get('mbti') else '❌'}",
-            f"GAME：{'✅ ' + (p.get('games') or '').replace(',', '・') if p.get('games') else '❌'}",
-            f"プロフィール：{'✅' if p.get('nickname') and p.get('hobby') and p.get('comment') else '❌'}",
-            f"VC時間条件：{'ON' if hours_on else 'OFF'}" + (f"（{secs/3600:.1f} / {need:g}時間 {'✅' if secs >= need*3600 else '❌'}）" if hours_on else ''),
-        ]
-        full_id = _kv(interaction.guild.id, K_FULL_ROLE)
-        full_role = interaction.guild.get_role(int(full_id)) if full_id and full_id != 'OFF' and str(full_id).isdigit() else None
-        lines.append(f"正式ロール：{full_role.mention if full_role else '❌ 未設定または消失'}")
-        await interaction.response.send_message('\n'.join(lines), ephemeral=True)
-        await report_promotion(interaction)
+
+def get_full_role(guild):
+    value = _kv(guild.id, K_FULL_ROLE)
+    return guild.get_role(int(value)) if value and value.isdigit() else None
+
+
+def is_blocked(member):
+    state = db.get_member_registration(member.guild.id, member.id)
+    return bool(state.get('blocked'))
+
+
+def temporary_profile_complete(member):
+    p = db.get_member_profile(member.guild.id, member.id) or {}
+    return all(str(p.get(key) or '').strip() for key in ('nickname', 'gender', 'comment'))
+
+
+def consent_complete(member):
+    state = db.get_member_registration(member.guild.id, member.id)
+    return (not state.get('blocked') and state.get('rule_ok') == 1
+            and state.get('age_confirmed') == 1
+            and state.get('consent_version') == current_rules_version(member.guild.id))
 
 
 def complete(member):
-    gid, uid = str(member.guild.id), str(member.id)
-    p = db.get_member_profile(gid, uid) or {}
-    if not db.get_member_rule(gid, uid): return False
-    if not p.get('mbti') or not p.get('games') or not p.get('nickname') or not p.get('hobby') or not p.get('comment'): return False
-    if (_kv(gid, K_HOURS_ENABLED) or 'OFF') != 'ON':
+    return consent_complete(member) and temporary_profile_complete(member)
+
+
+def _preview(member):
+    state = db.get_member_registration(member.guild.id, member.id)
+    p = db.get_member_profile(member.guild.id, member.id) or {}
+    consent = consent_complete(member)
+    return (f"ルール同意（18歳以上）：{'✅' if consent else '未完了'}\n"
+            f"名前：{discord.utils.escape_markdown(p.get('nickname') or '未入力')}\n"
+            f"性別：{discord.utils.escape_markdown(p.get('gender') or '未入力')}\n"
+            f"一言：{discord.utils.escape_markdown(p.get('comment') or '未入力')}\n\n"
+            'この3項目はサーバー内のプロフィール欄に公開されます。\n'
+            f"登録状況：{'登録済み' if state.get('registered_at') else '仮保存中'}")
+
+
+class TempProfileModal(discord.ui.Modal, title='仮プロフィール登録・編集'):
+    nickname = discord.ui.TextInput(label='名前・呼び方', max_length=50)
+    gender = discord.ui.TextInput(label='性別（非公開・回答しないも可）', max_length=30)
+    comment = discord.ui.TextInput(label='一言', style=discord.TextStyle.paragraph, max_length=300)
+
+    def __init__(self, current=None):
+        super().__init__()
+        current = current or {}
+        self.nickname.default = current.get('nickname') or ''
+        self.gender.default = current.get('gender') or ''
+        self.comment.default = current.get('comment') or ''
+
+    async def on_submit(self, interaction):
+        member = interaction.user
+        if not isinstance(member, discord.Member) or is_blocked(member):
+            await interaction.response.send_message('このアカウントは登録できません。管理者に確認してください。', ephemeral=True)
+            return
+        data = {key: getattr(self, key).value.strip() for key in ('nickname', 'gender', 'comment')}
+        if not all(data.values()):
+            await interaction.response.send_message('3項目すべて入力してください。', ephemeral=True)
+            return
+        db.update_member_profile(member.guild.id, member.id, **data)
+        registered = bool(db.get_member_registration(member.guild.id, member.id).get('registered_at'))
+        if registered or (get_full_role(member.guild) in member.roles and get_full_role(member.guild) is not None):
+            try:
+                await publish_profile(member)
+            except (discord.HTTPException, discord.Forbidden, RuntimeError):
+                await interaction.response.send_message('✅ 保存しました。プロフィール欄への反映に失敗したため管理者に連絡してください。', ephemeral=True)
+                return
+        await interaction.response.send_message(
+            '✅ 保存しました。内容を確認してください。' if not registered else '✅ プロフィールを更新しました。',
+            view=RegistrationSteps(member.id), ephemeral=True)
+
+
+class RegistrationSteps(discord.ui.View):
+    def __init__(self, owner_id):
+        super().__init__(timeout=900)
+        self.owner_id = int(owner_id)
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message('自分の登録だけ操作できます。', ephemeral=True)
+            return False
         return True
-    try: need = float(_kv(gid, K_HOURS) or 0) * 3600
-    except ValueError: need = 0
-    return db.get_vc_seconds(uid, gid) >= need
+
+    @discord.ui.button(label='18歳以上であり、ルールに同意して進む', style=discord.ButtonStyle.success)
+    async def agree(self, interaction, button):
+        if not isinstance(interaction.user, discord.Member) or is_blocked(interaction.user):
+            await interaction.response.send_message('このアカウントは登録できません。', ephemeral=True)
+            return
+        if not rules_channel(interaction.guild):
+            await interaction.response.send_message('ルールチャンネルが未設定です。管理者にご連絡ください。', ephemeral=True)
+            return
+        db.accept_member_rules(interaction.guild.id, interaction.user.id,
+                               current_rules_version(interaction.guild.id))
+        await interaction.response.edit_message(content='✅ 18歳以上の自己申告とルール同意を記録しました。\n\n' + _preview(interaction.user),
+                                                view=RegistrationSteps(interaction.user.id), embed=None)
+
+    @discord.ui.button(label='✏️ プロフィールを入力・編集', style=discord.ButtonStyle.primary)
+    async def edit(self, interaction, button):
+        if is_blocked(interaction.user):
+            await interaction.response.send_message('このアカウントは登録できません。', ephemeral=True)
+            return
+        p = db.get_member_profile(interaction.guild.id, interaction.user.id) or {}
+        await interaction.response.send_modal(TempProfileModal(p))
+
+    @discord.ui.button(label='✅ 登録して参加', style=discord.ButtonStyle.success)
+    async def finalize(self, interaction, button):
+        await interaction.response.defer(ephemeral=True)
+        state, message = await try_promote(interaction.user)
+        if state in ('added', 'already'):
+            try:
+                await publish_profile(interaction.user)
+            except (discord.HTTPException, discord.Forbidden, RuntimeError):
+                message += '\n⚠️ プロフィール欄への掲載が失敗しました。管理者に連絡してください。'
+        await interaction.followup.send(message, ephemeral=True)
+
+
+class RegistrationPanel(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='🚀 参加手続きを始める', style=discord.ButtonStyle.success,
+                       custom_id='member:begin', row=0)
+    async def begin(self, interaction, button):
+        member = interaction.user
+        if not isinstance(member, discord.Member) or is_blocked(member):
+            await interaction.response.send_message('このアカウントは登録できません。管理者に確認してください。', ephemeral=True)
+            return
+        rules = rules_channel(interaction.guild)
+        if not rules:
+            await interaction.response.send_message('管理者がルールチャンネルを設定していません。', ephemeral=True)
+            return
+        pf_id = _kv(interaction.guild.id, K_PROFILE_CHANNEL)
+        pf = interaction.guild.get_channel(int(pf_id)) if pf_id and pf_id.isdigit() else None
+        if not pf or not get_temp_role(interaction.guild):
+            await interaction.response.send_message('登録先・仮ロールの設定が未完了です。管理者にご連絡ください。', ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f'まず {rules.mention} を読んでください。\n'
+            '**18歳以上であることとルールへの同意**が必要です。\n'
+            f'プロフィールの名前・性別・一言は {pf.mention} に公開されます。\n'
+            '同意と入力の両方が揃うまでロールは付与されません。\n\n' + _preview(member),
+            view=RegistrationSteps(member.id), ephemeral=True)
+
 
 async def try_promote(member):
-    """参加条件を確認し、正式メンバーロールを付与する。
-
-    戻り値: (状態, メッセージ)
-      incomplete: 条件未達
-      already: 既に付与済み
-      added: 付与成功
-      error: 設定・権限・Discord APIエラー
-    """
+    """旧呼称を互換維持。現在は仮ロールのみ付与し、正式昇格は一切行わない。"""
     if not isinstance(member, discord.Member):
         return 'error', 'メンバー情報を取得できませんでした。'
+    if is_blocked(member):
+        return 'error', '参加禁止中のアカウントには権限を付与できません。'
     if not complete(member):
-        return 'incomplete', 'まだ登録条件を満たしていません。'
-
-    guild = member.guild
-    gid = str(guild.id)
-    full_id = _kv(gid, K_FULL_ROLE)
-    if not full_id or full_id == 'OFF':
-        return 'error', '正式メンバーロールが管理者メニューで設定されていません。'
-
-    try:
-        full = guild.get_role(int(full_id))
-    except (TypeError, ValueError):
-        full = None
-    if full is None:
-        return 'error', '設定された正式メンバーロールが見つかりません。管理者メニューで設定し直してください。'
-    if full in member.roles:
-        return 'already', f'{full.mention} はすでに付与されています。'
-
-    me = guild.me
-    if me is None:
-        return 'error', 'BOT自身のメンバー情報を取得できませんでした。'
-    if not me.guild_permissions.manage_roles:
-        return 'error', 'BOTに「ロールの管理」権限がありません。'
-    if full >= me.top_role:
-        return 'error', f'{full.mention} がBOTの一番上のロール以上にあります。サーバー設定でBOTロールを上へ移動してください。'
-
-    try:
-        await member.add_roles(full, reason='参加登録の全条件達成')
-        return 'added', f'登録完了！ {full.mention} を付与しました。'
-    except discord.Forbidden:
-        return 'error', 'Discordにロール付与を拒否されました。BOTの権限とロール順を確認してください。'
-    except discord.HTTPException as exc:
-        return 'error', f'ロール付与中にDiscordエラーが発生しました：{exc}'
+        return 'incomplete', 'ルールへの同意、18歳以上の自己申告、名前・性別・一言の入力を完了してください。'
+    lock = REGISTRATION_LOCKS.setdefault((member.guild.id, member.id), asyncio.Lock())
+    async with lock:
+        if is_blocked(member) or not complete(member):
+            return 'incomplete', '登録条件を再確認してください。'
+        temp = get_temp_role(member.guild)
+        full = get_full_role(member.guild)
+        if temp is None or (full is not None and temp.id == full.id):
+            return 'error', '仮ロールが未設定、または正式ロールと重複しています。管理者に確認してください。'
+        me = member.guild.me
+        if me is None or not me.guild_permissions.manage_roles or temp >= me.top_role:
+            return 'error', 'BOTのロール管理権限かロールの並び順が不正です。管理者に確認してください。'
+        state = db.get_member_registration(member.guild.id, member.id)
+        if temp in member.roles and state.get('registered_at'):
+            return 'already', 'すでに仮メンバーとして登録されています。後からプロフィールを編集できます。'
+        added_now = False
+        try:
+            if temp not in member.roles and (full is None or full not in member.roles):
+                await member.add_roles(temp, reason='ルール同意＋仮プロフィール登録完了')
+                added_now = True
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            return 'error', f'ロール付与に失敗しました。入力内容は保存されています。管理者に確認してください。（{exc}）'
+        try:
+            persisted = db.mark_member_registered(member.guild.id, member.id)
+        except Exception:
+            persisted = False
+        if not persisted:
+            if added_now:
+                try:
+                    await member.remove_roles(temp, reason='登録状態の保存失敗による巻き戻し')
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+            return 'error', '登録状態を保存できませんでした。参加完了にはなっていません。管理者に確認してください。'
+        if full is not None and full in member.roles:
+            return 'added', '✅ 登録内容を保存しました。既存の正式メンバーロールは維持しています。'
+        return 'added', f'✅ 登録完了！ {temp.mention} として参加できるようになりました。'
 
 
 async def report_promotion(interaction):
-    status, message = await try_promote(interaction.user)
-    if status in {'added', 'error'}:
-        try:
-            await interaction.followup.send(('✅ ' if status == 'added' else '⚠️ ') + message, ephemeral=True)
-        except (discord.HTTPException, discord.NotFound):
-            pass
-    return status, message
+    # 旧プロフィール補助UIからは昇格しない。登録の最終確認が必要。
+    return 'incomplete', '登録は「登録して参加」から確定してください。'
 
 
 def _profile_card_text(member, p):
     nickname = p.get('nickname') or member.display_name
     games = (p.get('games') or '未設定').replace(',', '・')
-    hobby = p.get('hobby') or '未設定'
-    mbti = p.get('mbti') or '未設定'
+    gender = p.get('gender') or '未設定'
     comment = p.get('comment') or '未設定'
     divider = '◾︎=========================◾︎'
     return (
         f'{divider}\n\n'
         f'**【名前】**  **{nickname}**  {member.mention}\n\n'
-        f'**【趣味】**  {hobby}\n\n'
-        f'**【ゲーム】**  {games}\n\n'
-        f'**【MBTI】**  {mbti}\n\n'
+        f'**【性別】**  {gender}\n\n'
         f'**【一言】**  {comment}\n\n'
         f'{divider}'
     )
@@ -566,8 +656,7 @@ async def build_profile_card_file(member, p):
     medium_b = _find_japanese_font(27, bold=True)
 
     name = (p.get('nickname') or member.display_name).strip()
-    mbti = (p.get('mbti') or '').strip() or '未設定'
-    hobby = (p.get('hobby') or '').strip() or '—'
+    gender = (p.get('gender') or '').strip() or '—'
     comment = (p.get('comment') or '').strip() or '—'
 
     # ── 上段：PROFILE ──
@@ -595,10 +684,10 @@ async def build_profile_card_file(member, p):
     uf = _fit_text(draw, user_name, 292, 27, 17)
     draw.text((tx, 220), user_name, font=uf, fill=text_sub)
 
-    mbti_w = min(280, max(104, draw.textbbox((0, 0), mbti, font=medium_b)[2] + 42))
+    mbti_w = min(280, max(104, draw.textbbox((0, 0), gender, font=medium_b)[2] + 42))
     mbti_box = (tx, 265, tx + mbti_w, 320)
     draw.rounded_rectangle(mbti_box, radius=15, fill=(58, 35, 104, 205), outline=soft_line, width=2)
-    _draw_centered_text(draw, mbti_box, mbti, medium_b, text_main)
+    _draw_centered_text(draw, mbti_box, gender, medium_b, text_main)
 
 
     # ── 中段：ABOUT ME / ABOUT ME+ / RANKING ──
@@ -608,7 +697,7 @@ async def build_profile_card_file(member, p):
     draw.text((929, 438), 'RANKING', font=title_font, fill=title_col)
 
     # ABOUT ME（34,412 ～ 445,831）
-    rows = [('名前', name), ('MBTI', mbti), ('趣味', hobby)]
+    rows = [('名前', name), ('性別', gender), ('一言', comment[:50])]
     ys = [555, 655, 755]
     for (lab, val), yy in zip(rows, ys):
         draw.text((55, yy), lab, font=small_b, fill=(220, 199, 235), anchor='lm')
@@ -695,7 +784,11 @@ async def publish_profile(member):
     if not isinstance(channel, discord.TextChannel):
         return
     p = db.get_member_profile(gid, uid) or {}
-    if not (p.get('nickname') and p.get('hobby') and p.get('comment')):
+    registered = bool(db.get_member_registration(gid, uid).get('registered_at'))
+    full_role = get_full_role(member.guild)
+    if is_blocked(member) or (not registered and not (full_role is not None and full_role in member.roles)):
+        return
+    if not (p.get('nickname') and p.get('gender') and p.get('comment')):
         return
 
     key = f'member_profile_message:{uid}'
@@ -743,7 +836,8 @@ async def regenerate_all_profiles(guild):
         if member is None:
             skipped += 1
             continue
-        if not (p.get('nickname') and p.get('hobby') and p.get('comment')):
+        full_role = get_full_role(guild)
+        if is_blocked(member) or not (p.get('nickname') and p.get('comment')) or (not p.get('gender') and not (full_role and full_role in member.roles)):
             skipped += 1
             continue
         try:
@@ -771,15 +865,103 @@ class MemberOnboarding(commands.Cog):
         self.sticky_tasks = {}
         bot.add_view(RegistrationPanel())
         bot.add_view(ProfileCardView())
+        self._panels_refreshed = False
 
     @commands.Cog.listener()
-    async def on_member_join(self, member):
-        rid = _kv(member.guild.id, K_TEMP_ROLE)
-        if rid and rid != 'OFF':
-            role = member.guild.get_role(int(rid))
-            if role:
-                try: await member.add_roles(role, reason='新規参加：仮メンバー')
-                except (discord.Forbidden, discord.HTTPException): pass
+    async def on_ready(self):
+        if self._panels_refreshed:
+            return
+        self._panels_refreshed = True
+        for guild in self.bot.guilds:
+            cid = _kv(guild.id, K_PANEL_CHANNEL)
+            mid = _kv(guild.id, K_PANEL_MESSAGE)
+            if not cid or not mid or not cid.isdigit() or not mid.isdigit():
+                continue
+            channel = guild.get_channel(int(cid))
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            try:
+                msg = await channel.fetch_message(int(mid))
+                if msg.author.id == self.bot.user.id:
+                    await msg.edit(embed=panel_embed(guild), view=RegistrationPanel())
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                pass
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild, user):
+        # DiscordでBANされたユーザーは、BAN解除後も自動で参加権を戻さない。
+        db.set_member_blocked(guild.id, user.id, True)
+
+    @app_commands.command(name='参加禁止ID', description='退会済み・BAN済みユーザーのIDを参加禁止に登録／解除する')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(user_id='対象DiscordユーザーID（数字）', blocked='True:参加禁止 / False:解除')
+    async def block_by_id(self, interaction: discord.Interaction, user_id: str, blocked: bool):
+        value = user_id.strip()
+        if not value.isdigit() or not (15 <= len(value) <= 22):
+            await interaction.response.send_message('正しいDiscordユーザーID（数字）を入力してください。', ephemeral=True)
+            return
+        member = interaction.guild.get_member(int(value))
+        if member is not None and member.guild_permissions.administrator:
+            await interaction.response.send_message('管理者にはこの操作を使用できません。', ephemeral=True)
+            return
+        if member is not None and blocked:
+            await interaction.response.send_message('在籍中のユーザーは `/参加禁止設定` を使い、ロールも解除してください。', ephemeral=True)
+            return
+        db.set_member_blocked(interaction.guild.id, value, blocked)
+        await interaction.response.send_message(
+            '再参加禁止IDを登録しました。' if blocked else '登録禁止を解除しました。', ephemeral=True)
+
+    @app_commands.command(name='参加禁止設定', description='アカウントの再登録を禁止または解除します（管理者専用）')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(member='対象メンバー', blocked='True:禁止 / False:解除')
+    async def set_registration_block(self, interaction: discord.Interaction,
+                                     member: discord.Member, blocked: bool):
+        if member.guild_permissions.administrator:
+            await interaction.response.send_message('管理者にはこの操作を使用できません。', ephemeral=True)
+            return
+        db.set_member_blocked(interaction.guild.id, member.id, blocked)
+        if blocked:
+            roles = [role for role in (get_temp_role(interaction.guild),
+                     get_full_role(interaction.guild)) if role is not None and role in member.roles]
+            if roles:
+                try:
+                    await member.remove_roles(*roles, reason='管理者による参加禁止')
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    await interaction.response.send_message(
+                        f'⚠️ 登録を禁止しましたが、既存ロールの解除に失敗しました：{exc}', ephemeral=True)
+                    return
+            for cid, _, _, _, _ in db.list_temp_vcs(interaction.guild.id):
+                room = interaction.guild.get_channel(int(cid))
+                if isinstance(room, discord.VoiceChannel):
+                    if member in room.overwrites:
+                        try:
+                            await room.set_permissions(member, overwrite=None, reason='参加禁止')
+                        except (discord.Forbidden, discord.HTTPException):
+                            pass
+                    if member.voice and member.voice.channel == room:
+                        try:
+                            await member.move_to(None, reason='参加禁止')
+                        except (discord.Forbidden, discord.HTTPException):
+                            pass
+        await interaction.response.send_message(
+            '参加登録を禁止し、参加ロールを解除しました。' if blocked else
+            '再登録を許可しました。本人が登録パネルから再開できます。', ephemeral=True)
+
+    @app_commands.command(name='登録ルール版設定', description='新しいルール版を設定して同意履歴を区別します')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(version='例: 2026-10-v2（空白不可、最大50文字）')
+    async def set_rules_version(self, interaction: discord.Interaction, version: str):
+        version = version.strip()
+        if not version or len(version) > 50:
+            await interaction.response.send_message('ルール版は1〜50文字にしてください。', ephemeral=True)
+            return
+        db.set_setting_text(interaction.guild.id, K_RULE_VERSION, version)
+        await interaction.response.send_message(
+            f'同意ルールの版を `{discord.utils.escape_markdown(version)}` に変更しました。\n'
+            '既存ロールは自動剥奪しません。次回の登録操作では新しい同意が必要です。', ephemeral=True)
 
     async def _delete_profile(self, guild_id, user_id):
         key=(guild_id,user_id); item=self.profile_messages.pop(key,None)
@@ -793,12 +975,14 @@ class MemberOnboarding(commands.Cog):
         await self._delete_profile(member.guild.id, member.id)
         if after.channel is not None:
             p = db.get_member_profile(str(member.guild.id), str(member.id))
-            if p:
+            registered = bool(db.get_member_registration(member.guild.id, member.id).get('registered_at'))
+            full = get_full_role(member.guild)
+            if p and (registered or (full is not None and full in member.roles)):
                 try:
                     msg = await after.channel.send(embed=profile_embed(member,p))
                     self.profile_messages[(member.guild.id,member.id)] = msg
                 except (AttributeError, discord.Forbidden, discord.HTTPException): pass
-        await try_promote(member)
+        # 入室やVC時間だけで自動昇格させない。
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -841,11 +1025,14 @@ def admin_embed(guild):
     panel=_kv(gid,K_PANEL_CHANNEL); profile_ch=_kv(gid,K_PROFILE_CHANNEL)
     pch=guild.get_channel(int(panel)) if panel and panel!='OFF' else None
     prof=guild.get_channel(int(profile_ch)) if profile_ch and profile_ch!='OFF' else None
+    rules = rules_channel(guild)
     return discord.Embed(
         title='👥 メンバー管理', color=discord.Color.blurple(),
         description=(
             f'仮メンバー：{role_text(K_TEMP_ROLE)}\n'
             f'正式メンバー：{role_text(K_FULL_ROLE)}\n'
+            f'ルールch：{rules.mention if rules else "未設定"}\n'
+            f'同意するルール版：{current_rules_version(gid)}\n'
             f'VC時間条件：{_kv(gid,K_HOURS_ENABLED) or "OFF"}（{_kv(gid,K_HOURS) or "0"}時間）\n'
             f'登録パネル：{pch.mention if pch else "未設置"}\n'
             f'プロフィール欄：{prof.mention if prof else "未設定"}\n'
@@ -899,7 +1086,7 @@ class PanelChannelSelect(discord.ui.ChannelSelect):
                     except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
                         pass
 
-            message = await channel.send(embed=panel_embed(), view=RegistrationPanel())
+            message = await channel.send(embed=panel_embed(interaction.guild), view=RegistrationPanel())
             _set(interaction.guild.id, K_PANEL_CHANNEL, channel.id)
             _set(interaction.guild.id, K_PANEL_MESSAGE, message.id)
             await interaction.edit_original_response(embed=admin_embed(interaction.guild), view=MemberAdminView())
@@ -919,6 +1106,20 @@ class ProfileChannelSelect(discord.ui.ChannelSelect):
             await interaction.response.send_message('⚠️ テキストチャンネルを取得できませんでした。', ephemeral=True); return
         _set(interaction.guild.id, K_PROFILE_CHANNEL, channel.id)
         await interaction.response.edit_message(embed=admin_embed(interaction.guild), view=MemberAdminView())
+
+class RulesChannelSelect(discord.ui.ChannelSelect):
+    def __init__(self):
+        super().__init__(placeholder='⑤ ルールチャンネルを選択', min_values=1, max_values=1,
+                         channel_types=[discord.ChannelType.text], row=4)
+
+    async def callback(self, interaction):
+        channel = interaction.guild.get_channel(self.values[0].id)
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message('ルールチャンネルが見つかりません。', ephemeral=True)
+            return
+        _set(interaction.guild.id, K_RULE_CHANNEL, channel.id)
+        await interaction.response.edit_message(embed=admin_embed(interaction.guild), view=MemberAdminView())
+
 
 class HoursModal(discord.ui.Modal,title='必要VC時間'):
     hours=discord.ui.TextInput(label='必要な累計VC時間',placeholder='例：3（不要なら0）',max_length=6)
@@ -944,6 +1145,12 @@ class MemberAdminView(discord.ui.View):
             await interaction.response.send_message('⚠️ 管理者だけが操作できます。', ephemeral=True)
             return False
         return True
+    @discord.ui.button(label='📖 ルールch設定', style=discord.ButtonStyle.secondary, row=4)
+    async def rules_settings(self, interaction, button):
+        view = discord.ui.View(timeout=180)
+        view.add_item(RulesChannelSelect())
+        await interaction.response.send_message('ルールが掲載されているチャンネルを選択してください。', view=view, ephemeral=True)
+
     @discord.ui.button(label='⏱️ 必要VC時間',style=discord.ButtonStyle.primary,row=4)
     async def hours(self,interaction,button): await interaction.response.send_modal(HoursModal())
     @discord.ui.button(label='VC時間条件：ON/OFF',style=discord.ButtonStyle.secondary,row=4)

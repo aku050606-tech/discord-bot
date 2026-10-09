@@ -53,11 +53,6 @@ class Rewards(commands.Cog):
                         db.add_vc_seconds(uid, gid, VC_REWARD_INTERVAL, now_iso)
                         db.log_activity(gid, uid, "vc", VC_REWARD_INTERVAL, time.time())
                         await self._check_vc_autorole(member, gid)
-                        try:
-                            from cogs.member_onboarding import try_promote
-                            await try_promote(member)
-                        except Exception as e:
-                            print(f"⚠️ メンバー昇格判定失敗: {e}")
 
     async def _check_vc_autorole(self, member, gid):
         """累計VC時間が閾値を超えたら、設定ロールを自動付与する。"""
@@ -75,6 +70,11 @@ class Rewards(commands.Cog):
             return
         role = member.guild.get_role(int(role_id))
         if role is None or role in member.roles:
+            return
+        # 参加ロールは登録パネルからのみ付与。VC時間による裏口を塞ぐ。
+        reserved = {db.get_log_channel_id(gid, 'member_temp_role'),
+                    db.get_log_channel_id(gid, 'member_full_role')}
+        if str(role.id) in reserved:
             return
         try:
             await member.add_roles(role, reason=f"VC累計{hours_raw}時間達成")

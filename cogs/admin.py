@@ -648,7 +648,7 @@ class AnnounceEmojiModal(discord.ui.Modal, title="絵文字を割り当て"):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 自由部屋（一時VC）設定
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-from cogs.tempvc import K_HUB, K_CATEGORY, K_PANEL, build_panel_embed, TempVoicePanel
+from cogs.tempvc import K_HUB, K_CATEGORY, K_PANEL, K_ACCESS_TIER, build_panel_embed, TempVoicePanel
 
 
 def build_tempvc_embed(guild: discord.Guild) -> discord.Embed:
@@ -662,15 +662,19 @@ def build_tempvc_embed(guild: discord.Guild) -> discord.Embed:
     hub = db.get_log_channel_id(str(guild.id), K_HUB)
     cat = db.get_log_channel_id(str(guild.id), K_CATEGORY)
     panel = db.get_log_channel_id(str(guild.id), K_PANEL)
+    tier = db.get_log_channel_id(str(guild.id), K_ACCESS_TIER)
+    tier_text = {'temp': '🪐 仮メンバー＋🌐 正式メンバー',
+                 'full': '🌐 正式メンバーだけ'}.get(tier, '⚠️ 未設定（作成停止）')
     embed = discord.Embed(
         title="🔊 自由部屋（一時VC）設定",
         description=(
             f"**作成用VC**　 {_name(hub)}\n"
             f"**生成先カテゴリ** {_name(cat, 'cat')}\n"
-            f"**設定パネルch** {_name(panel)}\n\n"
-            "① 作成用VCを指定（ここに入ると部屋が作られる）\n"
-            "② 生成先カテゴリを指定（未指定なら作成用VCと同じ場所）\n"
-            "③ 設定パネルchを指定→「パネルを設置」で常設パネルを投稿"),
+            f"**設定パネルch** {_name(panel)}\n"
+            f"**公開区分** {tier_text}\n\n"
+            "① 作成用VC、② 生成先カテゴリ、③ 設定パネルchを指定\n"
+            "④ 公開区分を選択してください（未設定では作成しません）。\n"
+            "作成用VC自身とカテゴリの閲覧権限はDiscord側でも設定してください。"),
         color=discord.Color.blurple(),
     )
     embed.set_footer(text="Botに『チャンネルの管理／メンバーの移動／ロールの管理』権限が必要")
@@ -719,6 +723,23 @@ class _TVCPanelSelect(discord.ui.ChannelSelect):
             embed=build_tempvc_embed(interaction.guild), view=TempVCConfigView(self.admin_id))
 
 
+class _TVCTierSelect(discord.ui.Select):
+    def __init__(self, admin_id):
+        self.admin_id = admin_id
+        super().__init__(placeholder='④ 自由部屋の参加区分を選択…', row=4,
+                         options=[
+                             discord.SelectOption(label='仮メンバー向け（仮＋正式が入室可）', value='temp'),
+                             discord.SelectOption(label='正式メンバー向け（正式だけ入室可）', value='full'),
+                         ])
+
+    async def callback(self, interaction):
+        if not is_admin(interaction.user):
+            await deny(interaction); return
+        db.set_log_channel(str(interaction.guild.id), K_ACCESS_TIER, self.values[0])
+        await interaction.response.edit_message(
+            embed=build_tempvc_embed(interaction.guild), view=TempVCConfigView(self.admin_id))
+
+
 class TempVCConfigView(discord.ui.View):
     def __init__(self, admin_id):
         super().__init__(timeout=600)
@@ -726,6 +747,7 @@ class TempVCConfigView(discord.ui.View):
         self.add_item(_TVCVoiceSelect(admin_id))
         self.add_item(_TVCCategorySelect(admin_id))
         self.add_item(_TVCPanelSelect(admin_id))
+        self.add_item(_TVCTierSelect(admin_id))
 
     @discord.ui.button(label="📌 パネルを設置", style=discord.ButtonStyle.success, row=3)
     async def place_panel(self, interaction, button):

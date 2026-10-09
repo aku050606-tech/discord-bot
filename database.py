@@ -98,8 +98,11 @@ class Database:
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS temp_vc (
             channel_id TEXT PRIMARY KEY, guild_id TEXT, owner_id TEXT,
-            kind TEXT DEFAULT 'main', parent_id TEXT
+            kind TEXT DEFAULT 'main', parent_id TEXT, access_tier TEXT DEFAULT 'temp'
         )""")
+        c.execute("PRAGMA table_info(temp_vc)")
+        if 'access_tier' not in {r[1] for r in c.fetchall()}:
+            c.execute("ALTER TABLE temp_vc ADD COLUMN access_tier TEXT DEFAULT 'temp'")
         c.execute("""CREATE TABLE IF NOT EXISTS vc_activity (
             user_id TEXT, guild_id TEXT,
             vc_seconds INTEGER DEFAULT 0, last_active TEXT,
@@ -131,13 +134,24 @@ class Database:
         # 既存DB向けの安全な列追加
         c.execute("PRAGMA table_info(member_profiles)")
         existing_cols = {row[1] for row in c.fetchall()}
-        for col in ('about_q1','about_a1','about_q2','about_a2','about_q3','about_a3','free_text','profile_theme'):
+        for col in ('about_q1','about_a1','about_q2','about_a2','about_q3','about_a3','free_text','profile_theme','gender'):
             if col not in existing_cols:
                 c.execute(f"ALTER TABLE member_profiles ADD COLUMN {col} TEXT")
         c.execute("""CREATE TABLE IF NOT EXISTS member_registration (
             guild_id TEXT, user_id TEXT, rule_ok INTEGER DEFAULT 0,
+            consent_version TEXT, consent_at TEXT, age_confirmed INTEGER DEFAULT 0,
+            registered_at TEXT, blocked INTEGER DEFAULT 0,
             PRIMARY KEY (guild_id, user_id)
         )""")
+        c.execute("PRAGMA table_info(member_registration)")
+        registration_cols = {row[1] for row in c.fetchall()}
+        for name, definition in {
+            'consent_version': 'TEXT', 'consent_at': 'TEXT',
+            'age_confirmed': 'INTEGER DEFAULT 0', 'registered_at': 'TEXT',
+            'blocked': 'INTEGER DEFAULT 0',
+        }.items():
+            if name not in registration_cols:
+                c.execute(f"ALTER TABLE member_registration ADD COLUMN {name} {definition}")
         c.execute("""CREATE TABLE IF NOT EXISTS bot_settings_text (
             guild_id TEXT, key TEXT, value TEXT,
             PRIMARY KEY (guild_id, key)
@@ -616,14 +630,14 @@ class Database:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 自由部屋（一時VC）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    def add_temp_vc(self, channel_id, guild_id, owner_id, kind="main", parent_id=None):
+    def add_temp_vc(self, channel_id, guild_id, owner_id, kind="main", parent_id=None, access_tier="temp"):
         conn = self.get_conn()
         c = conn.cursor()
         c.execute("""INSERT OR REPLACE INTO temp_vc
-                (channel_id, guild_id, owner_id, kind, parent_id)
-                VALUES (?, ?, ?, ?, ?)""",
+                (channel_id, guild_id, owner_id, kind, parent_id, access_tier)
+                VALUES (?, ?, ?, ?, ?, ?)""",
             (str(channel_id), str(guild_id), str(owner_id), kind,
-             str(parent_id) if parent_id else None))
+             str(parent_id) if parent_id else None, access_tier))
         conn.commit()
         conn.close()
 
@@ -1028,14 +1042,14 @@ class Database:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ メンバー登録・文字列設定
     def get_member_profile(self, guild_id, user_id):
         conn=self.get_conn(); c=conn.cursor()
-        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","profile_theme")
+        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","profile_theme","gender")
         c.execute("SELECT "+",".join(keys)+" FROM member_profiles WHERE guild_id=? AND user_id=?",(str(guild_id),str(user_id)))
         row=c.fetchone(); conn.close()
         if not row: return None
         return dict(zip(keys,row))
 
     def update_member_profile(self, guild_id, user_id, **fields):
-        allowed_keys={"nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","profile_theme"}
+        allowed_keys={"nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","profile_theme","gender"}
         allowed={k:v for k,v in fields.items() if k in allowed_keys}
         if not allowed: return
         conn=self.get_conn(); c=conn.cursor()
@@ -1046,7 +1060,7 @@ class Database:
 
     def get_all_member_profiles(self, guild_id):
         conn=self.get_conn(); c=conn.cursor()
-        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","profile_theme")
+        keys=("nickname","hobby","comment","mbti","games","about_q1","about_a1","about_q2","about_a2","about_q3","about_a3","free_text","profile_theme","gender")
         c.execute("SELECT user_id,"+",".join(keys)+" FROM member_profiles WHERE guild_id=?",(str(guild_id),))
         rows=c.fetchall(); conn.close()
         return [(str(row[0]), dict(zip(keys,row[1:]))) for row in rows]
@@ -1059,6 +1073,60 @@ class Database:
     def get_member_rule(self, guild_id, user_id):
         conn=self.get_conn(); c=conn.cursor(); c.execute("SELECT rule_ok FROM member_registration WHERE guild_id=? AND user_id=?",(str(guild_id),str(user_id)))
         row=c.fetchone(); conn.close(); return bool(row and row[0])
+
+    def get_member_registration(self, guild_id, user_id):
+        conn = self.get_conn()
+        row = conn.execute("""SELECT rule_ok, consent_version, consent_at,
+                            age_confirmed, registered_at, blocked
+                            FROM member_registration WHERE guild_id=? AND user_id=?""",
+                           (str(guild_id), str(user_id))).fetchone()
+        conn.close()
+        if not row:
+            return {}
+        return dict(zip(('rule_ok', 'consent_version', 'consent_at',
+                         'age_confirmed', 'registered_at', 'blocked'), row))
+
+    def accept_member_rules(self, guild_id, user_id, version):
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self.get_conn()
+        conn.execute("""INSERT INTO member_registration
+                      (guild_id, user_id, rule_ok, age_confirmed, consent_version, consent_at)
+                      VALUES (?, ?, 1, 1, ?, ?)
+                      ON CONFLICT(guild_id,user_id) DO UPDATE SET
+                        rule_ok=1, age_confirmed=1,
+                        consent_version=excluded.consent_version,
+                        consent_at=excluded.consent_at""",
+                     (str(guild_id), str(user_id), str(version), now))
+        conn.commit(); conn.close()
+
+    def mark_member_registered(self, guild_id, user_id):
+        from datetime import datetime, timezone
+        conn = self.get_conn()
+        c = conn.cursor()
+        c.execute("""UPDATE member_registration
+                     SET registered_at=COALESCE(registered_at, ?)
+                     WHERE guild_id=? AND user_id=? AND blocked=0""",
+                  (datetime.now(timezone.utc).isoformat(), str(guild_id), str(user_id)))
+        changed = c.rowcount
+        conn.commit(); conn.close()
+        return changed > 0
+
+    def set_member_blocked(self, guild_id, user_id, blocked):
+        conn = self.get_conn()
+        conn.execute("""INSERT INTO member_registration (guild_id,user_id,blocked)
+                        VALUES (?,?,?) ON CONFLICT(guild_id,user_id)
+                        DO UPDATE SET blocked=excluded.blocked""",
+                     (str(guild_id), str(user_id), int(bool(blocked))))
+        conn.commit(); conn.close()
+
+    def list_temp_vcs(self, guild_id):
+        conn = self.get_conn()
+        rows = conn.execute("""SELECT channel_id, owner_id, kind, parent_id,
+                             COALESCE(access_tier,'temp') FROM temp_vc WHERE guild_id=?""",
+                            (str(guild_id),)).fetchall()
+        conn.close()
+        return rows
 
     def set_setting_text(self, guild_id, key, value):
         conn=self.get_conn(); c=conn.cursor()

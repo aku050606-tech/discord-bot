@@ -13,6 +13,8 @@
 """
 import discord
 from discord.ext import commands
+from discord import app_commands
+from cogs.member_access import allowed_roles, has_access, base_overwrites, sanitize_overwrites
 from database import Database
 
 db = Database()
@@ -20,6 +22,7 @@ db = Database()
 K_HUB = "tempvc_hub"
 K_CATEGORY = "tempvc_category"
 K_PANEL = "tempvc_panel"
+K_ACCESS_TIER = "tempvc_access_tier"
 
 REGIONS = [
     ("🌐 自動", "auto"), ("🇯🇵 日本", "japan"), ("🇭🇰 香港", "hongkong"),
@@ -33,6 +36,38 @@ def _settings(guild_id):
     return (db.get_log_channel_id(guild_id, K_HUB),
             db.get_log_channel_id(guild_id, K_CATEGORY),
             db.get_log_channel_id(guild_id, K_PANEL))
+
+
+def _tier(channel):
+    rows = db.list_temp_vcs(channel.guild.id)
+    for channel_id, _, _, _, tier in rows:
+        if channel_id == str(channel.id):
+            return tier if tier in ('temp', 'full') else 'temp'
+    return 'temp'
+
+
+def _privacy_locked(channel):
+    roles = allowed_roles(channel.guild, _tier(channel))
+    flags = [channel.overwrites_for(role).connect for role in roles]
+    if any(flag is False for flag in flags):
+        return True
+    if any(flag is True for flag in flags):
+        return False
+    # 旧BOTの部屋は参加区分ロール上書き自体がなかった
+    return channel.overwrites_for(channel.guild.default_role).connect is False
+
+
+async def _set_privacy(channel, locked):
+    # @everyone は必ず拒否のまま。参加ロールの接続だけを切り替える。
+    await channel.edit(overwrites=sanitize_overwrites(channel, _tier(channel),
+                                                       open_connect=not locked),
+                       reason='自由部屋：登録者限定の公開切替')
+
+
+def _still_owner(interaction, channel):
+    current, owner_id = _owner_vc(interaction.user)
+    return (current == channel and owner_id == str(interaction.user.id)
+            and has_access(interaction.user, _tier(channel)))
 
 
 def _owner_vc(member: discord.Member):
@@ -49,6 +84,9 @@ def _owner_vc(member: discord.Member):
 async def _guard_owner(interaction):
     """オーナー本人だけ通す。OKなら channel、ダメなら None（通知済み）。"""
     ch, owner = _owner_vc(interaction.user)
+    if ch is not None and not has_access(interaction.user, _tier(ch)):
+        await interaction.response.send_message('参加資格がないため操作できません。', ephemeral=True)
+        return None
     if ch is None:
         await interaction.response.send_message(
             "❌ 自由部屋に入ってから操作してください。", ephemeral=True)
@@ -62,19 +100,18 @@ async def _guard_owner(interaction):
 
 async def _create_temp_vc(member: discord.Member, hub: discord.VoiceChannel, category):
     guild = member.guild
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(connect=True, view_channel=True),
-        member: discord.PermissionOverwrite(
-            connect=True, manage_channels=True, move_members=True,
-            mute_members=True, deafen_members=True),
-        guild.me: discord.PermissionOverwrite(
-            connect=True, manage_channels=True, move_members=True, view_channel=True),
-    }
+    tier = db.get_log_channel_id(str(guild.id), K_ACCESS_TIER)
+    if tier not in ('temp', 'full') or not has_access(member, tier):
+        raise ValueError('自由部屋の区分が未設定か、参加資格がありません。')
+    overwrites = base_overwrites(guild, tier)
+    # ユーザーにチャンネル管理権限を渡すと閲覧許可を変更できてしまう。
+    # オーナー権限はDBで管理し、操作はBOT経由に限定する。
+    overwrites[member] = discord.PermissionOverwrite(view_channel=True, connect=True)
     ch = await guild.create_voice_channel(
         name=f"{member.display_name}の部屋",
         category=category, overwrites=overwrites,
         user_limit=hub.user_limit or 0)
-    db.add_temp_vc(str(ch.id), str(guild.id), str(member.id), kind="main")
+    db.add_temp_vc(str(ch.id), str(guild.id), str(member.id), kind="main", access_tier=tier)
     try:
         await member.move_to(ch)
     except discord.HTTPException:
@@ -127,11 +164,14 @@ class TempVoicePanel(discord.ui.View):
         ch = await _guard_owner(interaction)
         if not ch:
             return
-        ov = ch.overwrites_for(interaction.guild.default_role)
-        locked = ov.connect is False
-        ov.connect = None if locked else False
-        await ch.set_permissions(interaction.guild.default_role, overwrite=ov)
-        msg = "🔓 公開しました（誰でも入れます）" if locked else "🔒 ロックしました（信頼した人だけ入れます）"
+        try:
+            locked = _privacy_locked(ch)
+            await _set_privacy(ch, not locked)
+        except (discord.HTTPException, ValueError) as exc:
+            await interaction.response.send_message(f'⚠️ 公開範囲を変更できません：{exc}', ephemeral=True)
+            return
+        msg = ('🔓 この参加区分の登録者に公開しました。'
+               if locked else '🔒 参加区分の登録者にも接続を禁止しました（信頼した人は入室可）。')
         await interaction.response.send_message(msg, ephemeral=True)
 
     @discord.ui.button(emoji="🕓", label="待機室", style=discord.ButtonStyle.secondary,
@@ -149,25 +189,31 @@ class TempVoicePanel(discord.ui.View):
                 except discord.HTTPException:
                     pass
             db.remove_temp_vc(existing)
-            # 本体ロック解除
-            ov = ch.overwrites_for(interaction.guild.default_role)
-            ov.connect = None
-            await ch.set_permissions(interaction.guild.default_role, overwrite=ov)
-            await interaction.response.send_message("🕓 待機室をOFFにしました。", ephemeral=True)
+            try:
+                await _set_privacy(ch, False)
+                await interaction.response.send_message('🕓 待機室をOFFにしました。', ephemeral=True)
+            except (discord.HTTPException, ValueError) as exc:
+                await interaction.response.send_message(f'⚠️ 本体の公開設定に失敗しました：{exc}', ephemeral=True)
             return
-        # 待機室ON：本体をロックし、誰でも入れる待機VCを作る
-        ov = ch.overwrites_for(interaction.guild.default_role)
-        ov.connect = False
-        await ch.set_permissions(interaction.guild.default_role, overwrite=ov)
-        wov = {interaction.guild.default_role: discord.PermissionOverwrite(connect=True, view_channel=True),
-               interaction.guild.me: discord.PermissionOverwrite(connect=True, move_members=True)}
-        wc = await interaction.guild.create_voice_channel(
-            name=f"🕓待機-{interaction.user.display_name}",
-            category=ch.category, overwrites=wov)
-        db.add_temp_vc(str(wc.id), str(interaction.guild.id),
-                       str(interaction.user.id), kind="waiting", parent_id=str(ch.id))
-        await interaction.response.send_message(
-            f"🕓 待機室を作りました：{wc.mention}\n「✅ 信頼」で迎え入れると本体に入れます。", ephemeral=True)
+        try:
+            tier = _tier(ch)
+            wov = base_overwrites(interaction.guild, tier)
+            # 先に待機室を作り、成功時だけ本体の接続を閉じる。
+            wc = await interaction.guild.create_voice_channel(
+                name=f'🕓待機-{interaction.user.display_name}',
+                category=ch.category, overwrites=wov)
+            try:
+                await _set_privacy(ch, True)
+            except Exception:
+                await wc.delete(reason='本体の施錠に失敗したため待機室を取り消し')
+                raise
+            db.add_temp_vc(str(wc.id), str(interaction.guild.id),
+                           str(interaction.user.id), kind='waiting',
+                           parent_id=str(ch.id), access_tier=tier)
+            await interaction.response.send_message(
+                f'🕓 待機室を作りました：{wc.mention}\n「✅ 信頼」で迎え入れられます。', ephemeral=True)
+        except (discord.HTTPException, ValueError) as exc:
+            await interaction.response.send_message(f'⚠️ 待機室を作れません：{exc}', ephemeral=True)
 
     @discord.ui.button(emoji="💬", label="チャット", style=discord.ButtonStyle.secondary,
                        row=0, custom_id="tvc:chat")
@@ -249,6 +295,9 @@ class TempVoicePanel(discord.ui.View):
             await interaction.response.send_message(
                 "❌ 自由部屋に入ってから操作してください。", ephemeral=True)
             return
+        if not has_access(interaction.user, _tier(ch)):
+            await interaction.response.send_message('参加資格がないため権限を取得できません。', ephemeral=True)
+            return
         if owner == str(interaction.user.id):
             await interaction.response.send_message("もうあなたがオーナーです。", ephemeral=True)
             return
@@ -260,8 +309,7 @@ class TempVoicePanel(discord.ui.View):
             return
         db.set_temp_vc_owner(str(ch.id), str(interaction.user.id))
         await ch.set_permissions(interaction.user, overwrite=discord.PermissionOverwrite(
-            connect=True, manage_channels=True, move_members=True,
-            mute_members=True, deafen_members=True))
+            view_channel=True, connect=True))
         await interaction.response.send_message("👑 オーナー権限を取得しました！", ephemeral=True)
 
     @discord.ui.button(emoji="🤝", label="権限譲渡", style=discord.ButtonStyle.primary,
@@ -303,6 +351,9 @@ class RenameModal(discord.ui.Modal, title="部屋の名前を変更"):
         self.channel = channel
 
     async def on_submit(self, interaction):
+        if not _still_owner(interaction, self.channel):
+            await interaction.response.send_message('オーナー権限がありません。', ephemeral=True)
+            return
         try:
             await self.channel.edit(name=self.new_name.value)
             await interaction.response.send_message(
@@ -319,6 +370,9 @@ class LimitModal(discord.ui.Modal, title="人数上限を設定"):
         self.channel = channel
 
     async def on_submit(self, interaction):
+        if not _still_owner(interaction, self.channel):
+            await interaction.response.send_message('オーナー権限がありません。', ephemeral=True)
+            return
         try:
             n = max(0, min(99, int(self.limit.value)))
         except ValueError:
@@ -336,6 +390,9 @@ class RegionSelect(discord.ui.Select):
         super().__init__(placeholder="地域を選択…", options=opts)
 
     async def callback(self, interaction):
+        if not _still_owner(interaction, self.channel):
+            await interaction.response.send_message('オーナー権限がありません。', ephemeral=True)
+            return
         val = self.values[0]
         region = None if val == "auto" else val
         try:
@@ -367,9 +424,28 @@ class TempVCUserSelect(discord.ui.UserSelect):
         target = self.values[0]
         ch = self.channel
         guild = interaction.guild
+        if not _still_owner(interaction, ch):
+            await interaction.response.edit_message(content='オーナー権限がありません。', view=None)
+            return
+        if db.get_temp_vc_row(ch.id) is None:
+            await interaction.response.edit_message(content='部屋がすでに削除されています。', view=None)
+            return
+        # discord.ui.UserSelect は User を返すことがあるので Guild 内メンバーに解決する
+        resolved = guild.get_member(target.id)
+        if resolved is None:
+            try:
+                resolved = await guild.fetch_member(target.id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                resolved = None
+        if self.action in ('trust', 'transfer') and not has_access(resolved, _tier(ch)):
+            await interaction.response.edit_message(
+                content='⚠️ この部屋の参加資格がない相手は信頼・権限譲渡できません。', view=None)
+            return
+        if resolved is not None:
+            target = resolved
         try:
             if self.action == "trust":
-                await ch.set_permissions(target, overwrite=discord.PermissionOverwrite(connect=True))
+                await ch.set_permissions(target, overwrite=discord.PermissionOverwrite(view_channel=True, connect=True))
                 # 待機室にいたら本体へ迎え入れる
                 waiting = db.get_waiting_for(str(ch.id))
                 if waiting and isinstance(target, discord.Member) and target.voice and \
@@ -401,8 +477,7 @@ class TempVCUserSelect(discord.ui.UserSelect):
             elif self.action == "transfer":
                 db.set_temp_vc_owner(str(ch.id), str(target.id))
                 await ch.set_permissions(target, overwrite=discord.PermissionOverwrite(
-                    connect=True, manage_channels=True, move_members=True,
-                    mute_members=True, deafen_members=True))
+                    view_channel=True, connect=True))
                 msg = f"🤝 {target.display_name} にオーナーを譲渡しました。"
             else:
                 msg = "不明な操作です。"
@@ -424,6 +499,51 @@ class TempVC(commands.Cog):
             self._view_added = True
 
     @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        if before.roles == after.roles:
+            return
+        # 参加区分を失った人の例外許可を削除し、VCからも退室させる。
+        for cid, _, _, _, tier in db.list_temp_vcs(after.guild.id):
+            ch = after.guild.get_channel(int(cid))
+            if not isinstance(ch, discord.VoiceChannel):
+                continue
+            if has_access(after, tier):
+                continue
+            if after in ch.overwrites:
+                try:
+                    await ch.set_permissions(after, overwrite=None,
+                                             reason='参加区分の権限が解除されたため')
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+            if after.voice and after.voice.channel == ch:
+                try:
+                    await after.move_to(None, reason='参加資格を失ったため')
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+
+    @app_commands.command(name='自由部屋権限修復', description='既存の自由部屋と待機室を参加ロール限定に修正します')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def secure_rooms(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        ok, errors = 0, []
+        for cid, _, _, _, tier in db.list_temp_vcs(interaction.guild.id):
+            ch = interaction.guild.get_channel(int(cid))
+            if not isinstance(ch, discord.VoiceChannel):
+                continue
+            try:
+                locked = _privacy_locked(ch)
+                await ch.edit(overwrites=sanitize_overwrites(ch, tier, open_connect=not locked),
+                              reason='BOT管理の自由部屋を参加ロール限定に移行')
+                ok += 1
+            except (discord.Forbidden, discord.HTTPException, ValueError) as exc:
+                errors.append(f'{cid}: {exc}')
+        msg = f'修復した自由部屋・待機室：{ok}件'
+        if errors:
+            msg += '\n⚠️ 失敗：' + '; '.join(errors[:5])
+        await interaction.followup.send(msg, ephemeral=True)
+
+    @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if member.bot:
             return
@@ -432,11 +552,14 @@ class TempVC(commands.Cog):
 
         # 作成用VCに入った → 専用部屋を生成
         if after.channel and hub_id and str(after.channel.id) == hub_id:
-            category = guild.get_channel(int(cat_id)) if cat_id else after.channel.category
-            try:
-                await _create_temp_vc(member, after.channel, category)
-            except discord.Forbidden:
-                pass
+            category = guild.get_channel(int(cat_id)) if cat_id and cat_id.isdigit() else None
+            tier = db.get_log_channel_id(str(guild.id), K_ACCESS_TIER)
+            if isinstance(category, discord.CategoryChannel) and tier in ('temp', 'full') \
+                    and has_access(member, tier):
+                try:
+                    await _create_temp_vc(member, after.channel, category)
+                except (discord.Forbidden, discord.HTTPException, ValueError):
+                    pass
 
         # 抜けた部屋が空の自由部屋なら削除
         if before.channel:
