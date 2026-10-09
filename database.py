@@ -152,6 +152,18 @@ class Database:
         }.items():
             if name not in registration_cols:
                 c.execute(f"ALTER TABLE member_registration ADD COLUMN {name} {definition}")
+        # 仮メンバー評価。BOT上では評価者・集計値を公開しない。
+        # 二重投票を防ぐため、投票者IDはDB内のみで保持する。
+        c.execute("""CREATE TABLE IF NOT EXISTS temp_member_ratings (
+            guild_id TEXT NOT NULL,
+            target_user_id TEXT NOT NULL,
+            voter_user_id TEXT NOT NULL,
+            score INTEGER NOT NULL CHECK(score BETWEEN 1 AND 4),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (guild_id, target_user_id, voter_user_id)
+        )""")
+        c.execute("""CREATE INDEX IF NOT EXISTS idx_temp_member_ratings_target
+                     ON temp_member_ratings(guild_id, target_user_id)""")
         c.execute("""CREATE TABLE IF NOT EXISTS bot_settings_text (
             guild_id TEXT, key TEXT, value TEXT,
             PRIMARY KEY (guild_id, key)
@@ -1132,6 +1144,72 @@ class Database:
         conn=self.get_conn(); c=conn.cursor()
         c.execute("INSERT INTO bot_settings_text (guild_id,key,value) VALUES (?,?,?) ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value",(str(guild_id),str(key),str(value)))
         conn.commit(); conn.close()
+
+    def save_temp_member_rating(self, guild_id, target_user_id, voter_user_id, score):
+        score = int(score)
+        if score not in (1, 2, 3, 4):
+            raise ValueError('評価は1から4の範囲です')
+        conn = self.get_conn()
+        try:
+            conn.execute("""INSERT INTO temp_member_ratings
+                         (guild_id, target_user_id, voter_user_id, score)
+                         VALUES (?, ?, ?, ?)
+                         ON CONFLICT(guild_id, target_user_id, voter_user_id)
+                         DO UPDATE SET score=excluded.score, updated_at=CURRENT_TIMESTAMP""",
+                         (str(guild_id), str(target_user_id), str(voter_user_id), score))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def remove_temp_member_rating(self, guild_id, target_user_id, voter_user_id):
+        conn = self.get_conn()
+        try:
+            conn.execute("""DELETE FROM temp_member_ratings WHERE
+                         guild_id=? AND target_user_id=? AND voter_user_id=?""",
+                         (str(guild_id), str(target_user_id), str(voter_user_id)))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def list_temp_member_ratings(self, guild_id, target_user_id):
+        conn = self.get_conn()
+        try:
+            return conn.execute("""SELECT voter_user_id, score FROM temp_member_ratings
+                              WHERE guild_id=? AND target_user_id=?""",
+                              (str(guild_id), str(target_user_id))).fetchall()
+        finally:
+            conn.close()
+
+    def list_temp_member_rating_targets(self, guild_id):
+        conn = self.get_conn()
+        try:
+            return [row[0] for row in conn.execute(
+                "SELECT DISTINCT target_user_id FROM temp_member_ratings WHERE guild_id=?",
+                (str(guild_id),)).fetchall()]
+        finally:
+            conn.close()
+
+    def clear_temp_member_ratings(self, guild_id, target_user_id):
+        # 昇格後は投票者IDを残さず削除する。
+        conn = self.get_conn()
+        try:
+            conn.execute("DELETE FROM temp_member_ratings WHERE guild_id=? AND target_user_id=?",
+                         (str(guild_id), str(target_user_id)))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_profile_owner_by_message(self, guild_id, message_id):
+        conn = self.get_conn()
+        try:
+            row = conn.execute("""SELECT key FROM bot_settings_text WHERE guild_id=?
+                        AND key GLOB 'member_profile_message:*' AND value=? LIMIT 1""",
+                        (str(guild_id), str(message_id))).fetchone()
+        finally:
+            conn.close()
+        if row and row[0].rsplit(':', 1)[-1].isdigit():
+            return int(row[0].rsplit(':', 1)[-1])
+        return None
 
     def get_setting_text(self, guild_id, key):
         conn=self.get_conn(); c=conn.cursor(); c.execute("SELECT value FROM bot_settings_text WHERE guild_id=? AND key=?",(str(guild_id),str(key)))

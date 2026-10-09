@@ -23,6 +23,13 @@ K_RULE_BODY = 'member_rules_body'
 K_RULE_MESSAGE_ID = 'member_rules_posted_message'
 K_RULE_POSTED_CHANNEL = 'member_rules_posted_channel'
 K_RULE_POSTED_HASH = 'member_rules_posted_hash'
+K_TEMP_RATING_MIN_VOTES = 'temp_rating_min_votes'
+K_TEMP_RATING_POSITIVE_PERCENT = 'temp_rating_positive_percent'
+K_TEMP_RATING_MIN_AVERAGE = 'temp_rating_min_average'
+DEFAULT_MIN_VOTES = 5
+DEFAULT_POSITIVE_PERCENT = 80
+DEFAULT_MIN_AVERAGE = 3.0
+PROMOTION_LOCKS = {}
 DEFAULT_RULE_VERSION = '2026-10-v1'
 REGISTRATION_LOCKS = {}
 K_HOURS_ENABLED = 'member_hours_enabled'
@@ -72,7 +79,7 @@ def panel_embed(guild=None):
             f'1. {rules} を読み、18歳以上であることとルールへの同意を確認\n'
             '2. 名前・性別・一言を登録\n'
             '3. 登録内容を確認して「登録して参加」を押す\n\n'
-            '完了したら **仮メンバー** になります。正式昇格は別の手続きです。\n'
+            '完了すると **仮メンバー** になります。正式昇格は評価条件の達成、または管理者の判断によって行われます。\n'
             'プロフィールはサーバー内のプロフィール欄に公開され、後から本人が変更できます。'
         ), color=discord.Color.blurple())
 
@@ -758,6 +765,192 @@ async def build_profile_card_file(member, p):
     out.seek(0)
     return discord.File(out, filename=f'profile_{member.id}.png')
 
+def _rating_config(guild_id):
+    def load(key, default, conv, lower, upper):
+        try:
+            value = conv(db.get_setting_text(guild_id, key))
+            return value if lower <= value <= upper else default
+        except (TypeError, ValueError):
+            return default
+    return (
+        load(K_TEMP_RATING_MIN_VOTES, DEFAULT_MIN_VOTES, int, 2, 100),
+        load(K_TEMP_RATING_POSITIVE_PERCENT, DEFAULT_POSITIVE_PERCENT, int, 1, 100),
+        load(K_TEMP_RATING_MIN_AVERAGE, DEFAULT_MIN_AVERAGE, float, 1.0, 4.0),
+    )
+
+
+def _valid_temp_rating_scores(member):
+    full_role = get_full_role(member.guild)
+    if not full_role:
+        return []
+    scores = []
+    for voter_id, score in db.list_temp_member_ratings(member.guild.id, member.id):
+        if not str(voter_id).isdigit() or int(voter_id) == member.id:
+            continue
+        voter = member.guild.get_member(int(voter_id))
+        if voter and not voter.bot and full_role in voter.roles and not is_blocked(voter):
+            scores.append(int(score))
+    return scores
+
+
+def _temporary_rating_passes(scores, settings):
+    min_votes, positive_percent, min_average = settings
+    if len(scores) < min_votes:
+        return False
+    positives = sum(score >= 3 for score in scores)
+    return (positives * 100 >= len(scores) * positive_percent
+            and sum(scores) >= len(scores) * min_average)
+
+
+async def _remove_temporary_profile(member):
+    gid, uid = str(member.guild.id), str(member.id)
+    channel_id = _kv(gid, K_PROFILE_CHANNEL)
+    message_id = db.get_setting_text(gid, f'member_profile_message:{uid}')
+    if not channel_id or not channel_id.isdigit() or not message_id or not message_id.isdigit():
+        return
+    channel = member.guild.get_channel(int(channel_id))
+    if not isinstance(channel, discord.TextChannel):
+        return
+    try:
+        msg = await channel.fetch_message(int(message_id))
+        me = member.guild.me
+        if me and msg.author.id == me.id:
+            await msg.delete()
+            db.set_setting_text(gid, f'member_profile_message:{uid}', '')
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        # プロフィール削除失敗でも正式ロールは取り消さない。評価操作は拒否される。
+        pass
+
+
+async def _promote_to_full_locked(member, method):
+    """対象メンバーごとのPROMOTION_LOCKS取得済みで呼ぶ。"""
+    if is_blocked(member):
+        return 'error', '参加禁止対象のため昇格できません。'
+    if not db.get_member_registration(member.guild.id, member.id).get('registered_at'):
+        return 'error', '仮登録が完了していません。'
+    temp, full = get_temp_role(member.guild), get_full_role(member.guild)
+    if not temp or not full or temp.id == full.id:
+        return 'error', '仮・正式ロールの設定が不正です。'
+    if full in member.roles:
+        return 'already', 'すでに正式メンバーです。'
+    if temp not in member.roles:
+        return 'error', '対象者に仮メンバーロールがありません。'
+    me = member.guild.me
+    if not me or not me.guild_permissions.manage_roles or temp >= me.top_role or full >= me.top_role:
+        return 'error', 'BOTのロール管理権限かロール順を確認してください。'
+    try:
+        # 両方の権限が不要に残らないよう、ロールの切替完了まで成功と扱わない。
+        await member.add_roles(full, reason='仮メンバー評価による自動昇格' if method == 'auto' else '管理者判断による正式昇格')
+        try:
+            await member.remove_roles(temp, reason='正式昇格に伴う仮ロール解除')
+        except (discord.Forbidden, discord.HTTPException):
+            try:
+                await member.remove_roles(full, reason='仮ロール解除に失敗したため昇格を巻き戻し')
+            except (discord.Forbidden, discord.HTTPException):
+                return 'error', '仮ロールの解除と巻き戻しに失敗しました。管理者がロール状態を確認してください。'
+            return 'error', '仮ロールの解除に失敗したため昇格を取り消しました。'
+    except (discord.Forbidden, discord.HTTPException):
+        return 'error', '正式ロールの付与に失敗しました。BOTの権限を確認してください。'
+    db.clear_temp_member_ratings(member.guild.id, member.id)
+    # 仮メンバーのプロフィール欄から除外。正式プロフィールは別途設定。
+    await _remove_temporary_profile(member)
+    return 'added', '🌐 正式メンバーに昇格しました。'
+
+
+async def _try_auto_promote(member):
+    lock = PROMOTION_LOCKS.setdefault((member.guild.id, member.id), asyncio.Lock())
+    async with lock:
+        full = get_full_role(member.guild)
+        temp = get_temp_role(member.guild)
+        if (not full or not temp or full in member.roles or temp not in member.roles
+                or is_blocked(member)):
+            return 'ineligible', ''
+        scores = _valid_temp_rating_scores(member)
+        if not _temporary_rating_passes(scores, _rating_config(member.guild.id)):
+            return 'ineligible', ''
+        return await _promote_to_full_locked(member, 'auto')
+
+
+async def _submit_temporary_rating(interaction, target_id, score):
+    guild = interaction.guild
+    if guild is None or not isinstance(interaction.user, discord.Member):
+        await interaction.response.send_message('サーバー内から評価してください。', ephemeral=True)
+        return
+    full = get_full_role(guild)
+    if not full or full not in interaction.user.roles or is_blocked(interaction.user):
+        await interaction.response.send_message('正式メンバーだけが評価できます。', ephemeral=True)
+        return
+    if interaction.user.bot or target_id == interaction.user.id:
+        await interaction.response.send_message('自分自身は評価できません。', ephemeral=True)
+        return
+    target = guild.get_member(target_id)
+    if target is None:
+        try:
+            target = await guild.fetch_member(target_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            target = None
+    temp = get_temp_role(guild)
+    if (not target or target.bot or is_blocked(target) or not temp
+            or temp not in target.roles or full in target.roles
+            or not db.get_member_registration(guild.id, target_id).get('registered_at')):
+        await interaction.response.send_message('このプロフィールは現在評価できません。', ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    lock = PROMOTION_LOCKS.setdefault((guild.id, target.id), asyncio.Lock())
+    async with lock:
+        # 押した直後に資格変更や昇格が起きる可能性があるため再確認。
+        if (is_blocked(interaction.user) or full not in interaction.user.roles
+                or is_blocked(target) or temp not in target.roles or full in target.roles):
+            await interaction.followup.send('対象者はすでに昇格済み、または評価対象外です。', ephemeral=True)
+            return
+        if score is None:
+            db.remove_temp_member_rating(guild.id, target.id, interaction.user.id)
+        else:
+            db.save_temp_member_rating(guild.id, target.id, interaction.user.id, score)
+    if score is not None:
+        result, _ = await _try_auto_promote(target)
+        if result == 'error':
+            # 投票結果も昇格条件も公開しない。管理者のログには送らない。
+            print(f'⚠️ 自動昇格に失敗しました guild={guild.id} target={target.id}')
+    await interaction.followup.send('✅ 評価を受け付けました。' if score is not None else '✅ 評価を取り消しました。', ephemeral=True)
+
+
+class TempRatingChoiceView(discord.ui.View):
+    def __init__(self, target_id):
+        super().__init__(timeout=180)
+        self.target_id = int(target_id)
+        for score, label in (
+            (4, 'とても話しやすい'), (3, '話しやすい'),
+            (2, '話しにくい'), (1, 'とても話しにくい'),
+            (None, '評価を取り消す'),
+        ):
+            button = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary)
+            async def respond(interaction, rating=score):
+                await _submit_temporary_rating(interaction, self.target_id, rating)
+            button.callback = respond
+            self.add_item(button)
+
+
+async def _get_profile_target(interaction):
+    if not interaction.guild or not interaction.message:
+        return None
+    cid = _kv(interaction.guild.id, K_PROFILE_CHANNEL)
+    if not cid or str(interaction.channel_id) != cid:
+        return None
+    if not interaction.client.user or interaction.message.author.id != interaction.client.user.id:
+        return None
+    target_id = db.get_profile_owner_by_message(interaction.guild.id, interaction.message.id)
+    if not target_id:
+        return None
+    target = interaction.guild.get_member(target_id)
+    if target is None:
+        try:
+            target = await interaction.guild.fetch_member(target_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
+    return target
+
+
 class ProfileCardView(discord.ui.View):
     def __init__(self, member_id=None):
         super().__init__(timeout=None)
@@ -768,7 +961,7 @@ class ProfileCardView(discord.ui.View):
     @discord.ui.button(label='編集', emoji='✏️', style=discord.ButtonStyle.secondary,
                        custom_id='member:profile_card_edit', row=0)
     async def edit_profile(self, interaction, button):
-        target = interaction.message.mentions[0] if interaction.message and interaction.message.mentions else None
+        target = await _get_profile_target(interaction)
         if target is None:
             await interaction.response.send_message('プロフィールの所有者を確認できませんでした。', ephemeral=True)
             return
@@ -776,6 +969,25 @@ class ProfileCardView(discord.ui.View):
             await interaction.response.send_message('このプロフィールは本人だけ編集できます。', ephemeral=True)
             return
         await interaction.response.send_message('編集する項目を選んでください。', view=ProfileEditMenu(target.id), ephemeral=True)
+
+    @discord.ui.button(label='🗳️ 話しやすさを評価', style=discord.ButtonStyle.primary,
+                       custom_id='member:temp_evaluate', row=0)
+    async def evaluate(self, interaction, button):
+        target = await _get_profile_target(interaction)
+        if target is None:
+            await interaction.response.send_message('プロフィールの対象者を確認できません。', ephemeral=True)
+            return
+        full, temp = get_full_role(interaction.guild), get_temp_role(interaction.guild)
+        if (not isinstance(interaction.user, discord.Member) or not full
+                or full not in interaction.user.roles or is_blocked(interaction.user)):
+            await interaction.response.send_message('🌐 正式メンバーのみ評価できます。', ephemeral=True)
+            return
+        if (not temp or temp not in target.roles or full in target.roles
+                or is_blocked(target) or target.id == interaction.user.id):
+            await interaction.response.send_message('現在評価できないプロフィールです。', ephemeral=True)
+            return
+        await interaction.response.send_message('話しやすさを1つ選んでください。投票内容は非公開で、後から変更できます。',
+                                                view=TempRatingChoiceView(target.id), ephemeral=True)
 
 
 async def publish_profile(member):
@@ -791,7 +1003,8 @@ async def publish_profile(member):
     p = db.get_member_profile(gid, uid) or {}
     registered = bool(db.get_member_registration(gid, uid).get('registered_at'))
     full_role = get_full_role(member.guild)
-    if is_blocked(member) or (not registered and not (full_role is not None and full_role in member.roles)):
+    temp_role = get_temp_role(member.guild)
+    if is_blocked(member) or not registered or not temp_role or temp_role not in member.roles or (full_role is not None and full_role in member.roles):
         return
     if not (p.get('nickname') and p.get('gender') and p.get('comment')):
         return
@@ -816,9 +1029,9 @@ async def publish_profile(member):
         else:
             embed = directory_profile_embed(member, p)
             if msg:
-                await msg.edit(content=None, embed=embed, attachments=[], view=None)
+                await msg.edit(content=None, embed=embed, attachments=[], view=ProfileCardView(member.id))
             else:
-                msg = await channel.send(embed=embed)
+                msg = await channel.send(embed=embed, view=ProfileCardView(member.id))
         db.set_setting_text(gid, key, str(msg.id))
     except (discord.Forbidden, discord.HTTPException, RuntimeError):
         raise
@@ -842,7 +1055,10 @@ async def regenerate_all_profiles(guild):
             skipped += 1
             continue
         full_role = get_full_role(guild)
-        if is_blocked(member) or not (p.get('nickname') and p.get('comment')) or (not p.get('gender') and not (full_role and full_role in member.roles)):
+        temp_role = get_temp_role(guild)
+        registered = db.get_member_registration(gid, user_id).get('registered_at')
+        if (is_blocked(member) or not registered or not temp_role or temp_role not in member.roles
+                or (full_role and full_role in member.roles) or not all(p.get(k) for k in ('nickname', 'comment', 'gender'))):
             skipped += 1
             continue
         try:
@@ -891,11 +1107,63 @@ class MemberOnboarding(commands.Cog):
                     await msg.edit(embed=panel_embed(guild), view=RegistrationPanel())
             except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 pass
+        # 既存プロフィールへ投票ボタンを付け直す。再起動後も固定custom_idで機能する。
+        for guild in self.bot.guilds:
+            try:
+                await regenerate_all_profiles(guild)
+            except Exception as exc:
+                print(f'⚠️ 仮プロフィール再掲載をスキップ guild={guild.id}: {type(exc).__name__}')
+            # 起動前に昇格が失敗していた評価を再チェックする。
+            for uid in db.list_temp_member_rating_targets(guild.id):
+                if uid.isdigit():
+                    member = guild.get_member(int(uid))
+                    if member:
+                        result, _ = await _try_auto_promote(member)
+                        if result == 'error':
+                            print(f'⚠️ 自動昇格の再試行に失敗 guild={guild.id} target={uid}')
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
         # DiscordでBANされたユーザーは、BAN解除後も自動で参加権を戻さない。
         db.set_member_blocked(guild.id, user.id, True)
+
+    @app_commands.command(name='仮評価条件', description='仮メンバーが自動昇格する条件を設定（管理者専用）')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(最低人数='異なる正式メンバーからの最低評価人数（2〜100）',
+                           好意的割合='話しやすい／とても話しやすいの必要割合（1〜100%）',
+                           最低平均='4段階評価の最低平均点（1.0〜4.0）')
+    async def configure_temp_ratings(self, interaction: discord.Interaction,
+                                     最低人数: app_commands.Range[int, 2, 100],
+                                     好意的割合: app_commands.Range[int, 1, 100],
+                                     最低平均: app_commands.Range[float, 1.0, 4.0]):
+        gid = interaction.guild.id
+        db.set_setting_text(gid, K_TEMP_RATING_MIN_VOTES, str(最低人数))
+        db.set_setting_text(gid, K_TEMP_RATING_POSITIVE_PERCENT, str(好意的割合))
+        db.set_setting_text(gid, K_TEMP_RATING_MIN_AVERAGE, str(最低平均))
+        await interaction.response.send_message(
+            f'✅ 自動昇格条件を設定：最低{最低人数}名、好意的評価{好意的割合}%以上、平均{最低平均:.2f}以上。'
+            '\nこのメッセージは管理者本人だけに表示されます。', ephemeral=True)
+        # 設定緩和で既に条件を満たした対象がいる場合にも昇格する。
+        for uid in db.list_temp_member_rating_targets(gid):
+            if uid.isdigit():
+                target = interaction.guild.get_member(int(uid))
+                if target:
+                    await _try_auto_promote(target)
+
+    @app_commands.command(name='仮メンバー昇格', description='評価条件に関係なく仮メンバーを正式昇格（管理者専用）')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(対象者='正式昇格させる仮メンバー')
+    async def manual_temp_promote(self, interaction: discord.Interaction, 対象者: discord.Member):
+        if 対象者.bot or 対象者.guild_permissions.administrator:
+            await interaction.response.send_message('BOT・管理者は対象にできません。', ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        lock = PROMOTION_LOCKS.setdefault((interaction.guild.id, 対象者.id), asyncio.Lock())
+        async with lock:
+            result, message = await _promote_to_full_locked(対象者, 'manual')
+        await interaction.followup.send(message, ephemeral=True)
 
     @app_commands.command(name='参加禁止id', description='退会済み・BAN済みユーザーのIDを参加禁止に登録／解除する')
     @app_commands.default_permissions(administrator=True)
