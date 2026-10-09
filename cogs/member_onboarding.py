@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import os
 import discord
@@ -18,6 +19,10 @@ K_PROFILE_CHANNEL = 'member_profile_channel'
 K_PROFILE_DISPLAY_MODE = 'member_profile_display_mode'
 K_RULE_CHANNEL = 'member_rules_channel'
 K_RULE_VERSION = 'member_rules_version'
+K_RULE_BODY = 'member_rules_body'
+K_RULE_MESSAGE_ID = 'member_rules_posted_message'
+K_RULE_POSTED_CHANNEL = 'member_rules_posted_channel'
+K_RULE_POSTED_HASH = 'member_rules_posted_hash'
 DEFAULT_RULE_VERSION = '2026-10-v1'
 REGISTRATION_LOCKS = {}
 K_HOURS_ENABLED = 'member_hours_enabled'
@@ -1107,10 +1112,40 @@ class ProfileChannelSelect(discord.ui.ChannelSelect):
         _set(interaction.guild.id, K_PROFILE_CHANNEL, channel.id)
         await interaction.response.edit_message(embed=admin_embed(interaction.guild), view=MemberAdminView())
 
+def rule_publication_embed(guild):
+    text = (db.get_setting_text(guild.id, K_RULE_BODY) or '').strip()
+    embed = discord.Embed(title='📖 サーバールール', description=text, color=discord.Color.blurple())
+    embed.set_footer(text=f'ルール版：{current_rules_version(guild.id)}')
+    return embed
+
+
+def rules_admin_embed(guild):
+    channel = rules_channel(guild)
+    content = (db.get_setting_text(guild.id, K_RULE_BODY) or '').strip()
+    published_hash = db.get_setting_text(guild.id, K_RULE_POSTED_HASH)
+    current_hash = hashlib.sha256(content.encode('utf-8')).hexdigest() if content else None
+    if not content:
+        state = '本文未登録'
+    elif published_hash != current_hash:
+        state = '未掲載・または変更内容が未反映'
+    else:
+        state = '掲載済み（最後に保存した内容）'
+    return discord.Embed(
+        title='📖 ルールの管理', color=discord.Color.blurple(),
+        description=(f'掲載先：{channel.mention if channel else "未設定"}\n'
+                     f'本文：{len(content)}文字\n掲載状況：{state}\n'
+                     f'版：{current_rules_version(guild.id)}\n\n'
+                     '① チャンネルを選択 → ② 以前確定したルール全文を貼り付けて保存'
+                     ' → ③「ルールを掲載・更新」で投稿します。\n'
+                     '本文の保存だけでは公開されません。\n'
+                     '内容を改定したときは、必要に応じて `/登録ルール版設定` で版を更新してください。')
+    )
+
+
 class RulesChannelSelect(discord.ui.ChannelSelect):
     def __init__(self):
-        super().__init__(placeholder='⑤ ルールチャンネルを選択', min_values=1, max_values=1,
-                         channel_types=[discord.ChannelType.text], row=4)
+        super().__init__(placeholder='① ルールの掲載先チャンネルを選択', min_values=1, max_values=1,
+                         channel_types=[discord.ChannelType.text], row=0)
 
     async def callback(self, interaction):
         channel = interaction.guild.get_channel(self.values[0].id)
@@ -1118,7 +1153,108 @@ class RulesChannelSelect(discord.ui.ChannelSelect):
             await interaction.response.send_message('ルールチャンネルが見つかりません。', ephemeral=True)
             return
         _set(interaction.guild.id, K_RULE_CHANNEL, channel.id)
-        await interaction.response.edit_message(embed=admin_embed(interaction.guild), view=MemberAdminView())
+        await interaction.response.edit_message(embed=rules_admin_embed(interaction.guild),
+                                                view=RulesAdminView())
+
+
+class RulesBodyModal(discord.ui.Modal, title='サーバールール全文の登録・編集'):
+    body = discord.ui.TextInput(label='ルール本文（最大4000文字）',
+                                style=discord.TextStyle.paragraph, min_length=1, max_length=4000)
+
+    def __init__(self, guild_id):
+        super().__init__()
+        self.body.default = (db.get_setting_text(guild_id, K_RULE_BODY) or '')[:4000]
+
+    async def on_submit(self, interaction):
+        if not interaction.guild or not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('管理者のみ編集できます。', ephemeral=True)
+            return
+        content = self.body.value.strip()
+        if not content:
+            await interaction.response.send_message('ルール本文は空欄にできません。', ephemeral=True)
+            return
+        db.set_setting_text(interaction.guild.id, K_RULE_BODY, content)
+        await interaction.response.send_message(
+            '✅ ルール本文を下書き保存しました。まだ公開されていません。'
+            '「📖 ルールch設定」を開き、「📣 ルールを掲載・更新」を押して反映してください。',
+            ephemeral=True)
+
+
+class RulesAdminView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(RulesChannelSelect())
+
+    async def interaction_check(self, interaction):
+        if not interaction.guild or not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('管理者だけが操作できます。', ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label='📝 ルール本文を入力・変更', style=discord.ButtonStyle.primary, row=1)
+    async def edit_body(self, interaction, button):
+        await interaction.response.send_modal(RulesBodyModal(interaction.guild.id))
+
+    @discord.ui.button(label='👁️ 本文プレビュー', style=discord.ButtonStyle.secondary, row=1)
+    async def preview(self, interaction, button):
+        content = (db.get_setting_text(interaction.guild.id, K_RULE_BODY) or '').strip()
+        if not content:
+            await interaction.response.send_message('ルール本文が未登録です。', ephemeral=True)
+            return
+        await interaction.response.send_message(embed=rule_publication_embed(interaction.guild),
+                                                ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @discord.ui.button(label='📣 ルールを掲載・更新', style=discord.ButtonStyle.success, row=1)
+    async def publish(self, interaction, button):
+        channel = rules_channel(interaction.guild)
+        content = (db.get_setting_text(interaction.guild.id, K_RULE_BODY) or '').strip()
+        if not channel:
+            await interaction.response.send_message('先にルールの掲載先チャンネルを設定してください。', ephemeral=True)
+            return
+        if not content:
+            await interaction.response.send_message('先にルール全文を入力・保存してください。', ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        gid = interaction.guild.id
+        previous_id = _kv(gid, K_RULE_MESSAGE_ID)
+        previous_channel_id = _kv(gid, K_RULE_POSTED_CHANNEL)
+        existing = None
+        # 同じ投稿を編集し、二重掲載を防ぐ。メッセージが消えていたら新規作成。
+        if previous_id and previous_id.isdigit() and previous_channel_id == str(channel.id):
+            try:
+                candidate = await channel.fetch_message(int(previous_id))
+                if candidate.author.id == interaction.client.user.id:
+                    existing = candidate
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+        try:
+            embed = rule_publication_embed(interaction.guild)
+            if existing:
+                message = await existing.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            else:
+                message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except discord.Forbidden:
+            await interaction.followup.send('⚠️ BOTに掲載先の「チャンネルを見る」「メッセージを送信」「埋め込みリンク」権限が必要です。', ephemeral=True)
+            return
+        except discord.HTTPException as exc:
+            await interaction.followup.send(f'⚠️ ルールの掲載に失敗しました：{exc}', ephemeral=True)
+            return
+        _set(gid, K_RULE_MESSAGE_ID, message.id)
+        _set(gid, K_RULE_POSTED_CHANNEL, channel.id)
+        db.set_setting_text(gid, K_RULE_POSTED_HASH,
+                            hashlib.sha256(content.encode('utf-8')).hexdigest())
+        # 掲載先を変更したときだけ、旧チャンネルのBOT投稿を片付ける。
+        if previous_id and previous_id.isdigit() and previous_channel_id and previous_channel_id.isdigit() and previous_channel_id != str(channel.id):
+            old_channel = interaction.guild.get_channel(int(previous_channel_id))
+            if isinstance(old_channel, discord.TextChannel):
+                try:
+                    previous_msg = await old_channel.fetch_message(int(previous_id))
+                    if previous_msg.author.id == interaction.client.user.id:
+                        await previous_msg.delete()
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    pass
+        await interaction.followup.send(f'✅ {channel.mention} にルールを掲載・更新しました。\n'
+                                        f'掲載メッセージ：{message.jump_url}', ephemeral=True)
 
 
 class HoursModal(discord.ui.Modal,title='必要VC時間'):
@@ -1147,9 +1283,8 @@ class MemberAdminView(discord.ui.View):
         return True
     @discord.ui.button(label='📖 ルールch設定', style=discord.ButtonStyle.secondary, row=4)
     async def rules_settings(self, interaction, button):
-        view = discord.ui.View(timeout=180)
-        view.add_item(RulesChannelSelect())
-        await interaction.response.send_message('ルールが掲載されているチャンネルを選択してください。', view=view, ephemeral=True)
+        await interaction.response.send_message(embed=rules_admin_embed(interaction.guild),
+                                                view=RulesAdminView(), ephemeral=True)
 
     @discord.ui.button(label='⏱️ 必要VC時間',style=discord.ButtonStyle.primary,row=4)
     async def hours(self,interaction,button): await interaction.response.send_modal(HoursModal())
